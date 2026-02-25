@@ -34,22 +34,15 @@ export default function InboxPage() {
   }, []);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("nr_read_ids");
-    if (!stored) return;
-    try {
-      const parsed = JSON.parse(stored) as string[];
-      setReadIds(new Set(parsed));
-    } catch {
-      setReadIds(new Set());
-    }
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      "nr_read_ids",
-      JSON.stringify(Array.from(readIds))
-    );
-  }, [readIds]);
+    if (!session?.user?.email) return;
+    (async () => {
+      const res = await fetch("/api/read-state");
+      if (!res.ok) return;
+      const data = await res.json();
+      const ids = Array.isArray(data?.readIds) ? data.readIds : [];
+      setReadIds(new Set(ids));
+    })();
+  }, [session?.user?.email]);
 
   useEffect(() => {
     const stored = window.localStorage.getItem("nr_read_ids");
@@ -201,6 +194,11 @@ export default function InboxPage() {
         const current = ordered[selectedIndex];
         if (current) {
           setReadIds((prev) => new Set(prev).add(current.id));
+          fetch("/api/read-state", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messageId: current.id }),
+          }).catch(() => null);
           router.push(`/read/${current.id}`);
         }
       } else if (event.key === "r") {
@@ -208,6 +206,11 @@ export default function InboxPage() {
         const current = ordered[selectedIndex];
         if (!current) return;
         setReadIds((prev) => new Set(prev).add(current.id));
+        fetch("/api/read-state", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messageId: current.id }),
+        }).catch(() => null);
       }
     };
 
@@ -390,7 +393,7 @@ export default function InboxPage() {
 
       <div style={{ margin: "0 0 18px", color: "var(--muted)", fontSize: 13 }}>
         Keyboard: j/k (next/prev), o (open), r (mark read). Read status is
-        stored locally.
+        stored for your account.
       </div>
 
       {/* Feed */}
@@ -416,7 +419,14 @@ export default function InboxPage() {
                 key={it.id}
                 href={`/read/${it.id}`}
                 onClick={() =>
-                  setReadIds((prev) => new Set(prev).add(it.id))
+                  {
+                    setReadIds((prev) => new Set(prev).add(it.id));
+                    fetch("/api/read-state", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ messageId: it.id }),
+                    }).catch(() => null);
+                  }
                 }
                 className="feed-item"
                 style={{

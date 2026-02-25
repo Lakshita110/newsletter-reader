@@ -36,6 +36,15 @@ export default function ReadPage() {
   }, [id]);
 
   useEffect(() => {
+    if (!id) return;
+    fetch("/api/read-state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageId: id }),
+    }).catch(() => null);
+  }, [id]);
+
+  useEffect(() => {
     const stored = window.localStorage.getItem("nr_ordered_items");
     if (!stored) return;
     try {

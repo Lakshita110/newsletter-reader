@@ -1,0 +1,20 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model ReadState {
+  id         String   @id @default(cuid())
+  userEmail  String
+  messageId  String
+  readAt     DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@unique([userEmail, messageId])
+  @@index([userEmail])
+  @@index([messageId])
+}
