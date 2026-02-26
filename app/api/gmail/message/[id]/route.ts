@@ -1,28 +1,31 @@
-import { google } from "googleapis";
+import { google, gmail_v1 } from "googleapis";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 
 function b64urlDecode(input: string) {
-  // Gmail returns base64url (uses - and _). Convert to standard base64.
   const b64 = input.replace(/-/g, "+").replace(/_/g, "/");
   const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
   return Buffer.from(b64 + pad, "base64").toString("utf-8");
 }
 
-function getHeader(headers: any[] | undefined, name: string) {
-  const h = (headers || []).find(
-    (x) => x?.name?.toLowerCase() === name.toLowerCase()
+function getHeader(
+  headers: gmail_v1.Schema$MessagePartHeader[] | undefined,
+  name: string
+): string {
+  const header = headers?.find(
+    (candidate) => candidate.name?.toLowerCase() === name.toLowerCase()
   );
-  return h?.value ?? "";
+  return header?.value ?? "";
 }
 
-function extractBodies(payload: any): { html?: string; text?: string } {
-  // Gmail messages can be nested multipart. Walk the tree and grab text/plain + text/html.
+function extractBodies(
+  payload: gmail_v1.Schema$MessagePart | undefined
+): { html?: string; text?: string } {
   let html: string | undefined;
   let text: string | undefined;
 
-  const walk = (part: any) => {
+  const walk = (part: gmail_v1.Schema$MessagePart | undefined) => {
     if (!part) return;
 
     const mime = part.mimeType;
@@ -35,7 +38,7 @@ function extractBodies(payload: any): { html?: string; text?: string } {
     }
 
     if (Array.isArray(part.parts)) {
-      for (const p of part.parts) walk(p);
+      for (const childPart of part.parts) walk(childPart);
     }
   };
 
@@ -44,17 +47,16 @@ function extractBodies(payload: any): { html?: string; text?: string } {
 }
 
 export async function GET(req: Request) {
-  // Reliable: parse id from the URL path
   const url = new URL(req.url);
   const parts = url.pathname.split("/").filter(Boolean);
-  const id = parts[parts.length - 1]; // last segment
+  const id = parts[parts.length - 1];
 
   if (!id) {
     return NextResponse.json({ error: "Missing id in path" }, { status: 400 });
   }
 
   const session = await getServerSession(authOptions);
-  const accessToken = (session as any)?.accessToken as string | undefined;
+  const accessToken = session?.accessToken;
 
   if (!accessToken) {
     return NextResponse.json(
@@ -78,7 +80,7 @@ export async function GET(req: Request) {
   });
 
   const payload = msg.data.payload;
-  const headers = payload?.headers ?? [];
+  const headers = payload?.headers;
 
   const subject = getHeader(headers, "Subject");
   const from = getHeader(headers, "From");
@@ -95,8 +97,6 @@ export async function GET(req: Request) {
     snippet: msg.data.snippet,
     hasHtml: Boolean(html),
     hasText: Boolean(text),
-    // For now we return the whole body so you can test.
-    // Later we’ll store it in DB and sanitize before rendering.
     html,
     text,
   });

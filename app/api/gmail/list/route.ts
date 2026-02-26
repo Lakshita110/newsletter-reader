@@ -5,7 +5,7 @@ import { authOptions } from "@/lib/auth";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  const accessToken = (session as any)?.accessToken as string | undefined;
+  const accessToken = session?.accessToken;
 
   if (!accessToken) {
     return NextResponse.json(

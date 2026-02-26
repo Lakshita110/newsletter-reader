@@ -20,17 +20,17 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, account }) {
       if (account) {
-        (token as any).accessToken = account.access_token;
-        (token as any).refreshToken = account.refresh_token;
-        (token as any).accessTokenExpires = account.expires_at
+        token.accessToken = account.access_token;
+        token.refreshToken = account.refresh_token;
+        token.accessTokenExpires = account.expires_at
           ? account.expires_at * 1000
           : undefined;
       }
       return token;
     },
     async session({ session, token }) {
-      (session as any).accessToken = (token as any).accessToken;
-      (session as any).refreshToken = (token as any).refreshToken;
+      session.accessToken = token.accessToken;
+      session.refreshToken = token.refreshToken;
       return session;
     },
   },
