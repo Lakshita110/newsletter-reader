@@ -18,6 +18,7 @@ type FeedItem = {
   publicationKey: string;
   isOverflow?: boolean;
   externalUrl?: string;
+  imageUrl?: string;
 };
 
 function getHeader(
@@ -71,6 +72,15 @@ function priorityScore(priority: RssPriority): number {
   if (priority === "HIGH") return 3;
   if (priority === "NORMAL") return 2;
   return 1;
+}
+
+function extractImageUrl(html?: string | null): string | undefined {
+  if (!html) return undefined;
+  const og = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
+  if (og?.[1]) return og[1];
+  const img = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+  if (img?.[1]) return img[1];
+  return undefined;
 }
 
 async function getUserAndToken() {
@@ -208,6 +218,7 @@ async function getRssFeed(userId: string) {
           publicationKey: `rss:${sub.source.id}`,
           isOverflow,
           externalUrl: item.link ?? undefined,
+          imageUrl: extractImageUrl(item.htmlRaw),
         };
         if (!isOverflow) visible.push(feedItem);
         else {
@@ -229,20 +240,24 @@ async function getRssFeed(userId: string) {
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const auth = await getUserAndToken();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const url = new URL(req.url);
+  const kind = url.searchParams.get("kind");
 
   const [gmailItems, rss] = await Promise.all([
     getGmailFeed(auth.accessToken),
     getRssFeed(auth.userId),
   ]);
 
-  const items = [...gmailItems, ...rss.visible].sort((a, b) => {
+  let items = [...gmailItems, ...rss.visible].sort((a, b) => {
     const ta = new Date(a.date).getTime();
     const tb = new Date(b.date).getTime();
     return tb - ta;
   });
+  if (kind === "rss") items = items.filter((it) => it.sourceKind === "rss");
+  if (kind === "newsletters") items = items.filter((it) => it.sourceKind === "gmail");
 
   return NextResponse.json({
     items,

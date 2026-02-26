@@ -23,6 +23,23 @@ export function InboxHeader({
   olderUnreadCount,
   onCatchUpOlder,
 }: Props) {
+  const actionPillStyle: React.CSSProperties = {
+    border: "1px solid #dbeafe",
+    background: "#f8fbff",
+    color: "#1d4ed8",
+    height: 36,
+    padding: "0 12px",
+    borderRadius: 999,
+    cursor: "pointer",
+    fontSize: 13,
+    lineHeight: 1,
+    fontWeight: 600,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxSizing: "border-box",
+  };
+
   return (
     <header style={{ marginBottom: 18 }}>
       <div
@@ -103,15 +120,7 @@ export function InboxHeader({
         {olderUnreadCount > 0 && (
           <button
             onClick={onCatchUpOlder}
-            style={{
-              background: "#fff",
-              border: "1px solid #bfdbfe",
-              color: "#1d4ed8",
-              padding: "10px 12px",
-              borderRadius: 12,
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
+            style={actionPillStyle}
             title="Mark yesterday and earlier items as read"
           >
             Catch up older ({olderUnreadCount})

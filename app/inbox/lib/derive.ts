@@ -34,7 +34,7 @@ export function getDays(enriched: EnrichedInboxItem[]) {
       count: (prev?.count ?? 0) + 1,
     });
   }
-  return [...map.values()].sort((a, b) => b.key.localeCompare(a.key));
+  return [...map.values()].sort((a, b) => b.key.localeCompare(a.key)).slice(0, 4);
 }
 
 export function filterItems(

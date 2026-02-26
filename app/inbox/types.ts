@@ -10,6 +10,7 @@ export type InboxItem = {
   publicationKey: string;
   isOverflow?: boolean;
   externalUrl?: string;
+  imageUrl?: string;
 };
 
 export type FeedReadStatus = "unread" | "in-progress" | "read";

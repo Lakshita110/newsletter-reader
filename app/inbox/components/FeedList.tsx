@@ -53,7 +53,7 @@ export function FeedList({
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                     {status === "unread" && (
                       <span
                         aria-label="Unread"
@@ -86,11 +86,27 @@ export function FeedList({
                         fontWeight: 500,
                         letterSpacing: -0.2,
                         opacity: isRead ? 0.65 : 1,
+                        minWidth: 0,
                       }}
                     >
                       {it.subject || "(No subject)"}
                     </div>
                   </div>
+                  {it.sourceKind === "rss" && it.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={it.imageUrl}
+                      alt=""
+                      style={{
+                        width: 96,
+                        height: 64,
+                        objectFit: "cover",
+                        borderRadius: 8,
+                        border: "1px solid var(--faint)",
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
                 </div>
 
                 <div
@@ -165,4 +181,3 @@ export function FeedList({
     </section>
   );
 }
-
