@@ -123,6 +123,7 @@ model RssItem {
   title        String
   author       String?
   link         String?
+  imageUrl     String?
   publishedAt  DateTime?
   snippet      String?
   htmlRaw      String?   @db.Text

@@ -65,7 +65,7 @@ export async function GET(req: Request) {
       publicationKey: `rss:${sub.source.id}`,
       isOverflow: false,
       externalUrl: item.link ?? undefined,
-      imageUrl: extractImageUrl(item.htmlRaw),
+      imageUrl: item.imageUrl ?? extractImageUrl(item.htmlRaw),
     })),
   });
 }

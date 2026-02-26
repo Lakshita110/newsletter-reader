@@ -218,7 +218,7 @@ async function getRssFeed(userId: string) {
           publicationKey: `rss:${sub.source.id}`,
           isOverflow,
           externalUrl: item.link ?? undefined,
-          imageUrl: extractImageUrl(item.htmlRaw),
+          imageUrl: item.imageUrl ?? extractImageUrl(item.htmlRaw),
         };
         if (!isOverflow) visible.push(feedItem);
         else {
