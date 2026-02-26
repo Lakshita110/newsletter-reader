@@ -7,14 +7,72 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model ReadState {
-  id         String   @id @default(cuid())
-  userEmail  String
-  messageId  String
-  readAt     DateTime @default(now())
-  createdAt  DateTime @default(now())
+model User {
+  id               String            @id @default(cuid())
+  email            String            @unique
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  messages         Message[]
+  messageReadStats MessageReadStat[]
+}
 
-  @@unique([userEmail, messageId])
-  @@index([userEmail])
-  @@index([messageId])
+model Source {
+  id            String    @id @default(cuid())
+  name         String
+  normalizedKey String
+  senderDomain String?
+  senderEmail  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  messages     Message[]
+
+  @@unique([normalizedKey, senderEmail])
+  @@index([normalizedKey])
+}
+
+model Message {
+  id             String            @id @default(cuid())
+  userId        String
+  sourceId      String?
+  gmailMessageId String
+  gmailThreadId String?
+  subject       String
+  fromRaw       String
+  dateHeader    String?
+  sentAt        DateTime?
+  snippet       String?
+  htmlRaw       String?       @db.Text
+  textExtracted String?       @db.Text
+  contentHash   String?
+  isNewsletter   Boolean           @default(true)
+  fetchedAt      DateTime          @default(now())
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source         Source?           @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, gmailMessageId])
+  @@index([userId, sentAt])
+  @@index([sourceId, sentAt])
+  @@index([contentHash])
+}
+
+model MessageReadStat {
+  id                 String   @id @default(cuid())
+  userId             String
+  messageExternalId  String
+  firstOpenedAt      DateTime?
+  lastOpenedAt       DateTime?
+  openCount          Int      @default(0)
+  totalSecondsRead   Int      @default(0)
+  maxScrollPct       Float    @default(0)
+  completionPct      Float    @default(0)
+  completedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, messageExternalId])
+  @@index([userId, lastOpenedAt])
+  @@index([messageExternalId])
 }
