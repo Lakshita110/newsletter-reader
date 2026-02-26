@@ -24,16 +24,20 @@ export function ReaderHeader({
 }) {
   const basePill: React.CSSProperties = {
     borderRadius: 999,
-    padding: "8px 14px",
+    padding: "0 14px",
     fontSize: 14,
     lineHeight: 1,
     fontWeight: 600,
-    minHeight: 38,
+    height: 38,
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     whiteSpace: "nowrap",
+    boxSizing: "border-box",
+    appearance: "none",
+    WebkitAppearance: "none",
+    textDecoration: "none",
   };
 
   const modePillStyle = (active: boolean): React.CSSProperties => ({
