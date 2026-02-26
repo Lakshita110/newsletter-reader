@@ -62,5 +62,6 @@ export function formatDateTime(value: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
-  return `${date} · ${time}`;
+  return `${date} - ${time}`;
 }
+

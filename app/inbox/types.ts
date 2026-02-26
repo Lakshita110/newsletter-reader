@@ -8,6 +8,8 @@ export type InboxItem = {
   publicationKey: string;
 };
 
+export type FeedReadStatus = "unread" | "in-progress" | "read";
+
 export type EnrichedInboxItem = InboxItem & {
   _date: Date | null;
   _dayKey: string;

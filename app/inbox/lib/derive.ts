@@ -1,4 +1,4 @@
-import type { EnrichedInboxItem, GroupedInboxItems, InboxItem } from "../types";
+import type { EnrichedInboxItem, FeedReadStatus, GroupedInboxItems, InboxItem } from "../types";
 import { formatDayLabel, getRelativeKeys, parseDate, toDayKey } from "./date";
 
 export function getPublications(items: InboxItem[]) {
@@ -85,9 +85,52 @@ export function groupItemsByDay(filtered: EnrichedInboxItem[]): GroupedInboxItem
   });
 }
 
-export function getTodayStats(items: EnrichedInboxItem[], readIds: Set<string>) {
+export function getTodayStats(
+  items: EnrichedInboxItem[],
+  statusById: Record<string, FeedReadStatus>
+) {
   const { todayKey } = getRelativeKeys();
   const todayItems = items.filter((it) => it._dayKey === todayKey);
-  const readToday = todayItems.filter((it) => readIds.has(it.id)).length;
-  return { readToday, totalToday: todayItems.length };
+  const readToday = todayItems.filter((it) => statusById[it.id] === "read").length;
+  const inProgressToday = todayItems.filter(
+    (it) => statusById[it.id] === "in-progress"
+  ).length;
+  return { readToday, inProgressToday, totalToday: todayItems.length };
+}
+
+export function buildDailyEdition(
+  filtered: EnrichedInboxItem[],
+  maxItems: number,
+  showAllEarlier: boolean
+) {
+  const { todayKey, yesterdayKey } = getRelativeKeys();
+  const sorted = [...filtered].sort((a, b) => {
+    const ta = a._date?.getTime() ?? 0;
+    const tb = b._date?.getTime() ?? 0;
+    return tb - ta;
+  });
+
+  const today = sorted.filter((it) => it._dayKey === todayKey);
+  const yesterday = sorted.filter((it) => it._dayKey === yesterdayKey);
+  const earlier = sorted.filter(
+    (it) => it._dayKey !== todayKey && it._dayKey !== yesterdayKey
+  );
+
+  const earlierSlots = Math.max(0, maxItems - today.length - yesterday.length);
+  const visibleEarlier = showAllEarlier ? earlier : earlier.slice(0, earlierSlots);
+  const hiddenEarlierCount = Math.max(0, earlier.length - visibleEarlier.length);
+
+  const grouped: GroupedInboxItems[] = [
+    { key: "today", label: "Today", items: today },
+    { key: "yesterday", label: "Yesterday", items: yesterday },
+    { key: "earlier", label: "Earlier", items: visibleEarlier },
+  ].filter((g) => g.items.length > 0);
+
+  return {
+    grouped,
+    hiddenEarlierCount,
+    totalShown: today.length + yesterday.length + visibleEarlier.length,
+    totalAvailable: sorted.length,
+    olderIds: [...yesterday, ...earlier].map((it) => it.id),
+  };
 }

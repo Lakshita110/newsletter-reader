@@ -1,18 +1,20 @@
 import Link from "next/link";
 import { formatDateTime } from "../lib/date";
-import type { EnrichedInboxItem, GroupedInboxItems } from "../types";
+import type { EnrichedInboxItem, FeedReadStatus, GroupedInboxItems } from "../types";
 
 export function FeedList({
   grouped,
   ordered,
   selectedIndex,
-  readIds,
+  statusById,
+  onOpen,
   onMarkRead,
 }: {
   grouped: GroupedInboxItems[];
   ordered: EnrichedInboxItem[];
   selectedIndex: number;
-  readIds: Set<string>;
+  statusById: Record<string, FeedReadStatus>;
+  onOpen: (id: string) => void;
   onMarkRead: (id: string) => void;
 }) {
   return (
@@ -32,24 +34,27 @@ export function FeedList({
           </div>
           {group.items.map((it) => {
             const isSelected = ordered[selectedIndex]?.id === it.id;
-            const isRead = readIds.has(it.id);
+            const status = statusById[it.id] ?? "unread";
+            const isRead = status === "read";
+            const isInProgress = status === "in-progress";
+
             return (
               <Link
                 key={it.id}
                 href={`/read/${it.id}`}
-                onClick={() => onMarkRead(it.id)}
+                onClick={() => onOpen(it.id)}
                 className="feed-item"
                 style={{
                   display: "block",
                   padding: "14px 10px",
                   borderBottom: "1px solid var(--faint)",
                   borderRadius: 10,
-                  background: isSelected ? "#f8f9ff" : "transparent",
+                  background: isSelected ? "#f7f9ff" : "transparent",
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {!isRead && (
+                    {status === "unread" && (
                       <span
                         aria-label="Unread"
                         style={{
@@ -61,12 +66,26 @@ export function FeedList({
                         }}
                       />
                     )}
+                    {isInProgress && (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          padding: "1px 6px",
+                          borderRadius: 999,
+                          border: "1px solid #fde68a",
+                          color: "#92400e",
+                          background: "#fffbeb",
+                        }}
+                      >
+                        In progress
+                      </span>
+                    )}
                     <div
                       style={{
                         fontSize: 17,
                         fontWeight: 500,
                         letterSpacing: -0.2,
-                        opacity: isRead ? 0.7 : 1,
+                        opacity: isRead ? 0.65 : 1,
                       }}
                     >
                       {it.subject || "(No subject)"}
@@ -82,7 +101,7 @@ export function FeedList({
                     flexWrap: "wrap",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    opacity: isRead ? 0.7 : 1,
+                    opacity: isRead ? 0.65 : 1,
                   }}
                 >
                   <span
@@ -109,10 +128,33 @@ export function FeedList({
                       color: "var(--muted)",
                       fontSize: 14,
                       lineHeight: 1.45,
-                      opacity: isRead ? 0.7 : 1,
+                      opacity: isRead ? 0.65 : 1,
                     }}
                   >
                     {it.snippet}
+                  </div>
+                )}
+
+                {!isRead && (
+                  <div style={{ marginTop: 10 }}>
+                    <button
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onMarkRead(it.id);
+                      }}
+                      style={{
+                        fontSize: 12,
+                        border: "1px solid var(--faint)",
+                        background: "#fff",
+                        color: "var(--muted)",
+                        borderRadius: 8,
+                        padding: "4px 8px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Mark read
+                    </button>
                   </div>
                 )}
               </Link>
@@ -123,3 +165,4 @@ export function FeedList({
     </section>
   );
 }
+

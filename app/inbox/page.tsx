@@ -7,6 +7,7 @@ import { DayPills, PublicationPills } from "./components/FilterPills";
 import { FeedList } from "./components/FeedList";
 import { InboxHeader } from "./components/InboxHeader";
 import {
+  buildDailyEdition,
   enrichItems,
   filterItems,
   getDays,
@@ -14,7 +15,7 @@ import {
   getTodayStats,
   groupItemsByDay,
 } from "./lib/derive";
-import type { InboxItem } from "./types";
+import type { FeedReadStatus, InboxItem } from "./types";
 
 export default function InboxPage() {
   const { data: session } = useSession();
@@ -22,16 +23,17 @@ export default function InboxPage() {
   const [q, setQ] = useState("");
   const [selectedPub, setSelectedPub] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [showAllEarlier, setShowAllEarlier] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [readIds, setReadIds] = useState<Set<string>>(() => {
-    if (typeof window === "undefined") return new Set();
-    const stored = window.localStorage.getItem("nr_read_ids");
-    if (!stored) return new Set();
+  const [statusById, setStatusById] = useState<Record<string, FeedReadStatus>>(() => {
+    if (typeof window === "undefined") return {};
+    const stored = window.localStorage.getItem("nr_read_status_map");
+    if (!stored) return {};
     try {
-      const parsed = JSON.parse(stored) as string[];
-      return new Set(parsed);
+      const parsed = JSON.parse(stored) as Record<string, FeedReadStatus>;
+      return parsed && typeof parsed === "object" ? parsed : {};
     } catch {
-      return new Set();
+      return {};
     }
   });
   const router = useRouter();
@@ -50,15 +52,22 @@ export default function InboxPage() {
       const res = await fetch("/api/read-state");
       if (!res.ok) return;
       const data = await res.json();
-      const ids = Array.isArray(data?.readIds) ? data.readIds : [];
-      setReadIds(new Set(ids));
+      const next: Record<string, FeedReadStatus> = {};
+      const readIds = Array.isArray(data?.readIds) ? data.readIds : [];
+      const inProgressIds = Array.isArray(data?.inProgressIds) ? data.inProgressIds : [];
+      for (const id of inProgressIds) {
+        if (typeof id === "string") next[id] = "in-progress";
+      }
+      for (const id of readIds) {
+        if (typeof id === "string") next[id] = "read";
+      }
+      setStatusById(next);
     })();
   }, [session?.user?.email]);
 
-
   useEffect(() => {
-    window.localStorage.setItem("nr_read_ids", JSON.stringify(Array.from(readIds)));
-  }, [readIds]);
+    window.localStorage.setItem("nr_read_status_map", JSON.stringify(statusById));
+  }, [statusById]);
 
   const publications = useMemo(() => getPublications(items), [items]);
   const enriched = useMemo(() => enrichItems(items), [items]);
@@ -69,22 +78,64 @@ export default function InboxPage() {
     [enriched, q, selectedPub, selectedDay]
   );
 
-  const grouped = useMemo(() => groupItemsByDay(filtered), [filtered]);
+  const dailyEdition = useMemo(
+    () => buildDailyEdition(filtered, 30, showAllEarlier),
+    [filtered, showAllEarlier]
+  );
+  const grouped = useMemo(
+    () => (selectedDay ? groupItemsByDay(filtered) : dailyEdition.grouped),
+    [dailyEdition.grouped, filtered, selectedDay]
+  );
 
   const ordered = useMemo(() => grouped.flatMap((group) => group.items), [grouped]);
 
-  const todayStats = useMemo(() => getTodayStats(enriched, readIds), [enriched, readIds]);
-  const activeSelectedIndex = ordered.length === 0 ? 0 : Math.min(selectedIndex, ordered.length - 1);
+  const todayStats = useMemo(
+    () => getTodayStats(enriched, statusById),
+    [enriched, statusById]
+  );
+  const activeSelectedIndex =
+    ordered.length === 0 ? 0 : Math.min(selectedIndex, ordered.length - 1);
+  const olderUnreadIds = useMemo(() => {
+    if (selectedDay) return [];
+    return dailyEdition.olderIds.filter((id) => statusById[id] !== "read");
+  }, [dailyEdition.olderIds, selectedDay, statusById]);
 
-  const markRead = (id: string) => {
-    setReadIds((prev) => new Set(prev).add(id));
+  const markInProgress = (id: string) => {
+    setStatusById((prev) => {
+      if (prev[id] === "read") return prev;
+      return { ...prev, [id]: "in-progress" };
+    });
     fetch("/api/read-state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messageId: id }),
+      body: JSON.stringify({ messageId: id, state: "in_progress" }),
     }).catch(() => null);
   };
 
+  const markRead = (id: string) => {
+    setStatusById((prev) => ({ ...prev, [id]: "read" }));
+    fetch("/api/read-state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageId: id, state: "read" }),
+    }).catch(() => null);
+  };
+
+  const catchUpOlder = () => {
+    if (olderUnreadIds.length === 0) return;
+
+    setStatusById((prev) => {
+      const next = { ...prev };
+      for (const id of olderUnreadIds) next[id] = "read";
+      return next;
+    });
+
+    fetch("/api/read-state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageIds: olderUnreadIds, state: "read" }),
+    }).catch(() => null);
+  };
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -122,7 +173,7 @@ export default function InboxPage() {
         event.preventDefault();
         const current = ordered[activeSelectedIndex];
         if (current) {
-          markRead(current.id);
+          markInProgress(current.id);
           router.push(`/read/${current.id}`);
         }
       } else if (event.key === "r") {
@@ -154,13 +205,15 @@ export default function InboxPage() {
   return (
     <main style={{ maxWidth: 780, margin: "44px auto", padding: 20 }}>
       <InboxHeader
-        shownCount={filtered.length}
+        shownCount={ordered.length}
         todayStats={todayStats}
         userEmail={session.user?.email}
         q={q}
         onQueryChange={setQ}
         hasSelectedPublication={Boolean(selectedPub)}
         onClearPublication={() => setSelectedPub(null)}
+        olderUnreadCount={olderUnreadIds.length}
+        onCatchUpOlder={catchUpOlder}
       />
 
       <PublicationPills
@@ -172,15 +225,36 @@ export default function InboxPage() {
       <DayPills selectedDay={selectedDay} days={days} onSelect={setSelectedDay} />
 
       <div style={{ margin: "0 0 18px", color: "var(--muted)", fontSize: 13 }}>
-        Keyboard: j/k (next/prev), o (open), r (mark read). Read status is stored for your
-        account.
+        Keyboard: j/k (next/prev), o (open), r (mark read). Daily edition shows up to 30
+        items by default.
       </div>
+      {!selectedDay && dailyEdition.hiddenEarlierCount > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <button
+            onClick={() => setShowAllEarlier((prev) => !prev)}
+            style={{
+              border: "1px solid var(--faint)",
+              borderRadius: 999,
+              background: "#fff",
+              color: "var(--muted)",
+              padding: "6px 10px",
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            {showAllEarlier
+              ? "Show fewer earlier"
+              : `Show ${dailyEdition.hiddenEarlierCount} more earlier`}
+          </button>
+        </div>
+      )}
 
       <FeedList
         grouped={grouped}
         ordered={ordered}
         selectedIndex={activeSelectedIndex}
-        readIds={readIds}
+        statusById={statusById}
+        onOpen={markInProgress}
         onMarkRead={markRead}
       />
     </main>

@@ -6,7 +6,7 @@ const pillStyle = (active: boolean): React.CSSProperties => ({
   padding: "6px 10px",
   fontSize: 13,
   border: "1px solid var(--faint)",
-  background: active ? "#eef2ff" : "transparent",
+  background: active ? "#eef2ff" : "#fff",
   color: active ? "var(--accent-blue)" : "var(--muted)",
 });
 
@@ -27,8 +27,8 @@ export function PublicationPills({
           gap: 8,
           flexWrap: "wrap",
           padding: 12,
-          background: "rgba(255,255,255,0.03)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          background: "#fff",
+          border: "1px solid var(--faint)",
           borderRadius: 16,
         }}
       >
@@ -48,7 +48,7 @@ export function PublicationPills({
         ))}
       </div>
       <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 13 }}>
-        Tip: start with the top 10–16 senders; later we’ll add “More…”
+        Tip: start with the top 10-16 senders; later add a More button.
       </div>
     </section>
   );
@@ -71,8 +71,8 @@ export function DayPills({
           gap: 8,
           flexWrap: "wrap",
           padding: 12,
-          background: "rgba(255,255,255,0.03)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          background: "#fff",
+          border: "1px solid var(--faint)",
           borderRadius: 16,
         }}
       >
@@ -94,3 +94,4 @@ export function DayPills({
     </section>
   );
 }
+
