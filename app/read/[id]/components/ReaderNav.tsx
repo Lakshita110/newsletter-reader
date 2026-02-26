@@ -29,3 +29,4 @@ export function ReaderNav({ nav }: { nav: { prev: NavItem | null; next: NavItem 
     </div>
   );
 }
+

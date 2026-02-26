@@ -114,7 +114,7 @@ export function formatDateTime(value: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
-  return `${date} · ${time}`;
+  return `${date} - ${time}`;
 }
 
 export function sanitizeHtml(html: string): string {
@@ -164,3 +164,4 @@ function getNodeText(node: Node): string {
   if (!("children" in node) || !Array.isArray(node.children)) return "";
   return node.children.map(getNodeText).join(" ");
 }
+
