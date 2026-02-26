@@ -500,7 +500,7 @@ export default function InboxPage() {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {it.date}
+                    {formatDateTime(it.date)}
                   </span>
                 </div>
 
@@ -588,4 +588,20 @@ function getRelativeKeys() {
   y.setDate(now.getDate() - 1);
   const yesterdayKey = toDayKey(y);
   return { todayKey, yesterdayKey };
+}
+
+function formatDateTime(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const sameYear = parsed.getFullYear() === new Date().getFullYear();
+  const date = parsed.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: sameYear ? undefined : "numeric",
+  });
+  const time = parsed.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${date} · ${time}`;
 }

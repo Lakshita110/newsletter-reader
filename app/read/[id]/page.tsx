@@ -60,6 +60,18 @@ export default function ReadPage() {
     return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
   }, [msg?.html]);
 
+  const cleanedHtml = useMemo(() => {
+    if (!sanitized) return "";
+    let html = sanitized;
+    html = html.replace(/<head[\s\S]*?<\/head>/gi, "");
+    html = html.replace(/<style[\s\S]*?<\/style>/gi, "");
+    html = html.replace(/<script[\s\S]*?<\/script>/gi, "");
+    html = html.replace(/<(meta|link|title)[^>]*>/gi, "");
+    html = html.replace(/\sstyle=(".*?"|'.*?'|[^\s>]+)/gi, "");
+    html = html.replace(/\s(class|id)=(".*?"|'.*?'|[^\s>]+)/gi, "");
+    return html;
+  }, [sanitized]);
+
   const readingMinutes = useMemo(() => {
     if (!msg) return null;
     const raw =
@@ -78,15 +90,22 @@ export default function ReadPage() {
     if (view === "text") {
       return (
         <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
-          {msg.text ?? msg.snippet ?? ""}
+          {msg.text ?? stripHtml(msg.html ?? "") ?? msg.snippet ?? ""}
         </pre>
       );
     }
 
     if (view === "clean") {
+      if (!cleanedHtml.trim()) {
+        return (
+          <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
+            {stripHtml(msg.html ?? "") ?? msg.snippet ?? ""}
+          </pre>
+        );
+      }
       return (
         <div>
-          {parse(sanitized, {
+          {parse(cleanedHtml, {
             replace: (node) => {
               if (shouldDropNode(node)) return <></>;
               if (
@@ -166,7 +185,9 @@ export default function ReadPage() {
           {msg.subject || "(No subject)"}
         </h1>
         <div style={{ opacity: 0.8, marginBottom: 6 }}>{msg.from}</div>
-        <div style={{ opacity: 0.6, marginBottom: 12 }}>{msg.date}</div>
+        <div style={{ opacity: 0.6, marginBottom: 12 }}>
+          {formatDateTime(msg.date)}
+        </div>
         {readingMinutes !== null && (
           <div style={{ opacity: 0.6, marginBottom: 12 }}>
             {readingMinutes} min read
@@ -232,6 +253,22 @@ function stripHtml(html: string): string {
 function countWords(text: string): number {
   if (!text) return 0;
   return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function formatDateTime(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const sameYear = parsed.getFullYear() === new Date().getFullYear();
+  const date = parsed.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: sameYear ? undefined : "numeric",
+  });
+  const time = parsed.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${date} · ${time}`;
 }
 
 function shouldDropNode(node: unknown): boolean {
