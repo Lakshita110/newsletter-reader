@@ -14,6 +14,25 @@ export function ReaderContent({
   sanitized: string;
   cleanedHtml: string;
 }) {
+  const fallbackExternal = !message.html && !message.text && Boolean(message.externalUrl);
+
+  if (fallbackExternal) {
+    return (
+      <div
+        style={{
+          border: "1px solid var(--faint)",
+          borderRadius: 12,
+          padding: 16,
+          background: "#fff",
+        }}
+      >
+        <p style={{ marginTop: 0, marginBottom: 0 }}>
+          This article is not available in-reader yet.
+        </p>
+      </div>
+    );
+  }
+
   if (view === "text") {
     return (
       <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>

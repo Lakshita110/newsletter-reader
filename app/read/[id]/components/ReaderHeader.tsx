@@ -9,6 +9,8 @@ export function ReaderHeader({
   onMarkRead,
   onMarkUnread,
   isMarkedRead,
+  showViewControls,
+  externalUrl,
 }: {
   message: ReadMessage;
   readingMinutes: number | null;
@@ -17,16 +19,57 @@ export function ReaderHeader({
   onMarkRead: () => void;
   onMarkUnread: () => void;
   isMarkedRead: boolean;
+  showViewControls: boolean;
+  externalUrl?: string | null;
 }) {
-  const pillStyle = (active: boolean): React.CSSProperties => ({
-    border: "1px solid var(--faint)",
+  const basePill: React.CSSProperties = {
     borderRadius: 999,
-    padding: "6px 12px",
+    padding: "8px 14px",
+    fontSize: 14,
+    lineHeight: 1,
+    fontWeight: 600,
+    minHeight: 38,
     cursor: "pointer",
-    fontSize: 13,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    whiteSpace: "nowrap",
+  };
+
+  const modePillStyle = (active: boolean): React.CSSProperties => ({
+    ...basePill,
+    border: "1px solid var(--faint)",
     background: active ? "#eef2ff" : "#fff",
     color: active ? "var(--accent-blue)" : "var(--muted)",
   });
+
+  const actionPillStyle = (
+    kind: "primary" | "neutral" | "link",
+    active = false
+  ): React.CSSProperties => {
+    if (kind === "primary") {
+      return {
+        ...basePill,
+        border: "1px solid #86efac",
+        background: active ? "#f0fdf4" : "#dcfce7",
+        color: active ? "#166534" : "#14532d",
+      };
+    }
+    if (kind === "link") {
+      return {
+        ...basePill,
+        border: "1px solid #dbeafe",
+        background: "#f8fbff",
+        color: "#1d4ed8",
+      };
+    }
+    return {
+      ...basePill,
+      border: "1px solid var(--faint)",
+      background: "#fff",
+      color: "var(--muted)",
+    };
+  };
 
   return (
     <>
@@ -54,64 +97,68 @@ export function ReaderHeader({
           <div style={{ opacity: 0.6, marginBottom: 12 }}>{readingMinutes} min read</div>
         )}
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            onClick={() => onViewChange("clean")}
-            disabled={view === "clean"}
-            style={pillStyle(view === "clean")}
-          >
-            Clean
-          </button>
-          <button
-            onClick={() => onViewChange("original")}
-            disabled={view === "original"}
-            style={pillStyle(view === "original")}
-          >
-            Original
-          </button>
-          <button
-            onClick={() => onViewChange("text")}
-            disabled={view === "text"}
-            style={pillStyle(view === "text")}
-          >
-            Text
-          </button>
-        </div>
-
-        <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          {isMarkedRead && (
-            <button
-              onClick={onMarkUnread}
-              style={{
-                border: "1px solid var(--faint)",
-                borderRadius: 999,
-                padding: "7px 12px",
-                cursor: "pointer",
-                fontSize: 13,
-                background: "#fff",
-                color: "var(--muted)",
-                fontWeight: 600,
-              }}
-            >
-              Mark as unread
-            </button>
+        <div
+          style={{
+            marginTop: 10,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          {showViewControls ? (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                onClick={() => onViewChange("clean")}
+                disabled={view === "clean"}
+                style={modePillStyle(view === "clean")}
+              >
+                Clean
+              </button>
+              <button
+                onClick={() => onViewChange("original")}
+                disabled={view === "original"}
+                style={modePillStyle(view === "original")}
+              >
+                Original
+              </button>
+              <button
+                onClick={() => onViewChange("text")}
+                disabled={view === "text"}
+                style={modePillStyle(view === "text")}
+              >
+                Text
+              </button>
+            </div>
+          ) : (
+            <div />
           )}
-          <button
-            onClick={onMarkRead}
-            disabled={isMarkedRead}
-            style={{
-              border: "1px solid #86efac",
-              borderRadius: 999,
-              padding: "7px 12px",
-              cursor: "pointer",
-              fontSize: 13,
-              background: isMarkedRead ? "#f0fdf4" : "#dcfce7",
-              color: isMarkedRead ? "#166534" : "#14532d",
-              fontWeight: 600,
-            }}
-          >
-            {isMarkedRead ? "Read" : "Mark as read"}
-          </button>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {externalUrl && (
+              <a
+                href={externalUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={actionPillStyle("link")}
+              >
+                Open full article
+              </a>
+            )}
+            {isMarkedRead && (
+              <button onClick={onMarkUnread} style={actionPillStyle("neutral")}>
+                Mark as unread
+              </button>
+            )}
+            <button
+              onClick={onMarkRead}
+              disabled={isMarkedRead}
+              style={actionPillStyle("primary", isMarkedRead)}
+            >
+              {isMarkedRead ? "Read" : "Mark as read"}
+            </button>
+          </div>
         </div>
       </header>
     </>

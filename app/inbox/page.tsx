@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { DayPills, PublicationPills } from "./components/FilterPills";
 import { FeedList } from "./components/FeedList";
@@ -24,6 +25,25 @@ export default function InboxPage() {
   const [selectedPub, setSelectedPub] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [showAllEarlier, setShowAllEarlier] = useState(false);
+  const [rssName, setRssName] = useState("");
+  const [rssUrl, setRssUrl] = useState("");
+  const [isAddingRss, setIsAddingRss] = useState(false);
+  const [isSyncingRss, setIsSyncingRss] = useState(false);
+  const [rssNotice, setRssNotice] = useState<string | null>(null);
+  const [rssFeeds, setRssFeeds] = useState<
+    {
+      id: string;
+      sourceId: string;
+      name: string;
+      rssUrl: string;
+      isActive: boolean;
+      dailyCap: number;
+      lastSyncedAt?: string | null;
+    }[]
+  >([]);
+  const [overflowBySource, setOverflowBySource] = useState<
+    { sourceId: string; sourceName: string; count: number }[]
+  >([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [statusById, setStatusById] = useState<Record<string, FeedReadStatus>>(() => {
     if (typeof window === "undefined") return {};
@@ -38,11 +58,21 @@ export default function InboxPage() {
   });
   const router = useRouter();
 
+  const loadRssFeeds = async () => {
+    const res = await fetch("/api/sources/rss");
+    if (!res.ok) return;
+    const data = await res.json();
+    setRssFeeds(Array.isArray(data) ? data : []);
+  };
+
   useEffect(() => {
     (async () => {
-      const res = await fetch("/api/gmail/inbox");
+      const res = await fetch("/api/feed/inbox");
       const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
+      setItems(Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []);
+      setOverflowBySource(
+        Array.isArray(data?.overflowBySource) ? data.overflowBySource : []
+      );
     })();
   }, []);
 
@@ -63,6 +93,7 @@ export default function InboxPage() {
       }
       setStatusById(next);
     })();
+    loadRssFeeds().catch(() => null);
   }, [session?.user?.email]);
 
   useEffect(() => {
@@ -137,6 +168,66 @@ export default function InboxPage() {
     }).catch(() => null);
   };
 
+  const addRssFeed = async () => {
+    const trimmedUrl = rssUrl.trim();
+    if (!trimmedUrl) {
+      setRssNotice("RSS URL is required.");
+      return;
+    }
+    setIsAddingRss(true);
+    setRssNotice(null);
+    try {
+      const res = await fetch("/api/sources/rss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: rssName.trim(), rssUrl: trimmedUrl }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setRssNotice(data?.error || "Could not add RSS feed.");
+        return;
+      }
+      setRssName("");
+      setRssUrl("");
+      setRssNotice("Feed added.");
+      await loadRssFeeds();
+      await fetch("/api/rss/sync", { method: "POST" }).catch(() => null);
+      const inboxRes = await fetch("/api/feed/inbox");
+      const inboxData = await inboxRes.json();
+      setItems(Array.isArray(inboxData?.items) ? inboxData.items : []);
+      setOverflowBySource(
+        Array.isArray(inboxData?.overflowBySource) ? inboxData.overflowBySource : []
+      );
+    } finally {
+      setIsAddingRss(false);
+    }
+  };
+
+  const syncRssFeeds = async () => {
+    setIsSyncingRss(true);
+    setRssNotice(null);
+    try {
+      const res = await fetch("/api/rss/sync", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRssNotice(data?.error || "RSS sync failed.");
+        return;
+      }
+      setRssNotice(
+        `RSS sync done: ${data?.inserted ?? 0} inserted, ${data?.updated ?? 0} updated.`
+      );
+      await loadRssFeeds();
+      const inboxRes = await fetch("/api/feed/inbox");
+      const inboxData = await inboxRes.json();
+      setItems(Array.isArray(inboxData?.items) ? inboxData.items : []);
+      setOverflowBySource(
+        Array.isArray(inboxData?.overflowBySource) ? inboxData.overflowBySource : []
+      );
+    } finally {
+      setIsSyncingRss(false);
+    }
+  };
+
   useEffect(() => {
     window.localStorage.setItem(
       "nr_ordered_items",
@@ -203,7 +294,9 @@ export default function InboxPage() {
   }
 
   return (
-    <main style={{ maxWidth: 780, margin: "44px auto", padding: 20 }}>
+    <main style={{ maxWidth: 1120, margin: "44px auto", padding: 20 }}>
+      <div className="inbox-layout">
+        <div>
       <InboxHeader
         shownCount={ordered.length}
         todayStats={todayStats}
@@ -248,6 +341,38 @@ export default function InboxPage() {
           </button>
         </div>
       )}
+      {overflowBySource.length > 0 && !selectedDay && (
+        <div
+          style={{
+            margin: "4px 0 16px",
+            padding: "10px 12px",
+            border: "1px solid var(--faint)",
+            borderRadius: 10,
+            background: "#fff",
+            color: "var(--muted)",
+            fontSize: 13,
+          }}
+        >
+          <div style={{ marginBottom: 6 }}>More available by source:</div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {overflowBySource.slice(0, 8).map((x) => (
+              <Link
+                key={x.sourceId}
+                href={`/source/${x.sourceId}`}
+                style={{
+                  border: "1px solid #dbeafe",
+                  borderRadius: 999,
+                  padding: "4px 8px",
+                  color: "#1d4ed8",
+                  background: "#f8fbff",
+                }}
+              >
+                {x.count} more from {x.sourceName}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       <FeedList
         grouped={grouped}
@@ -257,6 +382,111 @@ export default function InboxPage() {
         onOpen={markInProgress}
         onMarkRead={markRead}
       />
+        </div>
+
+        <aside
+          style={{
+            border: "1px solid var(--faint)",
+            borderRadius: 12,
+            padding: 12,
+            background: "#fff",
+            height: "fit-content",
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>RSS feeds</div>
+          <div style={{ display: "grid", gap: 8 }}>
+            <input
+              value={rssName}
+              onChange={(e) => setRssName(e.target.value)}
+              placeholder="Feed name (optional)"
+              style={{
+                border: "1px solid var(--faint)",
+                borderRadius: 10,
+                padding: "8px 10px",
+                background: "#fff",
+              }}
+            />
+            <input
+              value={rssUrl}
+              onChange={(e) => setRssUrl(e.target.value)}
+              placeholder="https://example.com/feed.xml"
+              style={{
+                border: "1px solid var(--faint)",
+                borderRadius: 10,
+                padding: "8px 10px",
+                background: "#fff",
+              }}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={addRssFeed}
+                disabled={isAddingRss}
+                style={{
+                  border: "1px solid #bfdbfe",
+                  borderRadius: 999,
+                  padding: "6px 10px",
+                  background: "#eff6ff",
+                  color: "#1d4ed8",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {isAddingRss ? "Adding..." : "Add feed"}
+              </button>
+              <button
+                onClick={syncRssFeeds}
+                disabled={isSyncingRss}
+                style={{
+                  border: "1px solid var(--faint)",
+                  borderRadius: 999,
+                  padding: "6px 10px",
+                  background: "#fff",
+                  color: "var(--muted)",
+                  cursor: "pointer",
+                }}
+              >
+                {isSyncingRss ? "Syncing..." : "Sync RSS"}
+              </button>
+            </div>
+          </div>
+
+          {rssNotice && (
+            <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12 }}>{rssNotice}</div>
+          )}
+
+          <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+            {rssFeeds.length === 0 ? (
+              <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                No RSS feeds yet.
+              </div>
+            ) : (
+              rssFeeds.map((feed) => (
+                <Link
+                  key={feed.id}
+                  href={`/source/${feed.sourceId}`}
+                  style={{
+                    display: "block",
+                    border: "1px solid var(--faint)",
+                    borderRadius: 10,
+                    padding: "8px 10px",
+                    background: "#fff",
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{feed.name}</div>
+                  <div style={{ marginTop: 2, color: "var(--muted)", fontSize: 12 }}>
+                    daily cap {feed.dailyCap}
+                  </div>
+                  <div style={{ marginTop: 2, color: "var(--muted)", fontSize: 12 }}>
+                    {feed.lastSyncedAt
+                      ? `synced ${new Date(feed.lastSyncedAt).toLocaleString()}`
+                      : "not synced yet"}
+                  </div>
+                </Link>
+              ))
+            )}
+          </div>
+        </aside>
+      </div>
     </main>
   );
 }

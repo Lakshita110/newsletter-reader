@@ -7,6 +7,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum RssPriority {
+  HIGH
+  NORMAL
+  LOW
+}
+
 model User {
   id               String            @id @default(cuid())
   email            String            @unique
@@ -14,6 +20,7 @@ model User {
   updatedAt        DateTime          @updatedAt
   messages         Message[]
   messageReadStats MessageReadStat[]
+  rssSubscriptions UserRssSubscription[]
 }
 
 model Source {
@@ -75,4 +82,56 @@ model MessageReadStat {
   @@unique([userId, messageExternalId])
   @@index([userId, lastOpenedAt])
   @@index([messageExternalId])
+}
+
+model RssSource {
+  id            String                @id @default(cuid())
+  name          String
+  rssUrl        String                @unique
+  normalizedUrl String                @unique
+  siteUrl       String?
+  isActive      Boolean               @default(true)
+  lastSyncedAt  DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  items         RssItem[]
+  subscriptions UserRssSubscription[]
+
+  @@index([normalizedUrl])
+}
+
+model UserRssSubscription {
+  id          String      @id @default(cuid())
+  userId      String
+  rssSourceId String
+  isActive    Boolean     @default(true)
+  priority    RssPriority @default(NORMAL)
+  dailyCap    Int         @default(2)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source      RssSource   @relation(fields: [rssSourceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, rssSourceId])
+  @@index([userId, isActive])
+}
+
+model RssItem {
+  id           String    @id @default(cuid())
+  rssSourceId  String
+  externalId   String
+  title        String
+  author       String?
+  link         String?
+  publishedAt  DateTime?
+  snippet      String?
+  htmlRaw      String?   @db.Text
+  textExtracted String?  @db.Text
+  contentHash  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  source       RssSource @relation(fields: [rssSourceId], references: [id], onDelete: Cascade)
+
+  @@unique([rssSourceId, externalId])
+  @@index([rssSourceId, publishedAt])
 }

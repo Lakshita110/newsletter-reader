@@ -89,7 +89,6 @@ export async function POST(req: Request) {
       continue;
     }
 
-    const existing = await prisma.messageReadStat.findUnique({ where });
     if (state === "read") {
       await prisma.messageReadStat.upsert({
         where,
@@ -114,27 +113,25 @@ export async function POST(req: Request) {
       continue;
     }
 
-    if (!existing) {
-      await prisma.messageReadStat.create({
-        data: {
-          userId: user.id,
-          messageExternalId: targetId,
-          firstOpenedAt: now,
-          lastOpenedAt: now,
-          openCount: 1,
-          completionPct: 50,
+    await prisma.messageReadStat.upsert({
+      where,
+      update: {
+        lastOpenedAt: now,
+        openCount: { increment: 1 },
+        completionPct: {
+          set: 50,
         },
-      });
-    } else {
-      await prisma.messageReadStat.update({
-        where,
-        data: {
-          lastOpenedAt: now,
-          openCount: { increment: 1 },
-          completionPct: existing.completedAt ? existing.completionPct : 50,
-        },
-      });
-    }
+        completedAt: null,
+      },
+      create: {
+        userId: user.id,
+        messageExternalId: targetId,
+        firstOpenedAt: now,
+        lastOpenedAt: now,
+        openCount: 1,
+        completionPct: 50,
+      },
+    });
   }
 
   return NextResponse.json({ ok: true, count: targets.length });

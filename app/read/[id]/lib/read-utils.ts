@@ -9,6 +9,7 @@ export type ReadMessage = {
   snippet: string;
   html?: string;
   text?: string;
+  externalUrl?: string | null;
 };
 
 export function stripHtml(html: string): string {

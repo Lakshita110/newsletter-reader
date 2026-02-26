@@ -35,7 +35,7 @@ export default function ReadPage() {
   useEffect(() => {
     if (!id) return;
     (async () => {
-      const res = await fetch(`/api/gmail/message/${id}`);
+      const res = await fetch(`/api/feed/item/${id}`);
       const data = await res.json();
       setMsg(data);
     })();
@@ -122,6 +122,14 @@ export default function ReadPage() {
     return Math.max(1, Math.round(words / 220));
   }, [msg]);
 
+  const showViewControls = useMemo(() => {
+    if (!msg) return false;
+    const raw = msg.text || stripHtml(msg.html ?? "") || msg.snippet || "";
+    const words = countWords(raw);
+    // Hide mode toggles for very short content (roughly 1-2 sentences).
+    return words > 45;
+  }, [msg]);
+
   const nav = useMemo(() => {
     if (!id || orderedItems.length === 0) return null;
     const idx = orderedItems.findIndex((it) => it.id === id);
@@ -166,6 +174,8 @@ export default function ReadPage() {
         onMarkRead={markRead}
         onMarkUnread={markUnread}
         isMarkedRead={isMarkedRead}
+        showViewControls={showViewControls}
+        externalUrl={msg.externalUrl}
       />
 
       <article>
