@@ -1,19 +1,21 @@
-import { google } from "googleapis";
+import { google, gmail_v1 } from "googleapis";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { parseFrom, normalizePublicationKey } from "@/lib/email";
 
-function getHeader(headers: any[], name: string) {
+function getHeader(
+  headers: gmail_v1.Schema$MessagePartHeader[] | undefined,
+  name: string
+): string {
   return (
-    headers.find(
-      (h) => h.name.toLowerCase() === name.toLowerCase()
-    )?.value ?? ""
+    headers?.find((header) => header.name?.toLowerCase() === name.toLowerCase())
+      ?.value ?? ""
   );
 }
 
 function looksLikeNewsletter(
-  headers: any[],
+  headers: gmail_v1.Schema$MessagePartHeader[] | undefined,
   subject: string,
   from: string,
   snippet: string
@@ -25,7 +27,6 @@ function looksLikeNewsletter(
   const xListId = getHeader(headers, "X-List-Id");
   const xList = getHeader(headers, "X-List");
 
-  // Strong signals of newsletter/list mail
   if (listId || listUnsub || listUnsubPost || xListId || xList) return true;
   if (/^(bulk|list|junk)$/i.test(precedence)) return true;
 
@@ -44,7 +45,7 @@ function looksLikeNewsletter(
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  const accessToken = (session as any)?.accessToken;
+  const accessToken = session?.accessToken;
 
   if (!accessToken) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -59,7 +60,6 @@ export async function GET() {
 
   const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
-  // Newsletter-ish heuristic (we’ll improve later)
   const list = await gmail.users.messages.list({
     userId: "me",
     q: "newer_than:30d",
@@ -68,12 +68,14 @@ export async function GET() {
 
   const messages = list.data.messages ?? [];
 
-  // Fetch headers only (FAST)
   const results = await Promise.all(
-    messages.map(async (m) => {
-      const msg = await gmail.users.messages.get({
+    messages.map(async (message) => {
+      const id = message.id;
+      if (!id) return null;
+
+      const fullMessage = await gmail.users.messages.get({
         userId: "me",
-        id: m.id!,
+        id,
         format: "metadata",
         metadataHeaders: [
           "Subject",
@@ -88,7 +90,7 @@ export async function GET() {
         ],
       });
 
-      const headers = msg.data.payload?.headers ?? [];
+      const headers = fullMessage.data.payload?.headers;
 
       const subject = getHeader(headers, "Subject");
       const from = getHeader(headers, "From");
@@ -98,16 +100,16 @@ export async function GET() {
       const publicationName = parsed.name;
       const publicationKey = normalizePublicationKey(publicationName);
 
-      if (!looksLikeNewsletter(headers, subject, from, msg.data.snippet ?? "")) {
+      if (!looksLikeNewsletter(headers, subject, from, fullMessage.data.snippet ?? "")) {
         return null;
       }
 
       return {
-        id: m.id,
+        id,
         subject,
         from,
         date,
-        snippet: msg.data.snippet,
+        snippet: fullMessage.data.snippet,
         publicationName,
         publicationKey,
       };
