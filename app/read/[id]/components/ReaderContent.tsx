@@ -17,7 +17,7 @@ export function ReaderContent({
   if (view === "text") {
     return (
       <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
-        {message.text ?? stripHtml(message.html ?? "") ?? message.snippet ?? ""}
+        {message.text || stripHtml(message.html ?? "") || message.snippet || ""}
       </pre>
     );
   }

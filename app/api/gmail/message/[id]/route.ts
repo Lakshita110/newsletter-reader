@@ -2,6 +2,7 @@ import { google, gmail_v1 } from "googleapis";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { convert } from "html-to-text";
 
 function b64urlDecode(input: string) {
   const b64 = input.replace(/-/g, "+").replace(/_/g, "/");
@@ -46,6 +47,47 @@ function extractBodies(
   return { html, text };
 }
 
+function cleanTextLines(value: string): string {
+  if (!value) return "";
+
+  const lines = value
+    .replace(/\u00a0/g, " ")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .filter((line) => !/^https?:\/\/\S+$/i.test(line))
+    .filter((line) => !/^(click here|read more|learn more|register|listen)$/i.test(line))
+    .filter((line) => !/unsubscribe|privacy policy|terms\s*&\s*conditions/i.test(line));
+
+  return lines.join("\n\n").trim();
+}
+
+function extractUsefulText({ html, text, snippet }: { html?: string; text?: string; snippet?: string }) {
+  if (html) {
+    const converted = convert(html, {
+      wordwrap: false,
+      preserveNewlines: true,
+      selectors: [
+        { selector: "a", options: { ignoreHref: true } },
+        { selector: "img", format: "skip" },
+        { selector: "script", format: "skip" },
+        { selector: "style", format: "skip" },
+        { selector: "noscript", format: "skip" },
+        { selector: "head", format: "skip" },
+      ],
+    });
+
+    const cleaned = cleanTextLines(converted);
+    if (cleaned) return cleaned;
+  }
+
+  const cleanedText = cleanTextLines(text ?? "");
+  if (cleanedText) return cleanedText;
+
+  return (snippet ?? "").trim();
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const parts = url.pathname.split("/").filter(Boolean);
@@ -87,6 +129,7 @@ export async function GET(req: Request) {
   const date = getHeader(headers, "Date");
 
   const { html, text } = extractBodies(payload);
+  const extractedText = extractUsefulText({ html, text, snippet: msg.data.snippet ?? "" });
 
   return NextResponse.json({
     id: msg.data.id,
@@ -98,6 +141,6 @@ export async function GET(req: Request) {
     hasHtml: Boolean(html),
     hasText: Boolean(text),
     html,
-    text,
+    text: extractedText,
   });
 }

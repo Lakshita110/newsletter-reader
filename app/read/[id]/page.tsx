@@ -56,7 +56,7 @@ export default function ReadPage() {
 
   const readingMinutes = useMemo(() => {
     if (!msg) return null;
-    const raw = msg.text ?? stripHtml(msg.html ?? "") ?? msg.snippet ?? "";
+    const raw = msg.text || stripHtml(msg.html ?? "") || msg.snippet || "";
     const words = countWords(raw);
     if (!words) return null;
     return Math.max(1, Math.round(words / 220));
