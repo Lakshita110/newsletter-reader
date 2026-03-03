@@ -425,7 +425,12 @@ export default function RssInboxPage() {
             height: "fit-content",
           }}
         >
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>RSS feeds</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>RSS feeds</div>
+            <Link href="/rss/settings" style={{ color: "#1d4ed8", fontSize: 12 }}>
+              Manage
+            </Link>
+          </div>
           <div style={{ display: "grid", gap: 8 }}>
             <input
               value={rssName}
