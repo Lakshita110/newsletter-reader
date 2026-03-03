@@ -47,9 +47,6 @@ export function PublicationPills({
           </button>
         ))}
       </div>
-      <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 13 }}>
-        Tip: start with the top 10-16 senders; later add a More button.
-      </div>
     </section>
   );
 }
