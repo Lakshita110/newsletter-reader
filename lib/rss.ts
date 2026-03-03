@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import Parser from "rss-parser";
 import { prisma } from "@/lib/prisma";
-import { extractArticleContent } from "@/lib/article-extract";
 
 const parser = new Parser({
   customFields: {
@@ -82,10 +81,41 @@ export async function syncRssSource(rssSourceId: string) {
   if (!source || !source.isActive) return { inserted: 0, updated: 0 };
 
   const feed = await parser.parseURL(source.rssUrl);
+  const items = feed.items ?? [];
+  if (items.length === 0) {
+    await prisma.rssSource.update({
+      where: { id: source.id },
+      data: { lastSyncedAt: new Date() },
+    });
+    return { inserted: 0, updated: 0 };
+  }
+
+  const externalIds = items.map((item) => deriveExternalId(item));
+  const existing = await prisma.rssItem.findMany({
+    where: {
+      rssSourceId: source.id,
+      externalId: { in: externalIds },
+    },
+    select: { externalId: true },
+  });
+  const existingSet = new Set(existing.map((row) => row.externalId));
+
+  const createRows: Array<{
+    rssSourceId: string;
+    externalId: string;
+    title: string;
+    author: string | null;
+    link: string | null;
+    imageUrl: string | null;
+    publishedAt: Date | null;
+    snippet: string | null;
+    htmlRaw: string | null;
+    textExtracted: string | null;
+  }> = [];
   let inserted = 0;
   let updated = 0;
 
-  for (const item of feed.items ?? []) {
+  for (const item of items) {
     const anyItem = item as unknown as Record<string, unknown> & {
       author?: string;
       creator?: string;
@@ -100,10 +130,7 @@ export async function syncRssSource(rssSourceId: string) {
         : typeof item.content === "string"
         ? item.content
         : undefined;
-    const extracted = html ? await extractArticleContent(html, item.link ?? undefined) : null;
-    const textExtracted = extracted?.text || (item.contentSnippet ?? "").trim();
-    const htmlExtracted = extracted?.html || html || null;
-    const imageUrl = extractRssImageUrl(anyItem, htmlExtracted || html);
+    const imageUrl = extractRssImageUrl(anyItem, html || null);
     const snippet = (item.contentSnippet ?? item.content ?? "").toString().slice(0, 500).trim();
     const publishedAt = item.isoDate
       ? new Date(item.isoDate)
@@ -111,51 +138,38 @@ export async function syncRssSource(rssSourceId: string) {
       ? new Date(item.pubDate)
       : null;
 
-    const existing = await prisma.rssItem.findUnique({
-      where: { rssSourceId_externalId: { rssSourceId: source.id, externalId } },
-      select: { id: true },
-    });
+    if (existingSet.has(externalId)) {
+      updated += 1;
+      continue;
+    }
 
-    await prisma.rssItem.upsert({
-      where: { rssSourceId_externalId: { rssSourceId: source.id, externalId } },
-      update: {
-        title: item.title?.trim() || "(Untitled)",
-        author:
-          (Array.isArray(anyItem.dcCreator)
-            ? anyItem.dcCreator?.find((x) => typeof x === "string")
-            : undefined) ??
-          item.creator ??
-          anyItem.author ??
-          null,
-        link: item.link?.trim() || null,
-        imageUrl: imageUrl || null,
-        publishedAt: publishedAt && !Number.isNaN(publishedAt.getTime()) ? publishedAt : null,
-        snippet: snippet || null,
-        htmlRaw: htmlExtracted,
-        textExtracted: textExtracted || null,
-      },
-      create: {
-        rssSourceId: source.id,
-        externalId,
-        title: item.title?.trim() || "(Untitled)",
-        author:
-          (Array.isArray(anyItem.dcCreator)
-            ? anyItem.dcCreator?.find((x) => typeof x === "string")
-            : undefined) ??
-          item.creator ??
-          anyItem.author ??
-          null,
-        link: item.link?.trim() || null,
-        imageUrl: imageUrl || null,
-        publishedAt: publishedAt && !Number.isNaN(publishedAt.getTime()) ? publishedAt : null,
-        snippet: snippet || null,
-        htmlRaw: htmlExtracted,
-        textExtracted: textExtracted || null,
-      },
+    createRows.push({
+      rssSourceId: source.id,
+      externalId,
+      title: item.title?.trim() || "(Untitled)",
+      author:
+        (Array.isArray(anyItem.dcCreator)
+          ? anyItem.dcCreator?.find((x) => typeof x === "string")
+          : undefined) ??
+        item.creator ??
+        anyItem.author ??
+        null,
+      link: item.link?.trim() || null,
+      imageUrl: imageUrl || null,
+      publishedAt: publishedAt && !Number.isNaN(publishedAt.getTime()) ? publishedAt : null,
+      snippet: snippet || null,
+      // Keep RSS storage lightweight; full article content is fetched on demand in reader view.
+      htmlRaw: null,
+      textExtracted: null,
     });
+    inserted += 1;
+  }
 
-    if (existing) updated += 1;
-    else inserted += 1;
+  if (createRows.length > 0) {
+    await prisma.rssItem.createMany({
+      data: createRows,
+      skipDuplicates: true,
+    });
   }
 
   await prisma.rssSource.update({

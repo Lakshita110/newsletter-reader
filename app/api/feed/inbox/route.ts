@@ -2,6 +2,7 @@ import { google, gmail_v1 } from "googleapis";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { classifyNewsletter, getHeader } from "@/lib/newsletter-classifier";
 import { parseFrom, normalizePublicationKey } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
 type RssPriority = "HIGH" | "NORMAL" | "LOW";
@@ -20,45 +21,6 @@ type FeedItem = {
   externalUrl?: string;
   imageUrl?: string;
 };
-
-function getHeader(
-  headers: gmail_v1.Schema$MessagePartHeader[] | undefined,
-  name: string
-): string {
-  return (
-    headers?.find((header) => header.name?.toLowerCase() === name.toLowerCase())
-      ?.value ?? ""
-  );
-}
-
-function looksLikeNewsletter(
-  headers: gmail_v1.Schema$MessagePartHeader[] | undefined,
-  subject: string,
-  from: string,
-  snippet: string
-) {
-  const listId = getHeader(headers, "List-Id");
-  const listUnsub = getHeader(headers, "List-Unsubscribe");
-  const listUnsubPost = getHeader(headers, "List-Unsubscribe-Post");
-  const precedence = getHeader(headers, "Precedence");
-  const xListId = getHeader(headers, "X-List-Id");
-  const xList = getHeader(headers, "X-List");
-
-  if (listId || listUnsub || listUnsubPost || xListId || xList) return true;
-  if (/^(bulk|list|junk)$/i.test(precedence)) return true;
-
-  const hay = `${subject} ${from} ${snippet}`.toLowerCase();
-  const keywords =
-    /(newsletter|digest|roundup|weekly|monthly|edition|issue|briefing|update|bulletin)/;
-  const fromSignals = /(noreply|no-reply|newsletter|updates|digest|bulletin)/;
-  const footerSignals = /(view in browser|unsubscribe|manage preferences)/;
-
-  if (keywords.test(hay)) return true;
-  if (fromSignals.test(hay)) return true;
-  if (footerSignals.test(hay)) return true;
-
-  return false;
-}
 
 function dayKeyUtc(value: Date | null): string {
   if (!value) return "unknown";
@@ -99,6 +61,12 @@ async function getUserAndToken() {
   };
 }
 
+function getGmailLookbackDays(): number {
+  const raw = Number(process.env.GMAIL_LOOKBACK_DAYS ?? 5);
+  if (!Number.isFinite(raw)) return 5;
+  return Math.min(30, Math.max(1, Math.floor(raw)));
+}
+
 async function getGmailFeed(accessToken?: string): Promise<FeedItem[]> {
   if (!accessToken) return [];
   const oauth2Client = new google.auth.OAuth2(
@@ -108,12 +76,14 @@ async function getGmailFeed(accessToken?: string): Promise<FeedItem[]> {
   oauth2Client.setCredentials({ access_token: accessToken });
   const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
+  const lookbackDays = getGmailLookbackDays();
   let messages: gmail_v1.Schema$Message[] = [];
   try {
     const list = await gmail.users.messages.list({
       userId: "me",
-      q: "newer_than:30d",
-      maxResults: 40,
+      labelIds: ["INBOX"],
+      q: `newer_than:${lookbackDays}d -in:chats`,
+      maxResults: 100,
     });
     messages = list.data.messages ?? [];
   } catch (error) {
@@ -143,6 +113,8 @@ async function getGmailFeed(accessToken?: string): Promise<FeedItem[]> {
           "Precedence",
           "X-List-Id",
           "X-List",
+          "Mailing-List",
+          "Feedback-ID",
         ],
       });
 
@@ -150,7 +122,9 @@ async function getGmailFeed(accessToken?: string): Promise<FeedItem[]> {
       const subject = getHeader(headers, "Subject");
       const from = getHeader(headers, "From");
       const date = getHeader(headers, "Date");
-      if (!looksLikeNewsletter(headers, subject, from, fullMessage.data.snippet ?? "")) {
+      const snippet = fullMessage.data.snippet ?? "";
+      const classification = classifyNewsletter(headers, subject, from, snippet);
+      if (!classification.isNewsletter) {
         return null;
       }
 
@@ -164,7 +138,7 @@ async function getGmailFeed(accessToken?: string): Promise<FeedItem[]> {
         subject,
         from,
         date,
-        snippet: fullMessage.data.snippet ?? "",
+        snippet,
         publicationName,
         publicationKey,
       };
