@@ -21,7 +21,7 @@ export function ThemeInitializer() {
   return null;
 }
 
-export function ThemeToggle({ className = "theme-toggle" }: { className?: string }) {
+export function ThemeToggle({ className = "header-icon-btn" }: { className?: string }) {
   const [theme, setTheme] = useState<Theme>(() => resolveInitialTheme());
 
   useEffect(() => {

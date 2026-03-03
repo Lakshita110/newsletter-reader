@@ -3,6 +3,7 @@ import type { Element, Node } from "domhandler";
 
 export type ReadMessage = {
   id: string;
+  sourceId?: string;
   subject: string;
   from: string;
   date: string;

@@ -21,9 +21,6 @@ import { getRelativeKeys } from "../lib/date";
 import type { FeedReadStatus, InboxItem } from "../types";
 import { getRssCategoryLabel } from "@/lib/rss-categories";
 
-const RSS_SYNC_KEY = "nr_last_rss_sync_at";
-const RSS_SYNC_INTERVAL_MS = 60 * 60 * 1000;
-
 function isTypingTarget(target: EventTarget | null): boolean {
   const node = target as HTMLElement | null;
   if (!node) return false;
@@ -102,9 +99,6 @@ export default function RssInboxPage() {
           if (!silent) setRssSyncNotice(data?.error || "RSS sync failed.");
           return;
         }
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(RSS_SYNC_KEY, String(Date.now()));
-        }
         await loadRssInbox();
         if (!silent) {
           setRssSyncNotice(
@@ -124,29 +118,6 @@ export default function RssInboxPage() {
       await loadRssInbox().catch(() => null);
     })();
   }, [loadRssInbox]);
-
-  useEffect(() => {
-    if (!session?.user?.email) return;
-
-    const maybeSyncNow = async () => {
-      let shouldSync = true;
-      if (typeof window !== "undefined") {
-        const raw = window.localStorage.getItem(RSS_SYNC_KEY);
-        const last = raw ? Number(raw) : 0;
-        shouldSync = !Number.isFinite(last) || Date.now() - last >= RSS_SYNC_INTERVAL_MS;
-      }
-      if (shouldSync) {
-        await syncRssFeeds(true);
-      }
-    };
-
-    maybeSyncNow().catch(() => null);
-    const timer = window.setInterval(() => {
-      syncRssFeeds(true).catch(() => null);
-    }, RSS_SYNC_INTERVAL_MS);
-
-    return () => window.clearInterval(timer);
-  }, [session?.user?.email, syncRssFeeds]);
 
   useEffect(() => {
     if (!session?.user?.email) return;
