@@ -148,9 +148,7 @@ export default function ReadPage() {
     if (!msg) return false;
     if (msg.sourceKind === "rss") return false;
     const raw = msg.text || stripHtml(msg.html ?? "") || msg.snippet || "";
-    const words = countWords(raw);
-    // Hide mode toggles for very short content (roughly 1-2 sentences).
-    return words > 45;
+    return countWords(raw) > 45;
   }, [msg]);
 
   const activeView = msg?.sourceKind === "rss" ? "clean" : view;
@@ -232,7 +230,7 @@ export default function ReadPage() {
         externalUrl={msg.externalUrl}
       />
 
-      <article>
+      <article className="reader-content-shell">
         <ReaderContent
           message={msg}
           view={activeView}

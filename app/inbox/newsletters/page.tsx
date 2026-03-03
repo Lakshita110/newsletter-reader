@@ -173,6 +173,13 @@ export default function NewslettersInboxPage() {
     setSavedById((prev) => ({ ...prev, [id]: !prev[id] }));
   }, []);
 
+  const handleDayChange = useCallback((key: string | null) => {
+    setSelectedDay(key);
+    if (viewMode === "today" && key && key !== todayKey) {
+      setViewMode("all");
+    }
+  }, [todayKey, viewMode]);
+
   const catchUpOlder = () => {
     if (olderUnreadIds.length === 0) return;
 
@@ -268,8 +275,8 @@ export default function NewslettersInboxPage() {
     <main style={{ maxWidth: 768, margin: "44px auto", padding: "0 24px 20px" }}>
       <InboxModeTabs mode="newsletters" />
       <InboxHeader
-        unreadCount={enriched.filter((it) => statusById[it.id] !== "read").length}
         todayCount={todayStats.totalToday}
+        mode="newsletters"
         userEmail={session.user?.email}
         q={q}
         onQueryChange={setQ}
@@ -284,7 +291,7 @@ export default function NewslettersInboxPage() {
         publicationOptions={publications.map((p) => ({ key: p.key, label: p.name }))}
         dayOptions={toDayOptions(days)}
         onPublicationChange={setSelectedPub}
-        onDayChange={setSelectedDay}
+        onDayChange={handleDayChange}
       />
       {viewMode === "all" && !selectedDay && dailyEdition.hiddenEarlierCount > 0 && (
         <div style={{ marginBottom: 12 }}>

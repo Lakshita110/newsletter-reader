@@ -35,20 +35,13 @@ export function ReaderContent({
 
   if (view === "text") {
     return (
-      <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
+      <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", margin: 0 }}>
         {message.text || stripHtml(message.html ?? "") || message.snippet || ""}
       </pre>
     );
   }
 
-  if (view === "clean") {
-    if (!cleanedHtml.trim()) {
-      return (
-        <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
-          {stripHtml(message.html ?? "") ?? message.snippet ?? ""}
-        </pre>
-      );
-    }
+  if (view === "clean" && cleanedHtml.trim()) {
     return (
       <div>
         {parse(cleanedHtml, {
@@ -67,5 +60,34 @@ export function ReaderContent({
     );
   }
 
-  return <div>{parse(sanitized)}</div>;
+  if (view === "original" && sanitized.trim()) {
+    return <div>{parse(sanitized)}</div>;
+  }
+
+  if (cleanedHtml.trim()) {
+    return (
+      <div>
+        {parse(cleanedHtml, {
+          replace: (node) => {
+            if (shouldDropNode(node)) return <></>;
+            if (node.type === "tag" && node.name === "img") {
+              const imgNode = node as Element;
+              const src = imgNode.attribs?.src;
+              const alt = imgNode.attribs?.alt;
+              return <DeferredImage src={src} alt={alt} />;
+            }
+            return undefined;
+          },
+        })}
+      </div>
+    );
+  }
+
+  if (sanitized.trim()) return <div>{parse(sanitized)}</div>;
+
+  return (
+    <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", margin: 0 }}>
+      {message.text || stripHtml(message.html ?? "") || message.snippet || ""}
+    </pre>
+  );
 }

@@ -45,13 +45,6 @@ export function ReaderHeader({
     textDecoration: "none",
   };
 
-  const modePillStyle = (active: boolean): React.CSSProperties => ({
-    ...basePill,
-    border: "1px solid var(--faint)",
-    background: active ? "var(--surface-accent)" : "var(--surface)",
-    color: active ? "var(--accent-blue)" : "var(--muted)",
-  });
-
   const actionPillStyle = (
     kind: "primary" | "neutral" | "link",
     active = false
@@ -59,26 +52,33 @@ export function ReaderHeader({
     if (kind === "primary") {
       return {
         ...basePill,
-        border: "1px solid var(--success-border)",
-        background: active ? "var(--success-bg-active)" : "var(--success-bg)",
-        color: active ? "var(--success-text-active)" : "var(--success-text)",
+        border: "none",
+        background: active ? "var(--surface-accent-soft)" : "var(--surface-accent)",
+        color: "var(--accent-blue)",
       };
     }
     if (kind === "link") {
       return {
         ...basePill,
-        border: "1px solid var(--faint)",
+        border: "none",
         background: "var(--surface-accent-soft)",
-        color: "var(--link)",
+        color: "var(--accent-blue)",
       };
     }
     return {
       ...basePill,
-      border: "1px solid var(--faint)",
+      border: "none",
       background: "var(--surface)",
       color: "var(--muted)",
     };
   };
+
+  const modePillStyle = (active: boolean): React.CSSProperties => ({
+    ...basePill,
+    border: "1px solid var(--faint)",
+    background: active ? "var(--surface-accent)" : "var(--surface)",
+    color: active ? "var(--accent-blue)" : "var(--muted)",
+  });
 
   return (
     <>

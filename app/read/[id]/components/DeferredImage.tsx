@@ -12,15 +12,9 @@ export function DeferredImage({ src, alt }: { src?: string; alt?: string }) {
       <button
         type="button"
         onClick={() => setLoaded(true)}
+        className="reader-inline-action"
         style={{
           margin: "12px 0",
-          padding: "6px 10px",
-          borderRadius: 10,
-          border: "1px solid var(--faint)",
-          background: "var(--surface-accent)",
-          color: "var(--accent-blue)",
-          fontSize: 13,
-          cursor: "pointer",
         }}
       >
         Load image

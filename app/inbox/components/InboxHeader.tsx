@@ -6,8 +6,8 @@ import { signOut } from "next-auth/react";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
 
 type Props = {
-  unreadCount: number;
   todayCount: number;
+  mode: "newsletters" | "rss";
   userEmail?: string | null;
   q: string;
   onQueryChange: (value: string) => void;
@@ -15,8 +15,8 @@ type Props = {
 };
 
 export function InboxHeader({
-  unreadCount,
   todayCount,
+  mode,
   userEmail,
   q,
   onQueryChange,
@@ -51,7 +51,7 @@ export function InboxHeader({
   }, [showProfileMenu, showShortcuts]);
 
   return (
-    <header style={{ marginBottom: 16 }}>
+    <header className="masthead-surface" style={{ marginBottom: 16 }}>
       <div
         style={{
           display: "flex",
@@ -62,19 +62,9 @@ export function InboxHeader({
         }}
       >
         <div>
-          <h1
-            style={{
-              fontSize: 34,
-              margin: 0,
-              lineHeight: 1.1,
-              letterSpacing: -0.4,
-              fontFamily: "Georgia, 'Times New Roman', serif",
-            }}
-          >
-            Cluck&apos;s Feed
-          </h1>
-          <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>
-            {unreadCount} unread - {todayCount} today
+          <h1 className="app-page-title masthead-title">Cluck&apos;s Feed</h1>
+          <div className="app-page-subtitle" style={{ marginTop: 4 }}>
+            {mode === "rss" ? `${todayCount} RSS articles today` : `${todayCount} newsletters today`}
           </div>
         </div>
         <div

@@ -12,6 +12,11 @@ function summarizeSnippet(snippet: string): string {
   return `${firstSentence.slice(0, maxChars).trimEnd()}...`;
 }
 
+function categoryToneClass(value: string | null | undefined): string {
+  const key = (value ?? "other").toLowerCase();
+  return `category-tone-${key}`;
+}
+
 export function FeedList({
   grouped,
   ordered,
@@ -35,15 +40,7 @@ export function FeedList({
     <section>
       {grouped.map((group) => (
         <div key={group.key} style={{ marginBottom: 18 }}>
-          <div
-            style={{
-              fontSize: 13,
-              color: "var(--muted)",
-              textTransform: "uppercase",
-              letterSpacing: 0.6,
-              marginBottom: 6,
-            }}
-          >
+          <div className={group.key === "today" ? "feed-group-label tone-today" : "feed-group-label"}>
             {group.label}
           </div>
           {group.items.map((it) => {
@@ -52,6 +49,7 @@ export function FeedList({
             const isRead = status === "read";
             const hasThumb = it.sourceKind === "rss" && Boolean(it.imageUrl);
             const isSaved = savedById?.[it.id] === true;
+            const dotToneClass = it.sourceKind === "rss" ? categoryToneClass(it.category) : "category-tone-news";
 
             return (
               <Link
@@ -98,17 +96,18 @@ export function FeedList({
                         }}
                       >
                         <span
+                          className={dotToneClass}
                           style={{
                             display: "inline-block",
                             width: 7,
                             height: 7,
                             borderRadius: 999,
-                            background: isRead ? "transparent" : "var(--accent-blue)",
+                            background: isRead ? "transparent" : "var(--tone-border, var(--accent-blue))",
                             border: isRead ? "1px solid var(--faint)" : "none",
                             marginRight: 8,
                           }}
                         />
-                        {it.publicationName} · {formatDateTime(it.date)}
+                        {it.publicationName} - {formatDateTime(it.date)}
                       </span>
 
                       <div className="feed-item-actions" style={{ display: "flex", gap: 8 }}>
@@ -161,8 +160,8 @@ export function FeedList({
                         fontSize: 17,
                         lineHeight: 1.3,
                         letterSpacing: -0.1,
-                        fontWeight: 500,
-                        fontFamily: "Georgia, 'Times New Roman', serif",
+                        fontWeight: 600,
+                        fontFamily: "inherit",
                         color: "var(--text)",
                         minWidth: 0,
                       }}

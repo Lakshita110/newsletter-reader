@@ -206,8 +206,10 @@ export default function RssSettingsPage() {
           }}
         >
           <div>
-            <h1 className="settings-title">RSS Feed Settings</h1>
-            <p className="settings-subtitle">Manage your sources, categories, and sync readiness.</p>
+            <h1 className="app-page-title settings-title">RSS Feed Settings</h1>
+            <p className="app-page-subtitle settings-subtitle">
+              Manage your sources, categories, and sync readiness.
+            </p>
           </div>
           <Link href="/inbox/rss" className="back-link-muted">
             Back to RSS inbox

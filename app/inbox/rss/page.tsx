@@ -188,6 +188,7 @@ export default function RssInboxPage() {
   const enriched = useMemo(() => enrichItems(items), [items]);
   const days = useMemo(() => getDays(enriched), [enriched]);
   const { todayKey } = useMemo(() => getRelativeKeys(), []);
+  const isSourceFocused = Boolean(selectedPub);
 
   const viewFiltered = useMemo(() => {
     return enriched.filter((it) => {
@@ -213,8 +214,8 @@ export default function RssInboxPage() {
     [filtered, showAllEarlier]
   );
   const grouped = useMemo(
-    () => (selectedDay ? groupItemsByDay(filtered) : dailyEdition.grouped),
-    [dailyEdition.grouped, filtered, selectedDay]
+    () => (selectedDay || isSourceFocused ? groupItemsByDay(filtered) : dailyEdition.grouped),
+    [dailyEdition.grouped, filtered, isSourceFocused, selectedDay]
   );
 
   const ordered = useMemo(() => grouped.flatMap((group) => group.items), [grouped]);
@@ -223,9 +224,9 @@ export default function RssInboxPage() {
   const activeSelectedIndex =
     ordered.length === 0 ? 0 : Math.min(selectedIndex, ordered.length - 1);
   const olderUnreadIds = useMemo(() => {
-    if (selectedDay || viewMode !== "all") return [];
+    if (selectedDay || isSourceFocused || viewMode !== "all") return [];
     return dailyEdition.olderIds.filter((id) => statusById[id] !== "read");
-  }, [dailyEdition.olderIds, selectedDay, statusById, viewMode]);
+  }, [dailyEdition.olderIds, isSourceFocused, selectedDay, statusById, viewMode]);
   const contextById = useMemo(() => {
     const next: Record<string, { title: string; sourceKind: "gmail" | "rss"; publicationName: string }> =
       {};
@@ -238,6 +239,22 @@ export default function RssInboxPage() {
     }
     return next;
   }, [items]);
+
+  const handlePublicationChange = useCallback((key: string | null) => {
+    setSelectedPub(key);
+    if (key) {
+      setViewMode("all");
+      setSelectedDay(null);
+      setShowAllEarlier(true);
+    }
+  }, []);
+
+  const handleDayChange = useCallback((key: string | null) => {
+    setSelectedDay(key);
+    if (viewMode === "today" && key && key !== todayKey) {
+      setViewMode("all");
+    }
+  }, [todayKey, viewMode]);
 
   const markInProgress = useCallback((id: string) => {
     setStatusById((prev) => {
@@ -359,8 +376,8 @@ export default function RssInboxPage() {
     <main style={{ maxWidth: 768, margin: "44px auto", padding: "0 24px 20px" }}>
       <InboxModeTabs mode="rss" />
       <InboxHeader
-        unreadCount={enriched.filter((it) => statusById[it.id] !== "read").length}
         todayCount={todayStats.totalToday}
+        mode="rss"
         userEmail={session.user?.email}
         q={q}
         onQueryChange={setQ}
@@ -379,9 +396,9 @@ export default function RssInboxPage() {
           label: c.key === "uncategorized" ? "Uncategorized" : getRssCategoryLabel(c.key),
         }))}
         dayOptions={toDayOptions(days)}
-        onPublicationChange={setSelectedPub}
+        onPublicationChange={handlePublicationChange}
         onCategoryChange={setSelectedCategory}
-        onDayChange={setSelectedDay}
+        onDayChange={handleDayChange}
         rightAction={
           <button
             type="button"
@@ -418,7 +435,7 @@ export default function RssInboxPage() {
         </div>
       )}
 
-      {viewMode === "all" && !selectedDay && dailyEdition.hiddenEarlierCount > 0 && (
+      {viewMode === "all" && !selectedDay && !isSourceFocused && dailyEdition.hiddenEarlierCount > 0 && (
         <div style={{ marginBottom: 12 }}>
           <button
             onClick={() => setShowAllEarlier((prev) => !prev)}
@@ -439,7 +456,7 @@ export default function RssInboxPage() {
         </div>
       )}
 
-      {overflowBySource.length > 0 && !selectedDay && viewMode === "all" && (
+      {overflowBySource.length > 0 && !selectedDay && !isSourceFocused && viewMode === "all" && (
         <div
           style={{
             margin: "4px 0 16px",

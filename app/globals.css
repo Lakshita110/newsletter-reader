@@ -245,19 +245,59 @@ button {
   font-weight: 600;
 }
 
-.settings-title {
+.app-page-title {
   margin: 0;
-  font-size: 29px;
+  font-size: 30px;
   line-height: 1.2;
   letter-spacing: -0.2px;
   font-family: inherit;
   font-weight: 600;
 }
 
-.settings-subtitle {
+.masthead-title {
+  font-family: var(--font-display), Georgia, "Times New Roman", serif;
+  font-size: 48px;
+  line-height: 1.05;
+  letter-spacing: -0.5px;
+  font-weight: 700;
+}
+
+.app-page-subtitle {
   margin: 4px 0 0;
   font-size: 13px;
   color: var(--muted);
+}
+
+.masthead-surface {
+  border-radius: 12px;
+  padding: 8px 10px 10px;
+  background: transparent;
+}
+
+.feed-group-label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  margin-bottom: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.feed-group-label.tone-today {
+  background: var(--surface-accent-soft);
+  color: var(--accent-blue);
+}
+
+.settings-title {
+  font-size: 28px;
+}
+
+.settings-subtitle {
+  max-width: 52ch;
 }
 
 .settings-grid {
@@ -313,7 +353,8 @@ button {
 
 .settings-feed-title {
   font-size: 16px;
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: inherit;
+  font-weight: 600;
   margin-bottom: 2px;
 }
 
@@ -378,7 +419,7 @@ button {
 }
 
 .category-badge[class*="category-tone-"] {
-  border-color: var(--tone-border);
+  border: none;
   background: var(--tone-bg);
   color: var(--tone-text);
 }
@@ -555,6 +596,29 @@ button.filter-select {
   cursor: pointer;
 }
 
+.reader-content-shell {
+  border: 1px solid var(--faint);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 18px;
+}
+
+.reader-inline-action {
+  border: none;
+  border-radius: 999px;
+  padding: 0 14px;
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 600;
+  height: 38px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-accent-soft);
+  color: var(--accent-blue);
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -709,6 +773,10 @@ button.filter-select {
 }
 
 @media (max-width: 520px) {
+  .masthead-title {
+    font-size: 40px;
+  }
+
   .settings-title {
     font-size: 30px;
   }
