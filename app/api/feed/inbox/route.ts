@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { classifyNewsletter, getHeader } from "@/lib/newsletter-classifier";
 import { parseFrom, normalizePublicationKey } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
+import { normalizeRssCategory } from "@/lib/rss-categories";
 type RssPriority = "HIGH" | "NORMAL" | "LOW";
 
 type FeedItem = {
@@ -17,6 +18,7 @@ type FeedItem = {
   snippet: string;
   publicationName: string;
   publicationKey: string;
+  category?: string;
   isOverflow?: boolean;
   externalUrl?: string;
   imageUrl?: string;
@@ -148,7 +150,7 @@ async function getGmailFeed(accessToken?: string): Promise<FeedItem[]> {
   return results.filter((x): x is NonNullable<typeof x> => x !== null);
 }
 
-async function getRssFeed(userId: string) {
+async function getRssFeed(userId: string, selectedSourceId?: string | null) {
   const subscriptions = await prisma.userRssSubscription.findMany({
     where: { userId, isActive: true },
     include: {
@@ -167,6 +169,7 @@ async function getRssFeed(userId: string) {
   const overflowBySource = new Map<string, { sourceId: string; sourceName: string; count: number }>();
 
   for (const sub of subscriptions) {
+    const isSelectedSource = selectedSourceId != null && sub.source.id === selectedSourceId;
     const byDay = new Map<string, typeof sub.source.items>();
     for (const item of sub.source.items) {
       const key = dayKeyUtc(item.publishedAt ?? null);
@@ -185,7 +188,7 @@ async function getRssFeed(userId: string) {
         return tb - ta;
       });
 
-      const cap = sub.dailyCap;
+      const cap = isSelectedSource ? Number.POSITIVE_INFINITY : sub.dailyCap;
       for (let i = 0; i < dayItems.length; i++) {
         const item = dayItems[i];
         const isOverflow = cap <= 0 || i >= cap;
@@ -199,6 +202,7 @@ async function getRssFeed(userId: string) {
           snippet: item.snippet ?? "",
           publicationName: sub.source.name,
           publicationKey: `rss:${sub.source.id}`,
+          category: normalizeRssCategory(sub.category) ?? "other",
           isOverflow,
           externalUrl: item.link ?? undefined,
           imageUrl: item.imageUrl ?? extractImageUrl(item.htmlRaw),
@@ -228,10 +232,11 @@ export async function GET(req: Request) {
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const url = new URL(req.url);
   const kind = url.searchParams.get("kind");
+  const selectedSourceId = url.searchParams.get("sourceId");
 
   const [gmailItems, rss] = await Promise.all([
     getGmailFeed(auth.accessToken),
-    getRssFeed(auth.userId),
+    getRssFeed(auth.userId, selectedSourceId),
   ]);
 
   let items = [...gmailItems, ...rss.visible].sort((a, b) => {

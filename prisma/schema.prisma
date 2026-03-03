@@ -108,6 +108,7 @@ model UserRssSubscription {
   userId      String
   rssSourceId String
   isActive    Boolean     @default(true)
+  category    String      @default("other")
   priority    RssPriority @default(NORMAL)
   dailyCap    Int         @default(2)
   createdAt   DateTime    @default(now())

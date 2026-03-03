@@ -50,7 +50,7 @@ export function filterItems(
     if (!query) return true;
 
     const hay =
-      `${it.subject} ${it.from} ${it.publicationName} ${it.snippet}`.toLowerCase();
+      `${it.subject} ${it.from} ${it.publicationName} ${it.category ?? ""} ${it.snippet}`.toLowerCase();
     return hay.includes(query);
   });
 }

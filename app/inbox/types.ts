@@ -8,6 +8,7 @@ export type InboxItem = {
   snippet: string;
   publicationName: string;
   publicationKey: string;
+  category?: string;
   isOverflow?: boolean;
   externalUrl?: string;
   imageUrl?: string;
