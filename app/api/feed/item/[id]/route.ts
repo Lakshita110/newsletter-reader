@@ -4,21 +4,13 @@ import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { extractArticleContent } from "@/lib/article-extract";
+import { parseFrom } from "@/lib/email";
+import { getHeader } from "@/lib/newsletter-classifier";
 
 function b64urlDecode(input: string) {
   const b64 = input.replace(/-/g, "+").replace(/_/g, "/");
   const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
   return Buffer.from(b64 + pad, "base64").toString("utf-8");
-}
-
-function getHeader(
-  headers: gmail_v1.Schema$MessagePartHeader[] | undefined,
-  name: string
-): string {
-  const header = headers?.find(
-    (candidate) => candidate.name?.toLowerCase() === name.toLowerCase()
-  );
-  return header?.value ?? "";
 }
 
 function extractBodies(
@@ -77,6 +69,7 @@ async function getGmailItem(id: string, accessToken: string) {
   const extractedText = html
     ? (await extractArticleContent(html)).text
     : cleanText(text ?? msg.data.snippet ?? "");
+  const publication = parseFrom(from);
 
   return {
     id: msg.data.id,
@@ -90,6 +83,8 @@ async function getGmailItem(id: string, accessToken: string) {
     html,
     text: extractedText,
     externalUrl: null,
+    sourceKind: "gmail" as const,
+    publicationName: publication.name,
   };
 }
 
@@ -140,6 +135,8 @@ async function getRssItem(userId: string, rawId: string) {
     html: html ?? undefined,
     text: text || undefined,
     externalUrl: item.link ?? null,
+    sourceKind: "rss" as const,
+    publicationName: item.source.name,
   };
 }
 

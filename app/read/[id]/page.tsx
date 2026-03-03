@@ -19,7 +19,17 @@ export default function ReadPage() {
 
   const [msg, setMsg] = useState<ReadMessage | null>(null);
   const [view, setView] = useState<"clean" | "original" | "text">("original");
-  const [isMarkedRead, setIsMarkedRead] = useState(false);
+  const [statusById, setStatusById] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    const stored = window.localStorage.getItem("nr_read_status_map");
+    if (!stored) return {};
+    try {
+      const parsed = JSON.parse(stored) as Record<string, string>;
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
   const [orderedItems] = useState<{ id: string; subject: string }[]>(() => {
     if (typeof window === "undefined") return [];
     const stored = window.localStorage.getItem("nr_ordered_items");
@@ -43,21 +53,6 @@ export default function ReadPage() {
 
   useEffect(() => {
     if (!id) return;
-    if (typeof window !== "undefined") {
-      const stored = window.localStorage.getItem("nr_read_status_map");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored) as Record<string, string>;
-          setIsMarkedRead(parsed[id] === "read");
-        } catch {
-          setIsMarkedRead(false);
-        }
-      } else {
-        setIsMarkedRead(false);
-      }
-    } else {
-      setIsMarkedRead(false);
-    }
     fetch("/api/read-state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -65,9 +60,11 @@ export default function ReadPage() {
     }).catch(() => null);
   }, [id]);
 
+  const isMarkedRead = id ? statusById[id] === "read" : false;
+
   const markRead = () => {
     if (!id) return;
-    setIsMarkedRead(true);
+    setStatusById((prev) => ({ ...prev, [id]: "read" }));
     if (typeof window !== "undefined") {
       const stored = window.localStorage.getItem("nr_read_status_map");
       let parsed: Record<string, string> = {};
@@ -82,15 +79,33 @@ export default function ReadPage() {
     fetch("/api/read-state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messageId: id, state: "read" }),
+      body: JSON.stringify({
+        messageId: id,
+        state: "read",
+        metadata: msg
+          ? {
+              title: msg.subject || "(No subject)",
+              sourceKind: msg.sourceKind,
+              publicationName: msg.publicationName ?? msg.from,
+            }
+          : undefined,
+      }),
     }).catch(() => {
-      setIsMarkedRead(false);
+      setStatusById((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     });
   };
 
   const markUnread = () => {
     if (!id) return;
-    setIsMarkedRead(false);
+    setStatusById((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     if (typeof window !== "undefined") {
       const stored = window.localStorage.getItem("nr_read_status_map");
       let parsed: Record<string, string> = {};
@@ -107,7 +122,7 @@ export default function ReadPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messageId: id, state: "unread" }),
     }).catch(() => {
-      setIsMarkedRead(true);
+      setStatusById((prev) => ({ ...prev, [id]: "read" }));
     });
   };
 

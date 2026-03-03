@@ -98,6 +98,18 @@ export default function NewslettersInboxPage() {
     if (selectedDay) return [];
     return dailyEdition.olderIds.filter((id) => statusById[id] !== "read");
   }, [dailyEdition.olderIds, selectedDay, statusById]);
+  const contextById = useMemo(() => {
+    const next: Record<string, { title: string; sourceKind: "gmail" | "rss"; publicationName: string }> =
+      {};
+    for (const item of items) {
+      next[item.id] = {
+        title: item.subject || "(No subject)",
+        sourceKind: item.sourceKind ?? "gmail",
+        publicationName: item.publicationName,
+      };
+    }
+    return next;
+  }, [items]);
 
   const markInProgress = (id: string) => {
     setStatusById((prev) => {
@@ -107,7 +119,7 @@ export default function NewslettersInboxPage() {
     fetch("/api/read-state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messageId: id, state: "in_progress" }),
+      body: JSON.stringify({ messageId: id, state: "in_progress", metadata: contextById[id] }),
     }).catch(() => null);
   };
 
@@ -116,7 +128,7 @@ export default function NewslettersInboxPage() {
     fetch("/api/read-state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messageId: id, state: "read" }),
+      body: JSON.stringify({ messageId: id, state: "read", metadata: contextById[id] }),
     }).catch(() => null);
   };
 
@@ -132,7 +144,15 @@ export default function NewslettersInboxPage() {
     fetch("/api/read-state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messageIds: olderUnreadIds, state: "read" }),
+      body: JSON.stringify({
+        messageIds: olderUnreadIds,
+        state: "read",
+        contextById: olderUnreadIds.reduce<Record<string, (typeof contextById)[string]>>((acc, id) => {
+          const context = contextById[id];
+          if (context) acc[id] = context;
+          return acc;
+        }, {}),
+      }),
     }).catch(() => null);
   };
 
