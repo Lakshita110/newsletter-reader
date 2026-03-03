@@ -22,7 +22,21 @@ function isTypingTarget(target: EventTarget | null): boolean {
 export default function ReadPage() {
   const params = useParams();
   const router = useRouter();
-  const id = typeof params?.id === "string" ? params.id : undefined;
+  const rawId = typeof params?.id === "string" ? params.id : undefined;
+  const id = useMemo(() => {
+    if (!rawId) return undefined;
+    let decoded = rawId;
+    for (let i = 0; i < 2; i++) {
+      try {
+        const next = decodeURIComponent(decoded);
+        if (next === decoded) break;
+        decoded = next;
+      } catch {
+        break;
+      }
+    }
+    return decoded;
+  }, [rawId]);
 
   const [msg, setMsg] = useState<ReadMessage | null>(null);
   const [view, setView] = useState<"clean" | "original" | "text">("original");
@@ -52,7 +66,7 @@ export default function ReadPage() {
   useEffect(() => {
     if (!id) return;
     (async () => {
-      const res = await fetch(`/api/feed/item/${id}`);
+      const res = await fetch(`/api/feed/item/${encodeURIComponent(id)}`);
       const data = await res.json();
       setMsg(data);
     })();
@@ -169,12 +183,12 @@ export default function ReadPage() {
 
       if (event.key === "ArrowLeft" && nav?.prev) {
         event.preventDefault();
-        router.push(`/read/${nav.prev.id}`);
+        router.push(`/read/${encodeURIComponent(nav.prev.id)}`);
         return;
       }
       if (event.key === "ArrowRight" && nav?.next) {
         event.preventDefault();
-        router.push(`/read/${nav.next.id}`);
+        router.push(`/read/${encodeURIComponent(nav.next.id)}`);
         return;
       }
       if (event.key === "j") {

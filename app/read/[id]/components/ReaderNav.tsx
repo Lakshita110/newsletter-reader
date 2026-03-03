@@ -17,16 +17,9 @@ export function ReaderNav({ nav }: { nav: { prev: NavItem | null; next: NavItem 
           color: "var(--muted)",
         }}
       >
-        {nav?.prev ? <Link href={`/read/${nav.prev.id}`}>← Previous</Link> : <span />}
-        {nav?.next ? <Link href={`/read/${nav.next.id}`}>Next →</Link> : <span />}
+        {nav?.prev ? <Link href={`/read/${encodeURIComponent(nav.prev.id)}`}>Previous</Link> : <span />}
+        {nav?.next ? <Link href={`/read/${encodeURIComponent(nav.next.id)}`}>Next</Link> : <span />}
       </div>
-
-      {nav?.next && (
-        <div style={{ marginTop: 10, fontSize: 14 }}>
-          Next up: <Link href={`/read/${nav.next.id}`}>{nav.next.subject} →</Link>
-        </div>
-      )}
     </div>
   );
 }
-
