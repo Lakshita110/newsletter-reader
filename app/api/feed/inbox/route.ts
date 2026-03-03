@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { parseFrom, normalizePublicationKey } from "@/lib/email";
+import { personalizeRssItems } from "@/lib/rss-personalization";
 import { prisma } from "@/lib/prisma";
 type RssPriority = "HIGH" | "NORMAL" | "LOW";
 
@@ -260,7 +261,9 @@ export async function GET(req: Request) {
     getRssFeed(auth.userId),
   ]);
 
-  let items = [...gmailItems, ...rss.visible].sort((a, b) => {
+  const personalizedRss = await personalizeRssItems(auth.userId, rss.visible);
+
+  let items = [...gmailItems, ...personalizedRss].sort((a, b) => {
     const ta = new Date(a.date).getTime();
     const tb = new Date(b.date).getTime();
     return tb - ta;
@@ -273,6 +276,5 @@ export async function GET(req: Request) {
     overflowBySource: rss.overflowBySource,
   });
 }
-
 
 
