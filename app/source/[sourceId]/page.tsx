@@ -27,6 +27,19 @@ export default function SourcePage() {
 
   const items = useMemo(() => (Array.isArray(data.items) ? data.items : []), [data.items]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      "nr_ordered_items",
+      JSON.stringify(
+        items.map((it) => ({
+          id: it.id,
+          subject: it.subject || "(No subject)",
+        }))
+      )
+    );
+  }, [items]);
+
   return (
     <main style={{ maxWidth: 780, margin: "44px auto", padding: 20 }}>
       <div style={{ marginBottom: 12 }}>
@@ -65,4 +78,3 @@ export default function SourcePage() {
     </main>
   );
 }
-

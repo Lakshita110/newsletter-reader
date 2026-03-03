@@ -22,6 +22,11 @@ export function ReaderHeader({
   showViewControls: boolean;
   externalUrl?: string | null;
 }) {
+  const isRss = message.sourceKind === "rss";
+  const backHref = isRss ? "/inbox/rss" : "/inbox/newsletters";
+  const sourceName = message.publicationName || message.from;
+  const author = message.from && message.from !== sourceName ? message.from : null;
+
   const basePill: React.CSSProperties = {
     borderRadius: 999,
     padding: "0 14px",
@@ -79,7 +84,7 @@ export function ReaderHeader({
     <>
       <div style={{ marginBottom: 14 }}>
         <Link
-          href="/inbox"
+          href={backHref}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -95,7 +100,14 @@ export function ReaderHeader({
         <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>
           {message.subject || "(No subject)"}
         </h1>
-        <div style={{ opacity: 0.8, marginBottom: 6 }}>{message.from}</div>
+        {isRss ? (
+          <>
+            <div style={{ opacity: 0.86, marginBottom: 4 }}>Source: {sourceName}</div>
+            {author && <div style={{ opacity: 0.72, marginBottom: 6 }}>By {author}</div>}
+          </>
+        ) : (
+          <div style={{ opacity: 0.8, marginBottom: 6 }}>{message.from}</div>
+        )}
         <div style={{ opacity: 0.6, marginBottom: 12 }}>{formatDateTime(message.date)}</div>
         {readingMinutes !== null && (
           <div style={{ opacity: 0.6, marginBottom: 12 }}>{readingMinutes} min read</div>

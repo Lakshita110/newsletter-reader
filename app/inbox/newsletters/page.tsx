@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { DayPills, PublicationPills } from "../components/FilterPills";
@@ -18,6 +18,17 @@ import {
 } from "../lib/derive";
 import { getRelativeKeys } from "../lib/date";
 import type { FeedReadStatus, InboxItem } from "../types";
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  const node = target as HTMLElement | null;
+  if (!node) return false;
+  return node.tagName === "INPUT" || node.tagName === "TEXTAREA" || node.isContentEditable;
+}
+
+function escapeSelectorValue(value: string): string {
+  if (typeof window !== "undefined" && window.CSS?.escape) return window.CSS.escape(value);
+  return value.replace(/["\\]/g, "\\$&");
+}
 
 export default function NewslettersInboxPage() {
   const { data: session } = useSession();
@@ -111,7 +122,7 @@ export default function NewslettersInboxPage() {
     return next;
   }, [items]);
 
-  const markInProgress = (id: string) => {
+  const markInProgress = useCallback((id: string) => {
     setStatusById((prev) => {
       if (prev[id] === "read") return prev;
       return { ...prev, [id]: "in-progress" };
@@ -121,16 +132,16 @@ export default function NewslettersInboxPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messageId: id, state: "in_progress", metadata: contextById[id] }),
     }).catch(() => null);
-  };
+  }, [contextById]);
 
-  const markRead = (id: string) => {
+  const markRead = useCallback((id: string) => {
     setStatusById((prev) => ({ ...prev, [id]: "read" }));
     fetch("/api/read-state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messageId: id, state: "read", metadata: contextById[id] }),
     }).catch(() => null);
-  };
+  }, [contextById]);
 
   const catchUpOlder = () => {
     if (olderUnreadIds.length === 0) return;
@@ -170,23 +181,17 @@ export default function NewslettersInboxPage() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
-      ) {
-        return;
-      }
+      if (isTypingTarget(event.target)) return;
 
       if (ordered.length === 0) return;
 
-      if (event.key === "j") {
+      if (event.key === "j" || event.key === "ArrowDown" || event.key === "ArrowRight") {
         event.preventDefault();
         setSelectedIndex((prev) => Math.min(prev + 1, ordered.length - 1));
-      } else if (event.key === "k") {
+      } else if (event.key === "k" || event.key === "ArrowUp" || event.key === "ArrowLeft") {
         event.preventDefault();
         setSelectedIndex((prev) => Math.max(prev - 1, 0));
-      } else if (event.key === "o") {
+      } else if (event.key === "o" || event.key === "Enter") {
         event.preventDefault();
         const current = ordered[activeSelectedIndex];
         if (current) {
@@ -203,7 +208,17 @@ export default function NewslettersInboxPage() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeSelectedIndex, ordered, router]);
+  }, [activeSelectedIndex, markInProgress, markRead, ordered, router]);
+
+  useEffect(() => {
+    if (ordered.length === 0) return;
+    const current = ordered[activeSelectedIndex];
+    if (!current) return;
+    const selector = `[data-feed-item-id="${escapeSelectorValue(current.id)}"]`;
+    const el = document.querySelector<HTMLElement>(selector);
+    if (!el) return;
+    el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [activeSelectedIndex, ordered]);
 
   useEffect(() => {
     if (session === null) {
@@ -243,7 +258,7 @@ export default function NewslettersInboxPage() {
       <DayPills selectedDay={selectedDay} days={days} onSelect={setSelectedDay} />
 
       <div style={{ margin: "0 0 18px", color: "var(--muted)", fontSize: 13 }}>
-        Newsletter inbox. Keyboard: j/k (next/prev), o (open), r (mark read).
+        Keyboard: arrows or j/k (move), Enter/o (open), r (mark read).
       </div>
       {!selectedDay && dailyEdition.hiddenEarlierCount > 0 && (
         <div style={{ marginBottom: 12 }}>

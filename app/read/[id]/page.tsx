@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { ReaderContent } from "./components/ReaderContent";
 import { ReaderHeader } from "./components/ReaderHeader";
 import { ReaderNav } from "./components/ReaderNav";
@@ -13,8 +13,15 @@ import {
   type ReadMessage,
 } from "./lib/read-utils";
 
+function isTypingTarget(target: EventTarget | null): boolean {
+  const node = target as HTMLElement | null;
+  if (!node) return false;
+  return node.tagName === "INPUT" || node.tagName === "TEXTAREA" || node.isContentEditable;
+}
+
 export default function ReadPage() {
   const params = useParams();
+  const router = useRouter();
   const id = typeof params?.id === "string" ? params.id : undefined;
 
   const [msg, setMsg] = useState<ReadMessage | null>(null);
@@ -139,11 +146,14 @@ export default function ReadPage() {
 
   const showViewControls = useMemo(() => {
     if (!msg) return false;
+    if (msg.sourceKind === "rss") return false;
     const raw = msg.text || stripHtml(msg.html ?? "") || msg.snippet || "";
     const words = countWords(raw);
     // Hide mode toggles for very short content (roughly 1-2 sentences).
     return words > 45;
   }, [msg]);
+
+  const activeView = msg?.sourceKind === "rss" ? "clean" : view;
 
   const nav = useMemo(() => {
     if (!id || orderedItems.length === 0) return null;
@@ -154,6 +164,35 @@ export default function ReadPage() {
       next: orderedItems[idx + 1] ?? null,
     };
   }, [id, orderedItems]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isTypingTarget(event.target)) return;
+
+      if (event.key === "ArrowLeft" && nav?.prev) {
+        event.preventDefault();
+        router.push(`/read/${nav.prev.id}`);
+        return;
+      }
+      if (event.key === "ArrowRight" && nav?.next) {
+        event.preventDefault();
+        router.push(`/read/${nav.next.id}`);
+        return;
+      }
+      if (event.key === "j") {
+        event.preventDefault();
+        window.scrollBy({ top: Math.round(window.innerHeight * 0.75), behavior: "smooth" });
+        return;
+      }
+      if (event.key === "k") {
+        event.preventDefault();
+        window.scrollBy({ top: -Math.round(window.innerHeight * 0.75), behavior: "smooth" });
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [nav, router]);
 
   if (!id) {
     return (
@@ -184,7 +223,7 @@ export default function ReadPage() {
       <ReaderHeader
         message={msg}
         readingMinutes={readingMinutes}
-        view={view}
+        view={activeView}
         onViewChange={setView}
         onMarkRead={markRead}
         onMarkUnread={markUnread}
@@ -194,7 +233,12 @@ export default function ReadPage() {
       />
 
       <article>
-        <ReaderContent message={msg} view={view} sanitized={sanitized} cleanedHtml={cleanedHtml} />
+        <ReaderContent
+          message={msg}
+          view={activeView}
+          sanitized={sanitized}
+          cleanedHtml={cleanedHtml}
+        />
       </article>
 
       <ReaderNav nav={nav} />
