@@ -6,7 +6,7 @@ const pillStyle = (active: boolean): React.CSSProperties => ({
   padding: "6px 10px",
   fontSize: 13,
   border: "1px solid var(--faint)",
-  background: active ? "#eef2ff" : "#fff",
+  background: active ? "var(--surface-accent)" : "var(--surface)",
   color: active ? "var(--accent-blue)" : "var(--muted)",
 });
 
@@ -27,7 +27,7 @@ export function PublicationPills({
           gap: 8,
           flexWrap: "wrap",
           padding: 12,
-          background: "#fff",
+          background: "var(--surface)",
           border: "1px solid var(--faint)",
           borderRadius: 16,
         }}
@@ -71,7 +71,7 @@ export function DayPills({
           gap: 8,
           flexWrap: "wrap",
           padding: 12,
-          background: "#fff",
+          background: "var(--surface)",
           border: "1px solid var(--faint)",
           borderRadius: 16,
         }}

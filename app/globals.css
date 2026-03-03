@@ -1,13 +1,84 @@
 :root {
   --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-muted: #f7f9ff;
+  --surface-accent: #eef2ff;
+  --surface-accent-soft: #f8fbff;
   --text: #1f2933;
   --muted: #6b7280;
   --faint: #e5e7eb;
+  --link: #1d4ed8;
+
+  --warning-border: #fde68a;
+  --warning-bg: #fffbeb;
+  --warning-text: #92400e;
+  --success-border: #86efac;
+  --success-bg: #dcfce7;
+  --success-bg-active: #f0fdf4;
+  --success-text: #14532d;
+  --success-text-active: #166534;
+  --danger-border: #fecaca;
+  --danger-bg: #fff1f2;
+  --danger-text: #b91c1c;
 
   /* pastel but slightly deeper accents */
   --accent-blue: #6b8afd;
   --accent-green: #6bbf9a;
   --accent-purple: #9b8cf5;
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b1220;
+  --surface: #101a2b;
+  --surface-muted: #16243d;
+  --surface-accent: #1a2b4a;
+  --surface-accent-soft: #1a2d4d;
+  --text: #e6edf7;
+  --muted: #99a7bd;
+  --faint: #2b3a52;
+  --link: #8ab4ff;
+
+  --warning-border: #8e6d22;
+  --warning-bg: #3a3017;
+  --warning-text: #f4d27a;
+  --success-border: #2f6f4d;
+  --success-bg: #193226;
+  --success-bg-active: #21412f;
+  --success-text: #7dd3a5;
+  --success-text-active: #94e6b9;
+  --danger-border: #7f2f3a;
+  --danger-bg: #3a1b20;
+  --danger-text: #ff9aa5;
+
+  --accent-blue: #8ab4ff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1220;
+    --surface: #101a2b;
+    --surface-muted: #16243d;
+    --surface-accent: #1a2b4a;
+    --surface-accent-soft: #1a2d4d;
+    --text: #e6edf7;
+    --muted: #99a7bd;
+    --faint: #2b3a52;
+    --link: #8ab4ff;
+
+    --warning-border: #8e6d22;
+    --warning-bg: #3a3017;
+    --warning-text: #f4d27a;
+    --success-border: #2f6f4d;
+    --success-bg: #193226;
+    --success-bg-active: #21412f;
+    --success-text: #7dd3a5;
+    --success-text-active: #94e6b9;
+    --danger-border: #7f2f3a;
+    --danger-bg: #3a1b20;
+    --danger-text: #ff9aa5;
+
+    --accent-blue: #8ab4ff;
+  }
 }
 
 html, body {
@@ -18,7 +89,18 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
+  color-scheme: light;
   -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme="dark"] body {
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body {
+    color-scheme: dark;
+  }
 }
 
 a {
@@ -31,11 +113,27 @@ a:hover {
 }
 
 .feed-item:hover {
-  background: #fafafa;
+  background: var(--surface-muted);
 }
 
 button, input {
   font: inherit;
+}
+
+.theme-toggle {
+  position: fixed;
+  right: 16px;
+  top: 16px;
+  z-index: 1000;
+  border: 1px solid var(--faint);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: 999px;
+  height: 34px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .inbox-layout {

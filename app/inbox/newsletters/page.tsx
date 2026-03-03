@@ -252,7 +252,7 @@ export default function NewslettersInboxPage() {
             style={{
               border: "1px solid var(--faint)",
               borderRadius: 999,
-              background: "#fff",
+              background: "var(--surface)",
               color: "var(--muted)",
               padding: "6px 10px",
               fontSize: 13,

@@ -43,7 +43,7 @@ export function ReaderHeader({
   const modePillStyle = (active: boolean): React.CSSProperties => ({
     ...basePill,
     border: "1px solid var(--faint)",
-    background: active ? "#eef2ff" : "#fff",
+    background: active ? "var(--surface-accent)" : "var(--surface)",
     color: active ? "var(--accent-blue)" : "var(--muted)",
   });
 
@@ -54,23 +54,23 @@ export function ReaderHeader({
     if (kind === "primary") {
       return {
         ...basePill,
-        border: "1px solid #86efac",
-        background: active ? "#f0fdf4" : "#dcfce7",
-        color: active ? "#166534" : "#14532d",
+        border: "1px solid var(--success-border)",
+        background: active ? "var(--success-bg-active)" : "var(--success-bg)",
+        color: active ? "var(--success-text-active)" : "var(--success-text)",
       };
     }
     if (kind === "link") {
       return {
         ...basePill,
-        border: "1px solid #dbeafe",
-        background: "#f8fbff",
-        color: "#1d4ed8",
+        border: "1px solid var(--faint)",
+        background: "var(--surface-accent-soft)",
+        color: "var(--link)",
       };
     }
     return {
       ...basePill,
       border: "1px solid var(--faint)",
-      background: "#fff",
+      background: "var(--surface)",
       color: "var(--muted)",
     };
   };

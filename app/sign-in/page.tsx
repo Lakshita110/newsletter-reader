@@ -19,7 +19,7 @@ export default function SignInPage() {
           padding: "10px 12px",
           borderRadius: 10,
           border: "1px solid var(--faint)",
-          background: "#f1f5ff",
+          background: "var(--surface-accent)",
           color: "var(--accent-blue)",
           cursor: "pointer",
         }}

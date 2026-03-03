@@ -17,7 +17,7 @@ export function DeferredImage({ src, alt }: { src?: string; alt?: string }) {
           padding: "6px 10px",
           borderRadius: 10,
           border: "1px solid var(--faint)",
-          background: "#f1f5ff",
+          background: "var(--surface-accent)",
           color: "var(--accent-blue)",
           fontSize: 13,
           cursor: "pointer",

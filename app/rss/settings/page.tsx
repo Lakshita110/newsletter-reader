@@ -140,7 +140,7 @@ export default function RssSettingsPage() {
     <main style={{ maxWidth: 860, margin: "44px auto", padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <h1 style={{ margin: 0, fontSize: 28 }}>RSS Feed Settings</h1>
-        <Link href="/inbox/rss" style={{ color: "#1d4ed8" }}>
+        <Link href="/inbox/rss" style={{ color: "var(--link)" }}>
           Back to RSS inbox
         </Link>
       </div>
@@ -149,7 +149,7 @@ export default function RssSettingsPage() {
         style={{
           border: "1px solid var(--faint)",
           borderRadius: 12,
-          background: "#fff",
+          background: "var(--surface)",
           padding: 14,
           marginBottom: 16,
         }}
@@ -160,22 +160,34 @@ export default function RssSettingsPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Feed name (optional)"
-            style={{ border: "1px solid var(--faint)", borderRadius: 10, padding: "8px 10px" }}
+            style={{
+              border: "1px solid var(--faint)",
+              borderRadius: 10,
+              padding: "8px 10px",
+              background: "var(--surface)",
+              color: "var(--text)",
+            }}
           />
           <input
             value={rssUrl}
             onChange={(e) => setRssUrl(e.target.value)}
             placeholder="https://example.com/feed.xml"
-            style={{ border: "1px solid var(--faint)", borderRadius: 10, padding: "8px 10px" }}
+            style={{
+              border: "1px solid var(--faint)",
+              borderRadius: 10,
+              padding: "8px 10px",
+              background: "var(--surface)",
+              color: "var(--text)",
+            }}
           />
           <button
             onClick={addFeed}
             disabled={isAdding}
             style={{
-              border: "1px solid #dbeafe",
+              border: "1px solid var(--faint)",
               borderRadius: 999,
-              background: "#f8fbff",
-              color: "#1d4ed8",
+              background: "var(--surface-accent-soft)",
+              color: "var(--link)",
               padding: "0 14px",
               height: 36,
               fontWeight: 600,
@@ -191,7 +203,7 @@ export default function RssSettingsPage() {
         style={{
           border: "1px solid var(--faint)",
           borderRadius: 12,
-          background: "#fff",
+          background: "var(--surface)",
           padding: 14,
         }}
       >
@@ -219,7 +231,13 @@ export default function RssSettingsPage() {
                       <input
                         value={draftName}
                         onChange={(e) => setDraftName(e.target.value)}
-                        style={{ border: "1px solid var(--faint)", borderRadius: 8, padding: "6px 8px" }}
+                        style={{
+                          border: "1px solid var(--faint)",
+                          borderRadius: 8,
+                          padding: "6px 8px",
+                          background: "var(--surface)",
+                          color: "var(--text)",
+                        }}
                       />
                     ) : (
                       <div style={{ fontWeight: 600 }}>{feed.name}</div>
@@ -229,10 +247,10 @@ export default function RssSettingsPage() {
                         onClick={() => saveEdit(feed.id)}
                         disabled={isBusy}
                         style={{
-                          border: "1px solid #dbeafe",
+                          border: "1px solid var(--faint)",
                           borderRadius: 999,
-                          background: "#f8fbff",
-                          color: "#1d4ed8",
+                          background: "var(--surface-accent-soft)",
+                          color: "var(--link)",
                           padding: "0 10px",
                           height: 30,
                           cursor: "pointer",
@@ -247,7 +265,7 @@ export default function RssSettingsPage() {
                         style={{
                           border: "1px solid var(--faint)",
                           borderRadius: 999,
-                          background: "#fff",
+                          background: "var(--surface)",
                           color: "var(--muted)",
                           padding: "0 10px",
                           height: 30,
@@ -261,10 +279,10 @@ export default function RssSettingsPage() {
                       onClick={() => removeFeed(feed.id)}
                       disabled={isBusy}
                       style={{
-                        border: "1px solid #fecaca",
+                        border: "1px solid var(--danger-border)",
                         borderRadius: 999,
-                        background: "#fff1f2",
-                        color: "#b91c1c",
+                        background: "var(--danger-bg)",
+                        color: "var(--danger-text)",
                         padding: "0 10px",
                         height: 30,
                         cursor: "pointer",

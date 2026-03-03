@@ -49,7 +49,7 @@ export function FeedList({
                   padding: "14px 10px",
                   borderBottom: "1px solid var(--faint)",
                   borderRadius: 10,
-                  background: isSelected ? "#f7f9ff" : "transparent",
+                  background: isSelected ? "var(--surface-muted)" : "transparent",
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
@@ -72,9 +72,9 @@ export function FeedList({
                           fontSize: 11,
                           padding: "1px 6px",
                           borderRadius: 999,
-                          border: "1px solid #fde68a",
-                          color: "#92400e",
-                          background: "#fffbeb",
+                          border: "1px solid var(--warning-border)",
+                          color: "var(--warning-text)",
+                          background: "var(--warning-bg)",
                         }}
                       >
                         In progress
@@ -125,7 +125,7 @@ export function FeedList({
                       fontSize: 12,
                       padding: "2px 8px",
                       borderRadius: 6,
-                      background: "#f1f5ff",
+                      background: "var(--surface-accent)",
                       color: "var(--accent-blue)",
                       fontFamily: "var(--font-mono)",
                     }}
@@ -162,7 +162,7 @@ export function FeedList({
                       style={{
                         fontSize: 12,
                         border: "1px solid var(--faint)",
-                        background: "#fff",
+                        background: "var(--surface)",
                         color: "var(--muted)",
                         borderRadius: 8,
                         padding: "4px 8px",

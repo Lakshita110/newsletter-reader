@@ -1,6 +1,7 @@
 import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { ThemeToggle } from "./components/ThemeToggle";
 
 const sans = IBM_Plex_Sans({
   subsets: ["latin"],
@@ -21,6 +22,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body suppressHydrationWarning className={`${sans.className} ${mono.variable}`}>
+        <ThemeToggle />
         <Providers>{children}</Providers>
       </body>
     </html>

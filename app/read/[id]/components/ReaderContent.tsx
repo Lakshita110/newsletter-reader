@@ -23,7 +23,7 @@ export function ReaderContent({
           border: "1px solid var(--faint)",
           borderRadius: 12,
           padding: 16,
-          background: "#fff",
+          background: "var(--surface)",
         }}
       >
         <p style={{ marginTop: 0, marginBottom: 0 }}>

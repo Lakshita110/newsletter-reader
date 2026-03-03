@@ -60,12 +60,12 @@ export default function RssInboxPage() {
   });
   const router = useRouter();
   const rssPrimaryPill: React.CSSProperties = {
-    border: "1px solid #dbeafe",
+    border: "1px solid var(--faint)",
     borderRadius: 999,
     height: 36,
     padding: "0 12px",
-    background: "#f8fbff",
-    color: "#1d4ed8",
+    background: "var(--surface-accent-soft)",
+    color: "var(--link)",
     fontWeight: 600,
     fontSize: 13,
     lineHeight: 1,
@@ -78,7 +78,7 @@ export default function RssInboxPage() {
   const rssNeutralPill: React.CSSProperties = {
     ...rssPrimaryPill,
     border: "1px solid var(--faint)",
-    background: "#fff",
+    background: "var(--surface)",
     color: "var(--muted)",
     fontWeight: 500,
   };
@@ -359,7 +359,7 @@ export default function RssInboxPage() {
                 style={{
                   border: "1px solid var(--faint)",
                   borderRadius: 999,
-                  background: "#fff",
+                  background: "var(--surface)",
                   color: "var(--muted)",
                   padding: "6px 10px",
                   fontSize: 13,
@@ -380,7 +380,7 @@ export default function RssInboxPage() {
                 padding: "10px 12px",
                 border: "1px solid var(--faint)",
                 borderRadius: 10,
-                background: "#fff",
+                background: "var(--surface)",
                 color: "var(--muted)",
                 fontSize: 13,
               }}
@@ -392,11 +392,11 @@ export default function RssInboxPage() {
                     key={x.sourceId}
                     href={`/source/${x.sourceId}`}
                     style={{
-                      border: "1px solid #dbeafe",
+                      border: "1px solid var(--faint)",
                       borderRadius: 999,
                       padding: "4px 8px",
-                      color: "#1d4ed8",
-                      background: "#f8fbff",
+                      color: "var(--link)",
+                      background: "var(--surface-accent-soft)",
                     }}
                   >
                     {x.count} more from {x.sourceName}
@@ -421,13 +421,13 @@ export default function RssInboxPage() {
             border: "1px solid var(--faint)",
             borderRadius: 12,
             padding: 12,
-            background: "#fff",
+            background: "var(--surface)",
             height: "fit-content",
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <div style={{ fontSize: 14, fontWeight: 600 }}>RSS feeds</div>
-            <Link href="/rss/settings" style={{ color: "#1d4ed8", fontSize: 12 }}>
+            <Link href="/rss/settings" style={{ color: "var(--link)", fontSize: 12 }}>
               Manage
             </Link>
           </div>
@@ -440,7 +440,8 @@ export default function RssInboxPage() {
                 border: "1px solid var(--faint)",
                 borderRadius: 10,
                 padding: "8px 10px",
-                background: "#fff",
+                background: "var(--surface)",
+                color: "var(--text)",
               }}
             />
             <input
@@ -451,7 +452,8 @@ export default function RssInboxPage() {
                 border: "1px solid var(--faint)",
                 borderRadius: 10,
                 padding: "8px 10px",
-                background: "#fff",
+                background: "var(--surface)",
+                color: "var(--text)",
               }}
             />
             <div style={{ display: "flex", gap: 8 }}>
@@ -489,7 +491,7 @@ export default function RssInboxPage() {
                     border: "1px solid var(--faint)",
                     borderRadius: 10,
                     padding: "8px 10px",
-                    background: "#fff",
+                    background: "var(--surface)",
                   }}
                 >
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{feed.name}</div>

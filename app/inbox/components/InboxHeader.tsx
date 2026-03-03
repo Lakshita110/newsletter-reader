@@ -24,9 +24,9 @@ export function InboxHeader({
   onCatchUpOlder,
 }: Props) {
   const actionPillStyle: React.CSSProperties = {
-    border: "1px solid #dbeafe",
-    background: "#f8fbff",
-    color: "#1d4ed8",
+    border: "1px solid var(--faint)",
+    background: "var(--surface-accent-soft)",
+    color: "var(--link)",
     height: 36,
     padding: "0 12px",
     borderRadius: 999,
@@ -72,7 +72,7 @@ export function InboxHeader({
             onClick={() => signOut({ callbackUrl: "/" })}
             style={{
               border: "1px solid var(--faint)",
-              background: "#fff",
+              background: "var(--surface)",
               color: "var(--muted)",
               padding: "4px 8px",
               borderRadius: 8,
@@ -92,7 +92,7 @@ export function InboxHeader({
           placeholder="Search subject, sender, snippet..."
           style={{
             flex: "1 1 260px",
-            background: "#fff",
+            background: "var(--surface)",
             border: "1px solid var(--faint)",
             color: "var(--text)",
             padding: "10px 12px",
@@ -105,7 +105,7 @@ export function InboxHeader({
           <button
             onClick={onClearPublication}
             style={{
-              background: "#fff",
+              background: "var(--surface)",
               border: "1px solid var(--faint)",
               color: "var(--text)",
               padding: "10px 12px",
