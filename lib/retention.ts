@@ -121,6 +121,17 @@ async function pruneRssPerSource(maxItemsPerSource: number): Promise<number> {
   return toNumber(deletedRows[0]?.count);
 }
 
+async function pruneOrphanRssSources(): Promise<number> {
+  const result = await prisma.rssSource.deleteMany({
+    where: {
+      subscriptions: {
+        none: { isActive: true },
+      },
+    },
+  });
+  return result.count;
+}
+
 export async function runRetentionNow() {
   const cfg = getConfig();
   const cutoff = new Date(Date.now() - cfg.htmlRetentionDays * 24 * 60 * 60 * 1000);
@@ -162,9 +173,11 @@ export async function runRetentionNow() {
 
   const rssDeletedByAge = await pruneRssByAge(cfg.rssRetentionDays);
   const rssDeletedByPerSourceCap = await pruneRssPerSource(cfg.rssMaxItemsPerSource);
+  const rssSourcesDeletedOrphaned = await pruneOrphanRssSources();
 
   const finalMessages = await prisma.message.count();
   const rssItemsRemaining = await prisma.rssItem.count();
+  const rssSourcesRemaining = await prisma.rssSource.count();
 
   return {
     ok: true,
@@ -176,7 +189,9 @@ export async function runRetentionNow() {
     messagesRemaining: finalMessages,
     rssDeletedByAge,
     rssDeletedByPerSourceCap,
+    rssSourcesDeletedOrphaned,
     rssItemsRemaining,
+    rssSourcesRemaining,
     dbSizeMbBefore: bytesToMb(beforeDbBytes),
     dbSizeMbAfter: bytesToMb(afterDbBytes),
     ranAt: new Date().toISOString(),

@@ -320,7 +320,11 @@ export default function RssSettingsPage() {
                       </div>
                     ) : (
                       <div>
-                        <div className="settings-feed-title">{feed.name}</div>
+                        <div className="settings-feed-title">
+                          <Link href={`/source/${feed.sourceId}`} style={{ color: "inherit" }}>
+                            {feed.name}
+                          </Link>
+                        </div>
                         <div className="settings-feed-url">{feed.rssUrl}</div>
                         <div style={{ marginTop: 4 }}>
                           <span className={`category-badge ${categoryToneClass(itemCategory)}`}>

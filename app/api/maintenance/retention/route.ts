@@ -12,7 +12,7 @@ function isAuthorized(req: Request): boolean {
   return bearer === configured || header === configured;
 }
 
-export async function POST(req: Request) {
+async function run(req: Request) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -21,3 +21,10 @@ export async function POST(req: Request) {
   return NextResponse.json(result);
 }
 
+export async function GET(req: Request) {
+  return run(req);
+}
+
+export async function POST(req: Request) {
+  return run(req);
+}

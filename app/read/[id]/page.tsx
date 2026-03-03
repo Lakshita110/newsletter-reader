@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ReaderContent } from "./components/ReaderContent";
 import { ReaderHeader } from "./components/ReaderHeader";
@@ -62,14 +62,32 @@ export default function ReadPage() {
       return [];
     }
   });
+  const prefetchedByIdRef = useRef<Record<string, ReadMessage>>({});
+
+  const fetchMessage = async (
+    messageId: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<ReadMessage | null> => {
+    const cached = prefetchedByIdRef.current[messageId];
+    if (cached) return cached;
+    const res = await fetch(`/api/feed/item/${encodeURIComponent(messageId)}`, {
+      signal: options?.signal,
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as ReadMessage;
+    prefetchedByIdRef.current[messageId] = data;
+    return data;
+  };
 
   useEffect(() => {
     if (!id) return;
+    const controller = new AbortController();
     (async () => {
-      const res = await fetch(`/api/feed/item/${encodeURIComponent(id)}`);
-      const data = await res.json();
-      setMsg(data);
-    })();
+      const data = await fetchMessage(id, { signal: controller.signal });
+      if (data) setMsg(data);
+    })().catch(() => null);
+    return () => controller.abort();
   }, [id]);
 
   useEffect(() => {
@@ -178,8 +196,28 @@ export default function ReadPage() {
   }, [id, orderedItems]);
 
   useEffect(() => {
+    const neighbors = [nav?.prev?.id, nav?.next?.id].filter(
+      (value): value is string => typeof value === "string" && value.length > 0
+    );
+    if (neighbors.length === 0) return;
+    const controller = new AbortController();
+    for (const itemId of neighbors) {
+      router.prefetch(`/read/${encodeURIComponent(itemId)}`);
+      fetchMessage(itemId, { signal: controller.signal }).catch(() => null);
+    }
+    return () => controller.abort();
+  }, [nav?.next?.id, nav?.prev?.id, router]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) return;
+
+      const backHref = msg?.sourceKind === "rss" ? "/inbox/rss" : "/inbox/newsletters";
+      if (event.key === "u") {
+        event.preventDefault();
+        router.push(backHref);
+        return;
+      }
 
       if (event.key === "ArrowLeft" && nav?.prev) {
         event.preventDefault();
@@ -204,7 +242,7 @@ export default function ReadPage() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [nav, router]);
+  }, [msg?.sourceKind, nav, router]);
 
   if (!id) {
     return (

@@ -22,6 +22,16 @@ export function normalizeUrl(input: string): string {
   }
 }
 
+function getRssStorageDays(): number {
+  const raw = Number(process.env.RSS_LOOKBACK_DAYS ?? 5);
+  if (!Number.isFinite(raw)) return 5;
+  return Math.min(30, Math.max(1, Math.floor(raw)));
+}
+
+function getRssStorageCutoff(days: number): Date {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
+
 function deriveExternalId(item: { guid?: string; link?: string; title?: string; isoDate?: string; pubDate?: string }) {
   if (item.guid?.trim()) return item.guid.trim();
   if (item.link?.trim()) return normalizeUrl(item.link.trim());
@@ -81,8 +91,29 @@ export async function syncRssSource(rssSourceId: string) {
   if (!source || !source.isActive) return { inserted: 0, updated: 0 };
 
   const feed = await parser.parseURL(source.rssUrl);
-  const items = feed.items ?? [];
+  const allItems = feed.items ?? [];
+  const storageCutoff = getRssStorageCutoff(getRssStorageDays());
+  const items = allItems.filter((item) => {
+    const publishedAt = item.isoDate
+      ? new Date(item.isoDate)
+      : item.pubDate
+      ? new Date(item.pubDate)
+      : null;
+    if (!publishedAt || Number.isNaN(publishedAt.getTime())) {
+      return true;
+    }
+    return publishedAt >= storageCutoff;
+  });
   if (items.length === 0) {
+    await prisma.rssItem.deleteMany({
+      where: {
+        rssSourceId: source.id,
+        OR: [
+          { publishedAt: { lt: storageCutoff } },
+          { AND: [{ publishedAt: null }, { createdAt: { lt: storageCutoff } }] },
+        ],
+      },
+    });
     await prisma.rssSource.update({
       where: { id: source.id },
       data: { lastSyncedAt: new Date() },
@@ -171,6 +202,17 @@ export async function syncRssSource(rssSourceId: string) {
       skipDuplicates: true,
     });
   }
+
+  // Enforce storage lookback on every sync so old data does not linger in DB.
+  await prisma.rssItem.deleteMany({
+    where: {
+      rssSourceId: source.id,
+      OR: [
+        { publishedAt: { lt: storageCutoff } },
+        { AND: [{ publishedAt: null }, { createdAt: { lt: storageCutoff } }] },
+      ],
+    },
+  });
 
   await prisma.rssSource.update({
     where: { id: source.id },

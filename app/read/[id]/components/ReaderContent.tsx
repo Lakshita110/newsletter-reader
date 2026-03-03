@@ -61,7 +61,7 @@ export function ReaderContent({
   }
 
   if (view === "original" && sanitized.trim()) {
-    return <div>{parse(sanitized)}</div>;
+    return <div className="reader-original-frame">{parse(sanitized)}</div>;
   }
 
   if (cleanedHtml.trim()) {

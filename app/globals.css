@@ -421,6 +421,25 @@ button {
   font-size: 13px;
 }
 
+.global-theme-toggle {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1200;
+  border: 1px solid var(--faint);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: 999px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+}
+
 .header-profile-btn {
   border: 1px solid var(--faint);
   background: var(--surface);
@@ -549,6 +568,18 @@ button.filter-select {
   border-radius: 14px;
   background: var(--surface);
   padding: 18px;
+}
+
+.reader-original-frame {
+  background: #ffffff;
+  color: #111111;
+  color-scheme: light;
+  border-radius: 10px;
+  padding: 2px;
+}
+
+.reader-original-frame a {
+  color: #1d4ed8;
 }
 
 .reader-inline-action {

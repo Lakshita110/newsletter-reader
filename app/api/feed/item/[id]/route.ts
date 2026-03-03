@@ -125,6 +125,7 @@ async function getRssItem(userId: string, rawId: string) {
 
   return {
     id: `rss:${item.id}`,
+    sourceId: item.source.id,
     threadId: null,
     subject: item.title,
     from: item.author ?? item.source.name,

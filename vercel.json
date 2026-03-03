@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/rss-refresh-rank",
+      "schedule": "0 10,17,22 * * *"
+    },
+    {
+      "path": "/api/maintenance/retention",
+      "schedule": "30 3 * * *"
+    }
+  ]
+}

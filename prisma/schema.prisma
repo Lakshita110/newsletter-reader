@@ -13,6 +13,16 @@ enum RssPriority {
   LOW
 }
 
+enum RssRankSnapshotStatus {
+  AI_SUCCESS
+  FALLBACK_DETERMINISTIC
+}
+
+enum RssRankSnapshotSource {
+  CRON
+  ON_DEMAND
+}
+
 model User {
   id               String            @id @default(cuid())
   email            String            @unique
@@ -21,6 +31,8 @@ model User {
   messages         Message[]
   messageReadStats MessageReadStat[]
   rssSubscriptions UserRssSubscription[]
+  rssRankSnapshots UserRssDailyRankSnapshot[]
+  rssRankLocks     UserRssRankJobLock[]
 }
 
 model Source {
@@ -139,4 +151,36 @@ model RssItem {
 
   @@unique([rssSourceId, externalId])
   @@index([rssSourceId, publishedAt])
+}
+
+model UserRssDailyRankSnapshot {
+  id               String                @id @default(cuid())
+  userId           String
+  dayKey           String
+  rankedItemIds    Json
+  status           RssRankSnapshotStatus
+  source           RssRankSnapshotSource
+  model            String?
+  inputFingerprint String
+  expiresAt        DateTime
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  user             User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dayKey])
+  @@index([dayKey, expiresAt])
+}
+
+model UserRssRankJobLock {
+  id        String   @id @default(cuid())
+  userId    String
+  dayKey    String
+  ownerId   String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dayKey])
+  @@index([dayKey, expiresAt])
 }

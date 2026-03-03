@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { signOut } from "next-auth/react";
-import { ThemeToggle } from "@/app/components/ThemeToggle";
 
 type Props = {
   todayCount: number;
@@ -74,7 +73,6 @@ export function InboxHeader({
             gap: 10,
           }}
         >
-          <ThemeToggle className="header-icon-btn" />
           <button
             type="button"
             className="header-icon-btn"
@@ -186,6 +184,9 @@ export function InboxHeader({
               </li>
               <li>
                 <code>r</code> - Mark item as read
+              </li>
+              <li>
+                <code>u</code> - Back to inbox from reader
               </li>
               <li>
                 <code>Esc</code> - Close this modal

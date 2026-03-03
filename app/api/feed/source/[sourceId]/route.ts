@@ -3,6 +3,16 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+function getRssLookbackDays(): number {
+  const raw = Number(process.env.RSS_LOOKBACK_DAYS ?? 5);
+  if (!Number.isFinite(raw)) return 5;
+  return Math.min(30, Math.max(1, Math.floor(raw)));
+}
+
+function getRssLookbackCutoff(days: number): Date {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
+
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email;
@@ -20,13 +30,23 @@ export async function GET(req: Request) {
   if (!sourceId) {
     return NextResponse.json({ error: "Missing source id" }, { status: 400 });
   }
+  const rssCutoff = getRssLookbackCutoff(getRssLookbackDays());
 
   const sub = await prisma.userRssSubscription.findUnique({
     where: { userId_rssSourceId: { userId: user.id, rssSourceId: sourceId } },
     include: {
       source: {
         include: {
-          items: { orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }], take: 500 },
+          items: {
+            where: {
+              OR: [
+                { publishedAt: { gte: rssCutoff } },
+                { AND: [{ publishedAt: null }, { createdAt: { gte: rssCutoff } }] },
+              ],
+            },
+            orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+            take: 500,
+          },
         },
       },
     },
