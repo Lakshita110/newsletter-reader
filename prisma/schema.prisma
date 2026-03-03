@@ -68,6 +68,9 @@ model MessageReadStat {
   id                 String   @id @default(cuid())
   userId             String
   messageExternalId  String
+  messageTitle       String?
+  sourceKind         String?
+  publicationName    String?
   firstOpenedAt      DateTime?
   lastOpenedAt       DateTime?
   openCount          Int      @default(0)
