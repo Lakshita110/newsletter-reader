@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { reprioritizeUserRssSubscriptions } from "@/lib/rss-personalization";
 import { syncRssSource } from "@/lib/rss";
 
 export async function POST(req: Request) {
@@ -44,12 +45,14 @@ export async function POST(req: Request) {
     }
   }
 
+  const reprioritized = await reprioritizeUserRssSubscriptions(user.id);
+
   return NextResponse.json({
     ok: true,
     sourceCount: subscriptions.length,
     inserted,
     updated,
+    reprioritized,
     errors,
   });
 }
-
