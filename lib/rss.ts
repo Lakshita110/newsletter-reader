@@ -100,7 +100,7 @@ export async function syncRssSource(rssSourceId: string) {
         : typeof item.content === "string"
         ? item.content
         : undefined;
-    const extracted = html ? extractArticleContent(html, item.link ?? undefined) : null;
+    const extracted = html ? await extractArticleContent(html, item.link ?? undefined) : null;
     const textExtracted = extracted?.text || (item.contentSnippet ?? "").trim();
     const htmlExtracted = extracted?.html || html || null;
     const imageUrl = extractRssImageUrl(anyItem, htmlExtracted || html);
@@ -165,3 +165,4 @@ export async function syncRssSource(rssSourceId: string) {
 
   return { inserted, updated };
 }
+

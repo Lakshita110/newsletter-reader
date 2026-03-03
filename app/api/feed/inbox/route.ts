@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { parseFrom, normalizePublicationKey } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
-import { RssPriority } from "@prisma/client";
+type RssPriority = "HIGH" | "NORMAL" | "LOW";
 
 type FeedItem = {
   id: string;
@@ -108,13 +108,22 @@ async function getGmailFeed(accessToken?: string): Promise<FeedItem[]> {
   oauth2Client.setCredentials({ access_token: accessToken });
   const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
-  const list = await gmail.users.messages.list({
-    userId: "me",
-    q: "newer_than:30d",
-    maxResults: 40,
-  });
-
-  const messages = list.data.messages ?? [];
+  let messages: gmail_v1.Schema$Message[] = [];
+  try {
+    const list = await gmail.users.messages.list({
+      userId: "me",
+      q: "newer_than:30d",
+      maxResults: 40,
+    });
+    messages = list.data.messages ?? [];
+  } catch (error) {
+    const status = (error as { code?: number; status?: number; response?: { status?: number } })
+      .response?.status ??
+      (error as { code?: number; status?: number }).code ??
+      (error as { code?: number; status?: number }).status;
+    if (status === 401 || status === 403) return [];
+    throw error;
+  }
   const results = await Promise.all(
     messages.map(async (message) => {
       const id = message.id;
@@ -264,3 +273,6 @@ export async function GET(req: Request) {
     overflowBySource: rss.overflowBySource,
   });
 }
+
+
+

@@ -1,6 +1,7 @@
-import { Readability } from "@mozilla/readability";
-import { JSDOM } from "jsdom";
 import { convert } from "html-to-text";
+
+let readabilityCtor: (typeof import("@mozilla/readability"))["Readability"] | null | undefined;
+let jsdomCtor: (typeof import("jsdom"))["JSDOM"] | null | undefined;
 
 function normalizeText(value: string): string {
   return value
@@ -30,19 +31,42 @@ function fallbackToText(html: string): string {
   );
 }
 
-export function extractArticleContent(html: string, url?: string) {
+async function getReadabilityDeps() {
+  if (readabilityCtor !== undefined && jsdomCtor !== undefined) {
+    return { Readability: readabilityCtor, JSDOM: jsdomCtor };
+  }
+
+  try {
+    const [readabilityModule, jsdomModule] = await Promise.all([
+      import("@mozilla/readability"),
+      import("jsdom"),
+    ]);
+    readabilityCtor = readabilityModule.Readability;
+    jsdomCtor = jsdomModule.JSDOM;
+  } catch {
+    readabilityCtor = null;
+    jsdomCtor = null;
+  }
+
+  return { Readability: readabilityCtor, JSDOM: jsdomCtor };
+}
+
+export async function extractArticleContent(html: string, url?: string) {
   if (!html) return { html: "", text: "" };
 
   try {
-    const dom = new JSDOM(html, url ? { url } : undefined);
-    const reader = new Readability(dom.window.document);
-    const article = reader.parse();
+    const { Readability, JSDOM } = await getReadabilityDeps();
+    if (Readability && JSDOM) {
+      const dom = new JSDOM(html, url ? { url } : undefined);
+      const reader = new Readability(dom.window.document);
+      const article = reader.parse();
 
-    const extractedHtml = article?.content?.trim() ?? "";
-    const extractedText = normalizeText(article?.textContent?.trim() ?? "");
+      const extractedHtml = article?.content?.trim() ?? "";
+      const extractedText = normalizeText(article?.textContent?.trim() ?? "");
 
-    if (extractedHtml && extractedText.length > 200) {
-      return { html: extractedHtml, text: extractedText };
+      if (extractedHtml && extractedText.length > 200) {
+        return { html: extractedHtml, text: extractedText };
+      }
     }
   } catch {
     // fall through to fallback extraction
@@ -50,4 +74,3 @@ export function extractArticleContent(html: string, url?: string) {
 
   return { html, text: fallbackToText(html) };
 }
-

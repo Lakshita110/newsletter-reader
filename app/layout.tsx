@@ -20,9 +20,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${sans.className} ${mono.variable}`}>
+      <body suppressHydrationWarning className={`${sans.className} ${mono.variable}`}>
         <Providers>{children}</Providers>
       </body>
     </html>
   );
 }
+

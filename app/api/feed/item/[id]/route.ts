@@ -75,7 +75,7 @@ async function getGmailItem(id: string, accessToken: string) {
   const date = getHeader(headers, "Date");
   const { html, text } = extractBodies(payload);
   const extractedText = html
-    ? extractArticleContent(html).text
+    ? (await extractArticleContent(html)).text
     : cleanText(text ?? msg.data.snippet ?? "");
 
   return {
@@ -115,7 +115,7 @@ async function getRssItem(userId: string, rawId: string) {
       const res = await fetch(item.link, { headers: { "User-Agent": "newsletter-reader/1.0" } });
       if (res.ok) {
         const fetchedHtml = await res.text();
-        const extracted = extractArticleContent(fetchedHtml, item.link);
+        const extracted = await extractArticleContent(fetchedHtml, item.link);
         html = extracted.html || fetchedHtml;
         text = extracted.text;
         await prisma.rssItem.update({
@@ -184,3 +184,4 @@ export async function GET(req: Request) {
   const data = await getGmailItem(id, accessToken);
   return NextResponse.json(data);
 }
+
