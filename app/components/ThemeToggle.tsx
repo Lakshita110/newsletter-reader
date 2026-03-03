@@ -13,7 +13,15 @@ function resolveInitialTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-export function ThemeToggle() {
+export function ThemeInitializer() {
+  useEffect(() => {
+    document.documentElement.dataset.theme = resolveInitialTheme();
+  }, []);
+
+  return null;
+}
+
+export function ThemeToggle({ className = "theme-toggle" }: { className?: string }) {
   const [theme, setTheme] = useState<Theme>(() => resolveInitialTheme());
 
   useEffect(() => {
@@ -29,7 +37,7 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      className="theme-toggle"
+      className={className}
       onClick={toggleTheme}
       aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
       title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}

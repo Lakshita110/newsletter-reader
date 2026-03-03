@@ -17,15 +17,19 @@ export function FeedList({
   ordered,
   selectedIndex,
   statusById,
+  savedById,
   onOpen,
   onMarkRead,
+  onToggleSaved,
 }: {
   grouped: GroupedInboxItems[];
   ordered: EnrichedInboxItem[];
   selectedIndex: number;
   statusById: Record<string, FeedReadStatus>;
+  savedById?: Record<string, boolean>;
   onOpen: (id: string) => void;
   onMarkRead: (id: string) => void;
+  onToggleSaved?: (id: string) => void;
 }) {
   return (
     <section>
@@ -46,8 +50,8 @@ export function FeedList({
             const isSelected = ordered[selectedIndex]?.id === it.id;
             const status = statusById[it.id] ?? "unread";
             const isRead = status === "read";
-            const isInProgress = status === "in-progress";
             const hasThumb = it.sourceKind === "rss" && Boolean(it.imageUrl);
+            const isSaved = savedById?.[it.id] === true;
 
             return (
               <Link
@@ -58,10 +62,10 @@ export function FeedList({
                 className="feed-item"
                 style={{
                   display: "block",
-                  padding: "14px 10px",
+                  padding: "24px 8px 14px",
                   borderBottom: "1px solid var(--faint)",
-                  borderRadius: 10,
-                  background: isSelected ? "var(--surface-muted)" : "transparent",
+                  borderRadius: 0,
+                  background: isSelected ? "var(--surface-accent-soft)" : "transparent",
                   opacity: isRead ? 0.86 : 1,
                 }}
               >
@@ -74,27 +78,92 @@ export function FeedList({
                     alignItems: "start",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                    {isInProgress && (
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        marginBottom: 8,
+                      }}
+                    >
                       <span
                         style={{
-                          fontSize: 11,
-                          padding: "1px 6px",
-                          borderRadius: 999,
-                          border: "1px solid var(--warning-border)",
-                          color: "var(--warning-text)",
-                          background: "var(--warning-bg)",
+                          fontSize: 12,
+                          color: "var(--muted)",
+                          fontFamily: "var(--font-mono)",
+                          letterSpacing: 0.4,
+                          whiteSpace: "nowrap",
                         }}
                       >
-                        In progress
+                        <span
+                          style={{
+                            display: "inline-block",
+                            width: 7,
+                            height: 7,
+                            borderRadius: 999,
+                            background: isRead ? "transparent" : "var(--accent-blue)",
+                            border: isRead ? "1px solid var(--faint)" : "none",
+                            marginRight: 8,
+                          }}
+                        />
+                        {it.publicationName} · {formatDateTime(it.date)}
                       </span>
-                    )}
+
+                      <div className="feed-item-actions" style={{ display: "flex", gap: 8 }}>
+                        {onToggleSaved && (
+                          <button
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onToggleSaved(it.id);
+                            }}
+                            style={{
+                              fontSize: 12,
+                              border: "1px solid var(--faint)",
+                              background: "var(--surface)",
+                              color: isSaved ? "var(--accent-blue)" : "var(--muted)",
+                              borderRadius: 999,
+                              padding: "3px 8px",
+                              cursor: "pointer",
+                            }}
+                            title={isSaved ? "Remove saved" : "Save item"}
+                          >
+                            {isSaved ? "Saved" : "Save"}
+                          </button>
+                        )}
+                        {!isRead && (
+                          <button
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onMarkRead(it.id);
+                            }}
+                            style={{
+                              fontSize: 12,
+                              border: "1px solid var(--faint)",
+                              background: "var(--surface)",
+                              color: "var(--muted)",
+                              borderRadius: 999,
+                              padding: "3px 8px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Mark read
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
                     <div
                       style={{
                         fontSize: 17,
-                        fontWeight: isRead ? 450 : 550,
-                        letterSpacing: -0.2,
-                        opacity: 1,
+                        lineHeight: 1.3,
+                        letterSpacing: -0.1,
+                        fontWeight: 500,
+                        fontFamily: "Georgia, 'Times New Roman', serif",
+                        color: "var(--text)",
                         minWidth: 0,
                       }}
                     >
@@ -102,67 +171,16 @@ export function FeedList({
                     </div>
                   </div>
 
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      opacity: isRead ? 0.65 : 1,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 12,
-                        padding: "2px 8px",
-                        borderRadius: 6,
-                        background: isRead ? "var(--surface)" : "var(--surface-accent)",
-                        border: isRead ? "1px solid var(--faint)" : "1px solid transparent",
-                        color: isRead ? "var(--muted)" : "var(--accent-blue)",
-                        fontFamily: "var(--font-mono)",
-                      }}
-                    >
-                      {it.publicationName}
-                    </span>
-                    <span style={{ color: "var(--muted)", fontSize: 12, whiteSpace: "nowrap" }}>
-                      {formatDateTime(it.date)}
-                    </span>
-                  </div>
-
                   {it.snippet && (
                     <div
                       style={{
                         color: "var(--muted)",
-                        fontSize: 14,
-                        lineHeight: 1.45,
+                        fontSize: 15,
+                        lineHeight: 1.7,
                         opacity: isRead ? 0.84 : 1,
                       }}
                     >
                       {summarizeSnippet(it.snippet)}
-                    </div>
-                  )}
-
-                  {!isRead && (
-                    <div>
-                      <button
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          onMarkRead(it.id);
-                        }}
-                        style={{
-                          fontSize: 12,
-                          border: "1px solid var(--faint)",
-                          background: "var(--surface)",
-                          color: "var(--muted)",
-                          borderRadius: 8,
-                          padding: "4px 8px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Mark read
-                      </button>
                     </div>
                   )}
 

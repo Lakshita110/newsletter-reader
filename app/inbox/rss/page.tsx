@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { DayPills, PublicationPills } from "../components/FilterPills";
+import { InboxFilters, type InboxViewMode, toDayOptions } from "../components/FilterPills";
 import { FeedList } from "../components/FeedList";
 import { InboxHeader } from "../components/InboxHeader";
 import { InboxModeTabs } from "../components/InboxModeTabs";
@@ -39,9 +39,10 @@ export default function RssInboxPage() {
   const { data: session } = useSession();
   const [items, setItems] = useState<InboxItem[]>([]);
   const [q, setQ] = useState("");
+  const [viewMode, setViewMode] = useState<InboxViewMode>("today");
   const [selectedPub, setSelectedPub] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedDay, setSelectedDay] = useState<string | null>(() => getRelativeKeys().todayKey);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [showAllEarlier, setShowAllEarlier] = useState(false);
   const [overflowBySource, setOverflowBySource] = useState<
     { sourceId: string; sourceName: string; count: number }[]
@@ -55,6 +56,17 @@ export default function RssInboxPage() {
     if (!stored) return {};
     try {
       const parsed = JSON.parse(stored) as Record<string, FeedReadStatus>;
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+  const [savedById, setSavedById] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {};
+    const stored = window.localStorage.getItem("nr_saved_items_map");
+    if (!stored) return {};
+    try {
+      const parsed = JSON.parse(stored) as Record<string, boolean>;
       return parsed && typeof parsed === "object" ? parsed : {};
     } catch {
       return {};
@@ -159,6 +171,10 @@ export default function RssInboxPage() {
     window.localStorage.setItem("nr_read_status_map", JSON.stringify(statusById));
   }, [statusById]);
 
+  useEffect(() => {
+    window.localStorage.setItem("nr_saved_items_map", JSON.stringify(savedById));
+  }, [savedById]);
+
   const publications = useMemo(() => getPublications(items), [items]);
   const categories = useMemo(() => {
     const map = new Map<string, { key: string; count: number }>();
@@ -171,13 +187,21 @@ export default function RssInboxPage() {
   }, [items]);
   const enriched = useMemo(() => enrichItems(items), [items]);
   const days = useMemo(() => getDays(enriched), [enriched]);
-  const categoryFiltered = useMemo(
-    () =>
-      selectedCategory
-        ? enriched.filter((it) => (it.category?.trim() || "uncategorized") === selectedCategory)
-        : enriched,
-    [enriched, selectedCategory]
-  );
+  const { todayKey } = useMemo(() => getRelativeKeys(), []);
+
+  const viewFiltered = useMemo(() => {
+    return enriched.filter((it) => {
+      if (viewMode === "today") return it._dayKey === todayKey;
+      if (viewMode === "unread") return statusById[it.id] !== "read";
+      if (viewMode === "saved") return savedById[it.id] === true;
+      return true;
+    });
+  }, [enriched, savedById, statusById, todayKey, viewMode]);
+
+  const categoryFiltered = useMemo(() => {
+    if (!selectedCategory) return viewFiltered;
+    return viewFiltered.filter((it) => (it.category?.trim() || "uncategorized") === selectedCategory);
+  }, [selectedCategory, viewFiltered]);
 
   const filtered = useMemo(
     () => filterItems(categoryFiltered, q, selectedPub, selectedDay),
@@ -199,9 +223,9 @@ export default function RssInboxPage() {
   const activeSelectedIndex =
     ordered.length === 0 ? 0 : Math.min(selectedIndex, ordered.length - 1);
   const olderUnreadIds = useMemo(() => {
-    if (selectedDay) return [];
+    if (selectedDay || viewMode !== "all") return [];
     return dailyEdition.olderIds.filter((id) => statusById[id] !== "read");
-  }, [dailyEdition.olderIds, selectedDay, statusById]);
+  }, [dailyEdition.olderIds, selectedDay, statusById, viewMode]);
   const contextById = useMemo(() => {
     const next: Record<string, { title: string; sourceKind: "gmail" | "rss"; publicationName: string }> =
       {};
@@ -235,6 +259,10 @@ export default function RssInboxPage() {
       body: JSON.stringify({ messageId: id, state: "read", metadata: contextById[id] }),
     }).catch(() => null);
   }, [contextById]);
+
+  const toggleSaved = useCallback((id: string) => {
+    setSavedById((prev) => ({ ...prev, [id]: !prev[id] }));
+  }, []);
 
   const catchUpOlder = () => {
     if (olderUnreadIds.length === 0) return;
@@ -328,98 +356,69 @@ export default function RssInboxPage() {
   }
 
   return (
-    <main style={{ maxWidth: 900, margin: "44px auto", padding: 20 }}>
+    <main style={{ maxWidth: 768, margin: "44px auto", padding: "0 24px 20px" }}>
       <InboxModeTabs mode="rss" />
       <InboxHeader
-        shownCount={ordered.length}
-        todayStats={todayStats}
+        unreadCount={enriched.filter((it) => statusById[it.id] !== "read").length}
+        todayCount={todayStats.totalToday}
         userEmail={session.user?.email}
         q={q}
         onQueryChange={setQ}
-        hasSelectedPublication={Boolean(selectedPub)}
-        onClearPublication={() => setSelectedPub(null)}
-        olderUnreadCount={olderUnreadIds.length}
-        onCatchUpOlder={catchUpOlder}
+        profileLinks={[{ label: "Manage feeds", href: "/rss/settings" }]}
       />
 
-      <Link href="/rss/settings" className="manage-rss-pill">
-        Manage RSS feeds
-      </Link>
-      <button
-        type="button"
-        className="sync-rss-pill"
-        onClick={() => syncRssFeeds(false)}
-        disabled={isSyncingRss}
-        title="Sync RSS feeds now"
-      >
-        {isSyncingRss ? "Syncing..." : "Sync feeds"}
-      </button>
-
-      <PublicationPills
+      <InboxFilters
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
         selectedPub={selectedPub}
-        publications={publications}
-        onSelect={setSelectedPub}
+        selectedCategory={selectedCategory}
+        selectedDay={selectedDay}
+        publicationOptions={publications.map((p) => ({ key: p.key, label: p.name }))}
+        categoryOptions={categories.map((c) => ({
+          key: c.key,
+          label: c.key === "uncategorized" ? "Uncategorized" : getRssCategoryLabel(c.key),
+        }))}
+        dayOptions={toDayOptions(days)}
+        onPublicationChange={setSelectedPub}
+        onCategoryChange={setSelectedCategory}
+        onDayChange={setSelectedDay}
+        rightAction={
+          <button
+            type="button"
+            onClick={() => syncRssFeeds(false)}
+            disabled={isSyncingRss}
+            className="filter-action-btn"
+            title="Sync RSS feeds now"
+            style={{ gap: 6 }}
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M23 4v6h-6" />
+              <path d="M1 20v-6h6" />
+              <path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10" />
+              <path d="M20.49 15a9 9 0 0 1-14.13 3.36L1 14" />
+            </svg>
+            <span>{isSyncingRss ? "Syncing..." : "Sync feed"}</span>
+          </button>
+        }
       />
 
-      <section style={{ marginBottom: 18 }}>
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-            padding: 12,
-            background: "var(--surface)",
-            border: "1px solid var(--faint)",
-            borderRadius: 16,
-          }}
-        >
-          <button
-            onClick={() => setSelectedCategory(null)}
-            style={{
-              cursor: "pointer",
-              borderRadius: 999,
-              padding: "6px 10px",
-              fontSize: 13,
-              border: "1px solid var(--faint)",
-              background: selectedCategory === null ? "var(--surface-accent)" : "var(--surface)",
-              color: selectedCategory === null ? "var(--accent-blue)" : "var(--muted)",
-            }}
-          >
-            All categories
-          </button>
-          {categories.map((c) => (
-            <button
-              key={c.key}
-              onClick={() => setSelectedCategory(c.key)}
-              style={{
-                cursor: "pointer",
-                borderRadius: 999,
-                padding: "6px 10px",
-                fontSize: 13,
-                border: "1px solid var(--faint)",
-                background:
-                  selectedCategory === c.key ? "var(--surface-accent)" : "var(--surface)",
-                color: selectedCategory === c.key ? "var(--accent-blue)" : "var(--muted)",
-              }}
-            >
-              {c.key === "uncategorized" ? "Uncategorized" : getRssCategoryLabel(c.key)} ({c.count})
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <DayPills selectedDay={selectedDay} days={days} onSelect={setSelectedDay} />
-
-      <div style={{ margin: "0 0 18px", color: "var(--muted)", fontSize: 13 }}>
-        Keyboard: arrows or j/k (move), Enter/o (open), r (mark read).
-      </div>
       {rssSyncNotice && (
         <div style={{ margin: "-8px 0 14px", color: "var(--muted)", fontSize: 12 }}>
           {rssSyncNotice}
         </div>
       )}
 
-      {!selectedDay && dailyEdition.hiddenEarlierCount > 0 && (
+      {viewMode === "all" && !selectedDay && dailyEdition.hiddenEarlierCount > 0 && (
         <div style={{ marginBottom: 12 }}>
           <button
             onClick={() => setShowAllEarlier((prev) => !prev)}
@@ -440,7 +439,7 @@ export default function RssInboxPage() {
         </div>
       )}
 
-      {overflowBySource.length > 0 && !selectedDay && (
+      {overflowBySource.length > 0 && !selectedDay && viewMode === "all" && (
         <div
           style={{
             margin: "4px 0 16px",
@@ -478,9 +477,18 @@ export default function RssInboxPage() {
         ordered={ordered}
         selectedIndex={activeSelectedIndex}
         statusById={statusById}
+        savedById={savedById}
         onOpen={markInProgress}
         onMarkRead={markRead}
+        onToggleSaved={toggleSaved}
       />
+      {viewMode === "all" && olderUnreadIds.length > 0 && (
+        <div style={{ margin: "18px 0 0" }}>
+          <button onClick={catchUpOlder} className="btn-pill btn-neutral">
+            Catch up older ({olderUnreadIds.length})
+          </button>
+        </div>
+      )}
     </main>
   );
 }

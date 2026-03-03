@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -23,6 +23,11 @@ type FeedDraft = {
   category: string;
 };
 
+function categoryToneClass(value: string | null | undefined): string {
+  const key = (value ?? "other").toLowerCase();
+  return `category-tone-${key}`;
+}
+
 export default function RssSettingsPage() {
   const { data: session } = useSession();
   const router = useRouter();
@@ -36,18 +41,6 @@ export default function RssSettingsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<FeedDraft>({ name: "", rssUrl: "", category: "other" });
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("all");
-
-  const selectStyle: React.CSSProperties = {
-    border: "1px solid var(--faint)",
-    borderRadius: 10,
-    padding: "8px 10px",
-    background: "var(--surface)",
-    color: "var(--text)",
-    font: "inherit",
-    lineHeight: 1.2,
-    fontSize: "13px",
-    fontWeight: 600,
-  };
 
   const loadFeeds = async () => {
     const res = await fetch("/api/sources/rss", { cache: "no-store" });
@@ -183,6 +176,15 @@ export default function RssSettingsPage() {
     return (feed.category ?? "other") === selectedCategoryFilter;
   });
 
+  const categoryCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const feed of feeds) {
+      const key = (feed.category ?? "other").toLowerCase();
+      map.set(key, (map.get(key) ?? 0) + 1);
+    }
+    return map;
+  }, [feeds]);
+
   if (!session) {
     return (
       <main style={{ maxWidth: 640, margin: "80px auto", padding: 20 }}>
@@ -192,54 +194,43 @@ export default function RssSettingsPage() {
   }
 
   return (
-    <main style={{ maxWidth: 860, margin: "44px auto", padding: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <h1 style={{ margin: 0, fontSize: 28 }}>RSS Feed Settings</h1>
-        <Link href="/inbox/rss" className="back-link-muted">
-          Back to RSS inbox
-        </Link>
-      </div>
+    <main style={{ maxWidth: 768, margin: "44px auto", padding: "0 24px 20px" }}>
+      <header style={{ borderBottom: "1px solid var(--faint)", paddingBottom: 12, marginBottom: 18 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h1 className="settings-title">RSS Feed Settings</h1>
+            <p className="settings-subtitle">Manage your sources, categories, and sync readiness.</p>
+          </div>
+          <Link href="/inbox/rss" className="back-link-muted">
+            Back to RSS inbox
+          </Link>
+        </div>
+      </header>
 
-      <section
-        style={{
-          border: "1px solid var(--faint)",
-          borderRadius: 12,
-          background: "var(--surface)",
-          padding: 14,
-          marginBottom: 16,
-        }}
-      >
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Add a feed</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr auto", gap: 8 }}>
+      <section style={{ marginBottom: 18, borderBottom: "1px solid var(--faint)", paddingBottom: 16 }}>
+        <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>Add feed</div>
+        <div className="settings-grid">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Feed name"
-            style={{
-              border: "1px solid var(--faint)",
-              borderRadius: 10,
-              padding: "8px 10px",
-              background: "var(--surface)",
-              color: "var(--text)",
-            }}
+            className="settings-input"
           />
           <input
             value={rssUrl}
             onChange={(e) => setRssUrl(e.target.value)}
             placeholder="https://example.com/feed.xml"
-            style={{
-              border: "1px solid var(--faint)",
-              borderRadius: 10,
-              padding: "8px 10px",
-              background: "var(--surface)",
-              color: "var(--text)",
-            }}
+            className="settings-input"
           />
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            style={selectStyle}
-          >
+          <select value={category} onChange={(e) => setCategory(e.target.value)} className="filter-select">
             <option value="">Category</option>
             {RSS_CATEGORY_OPTIONS.map((opt) => (
               <option key={opt} value={opt}>
@@ -247,105 +238,76 @@ export default function RssSettingsPage() {
               </option>
             ))}
           </select>
-          <button
-            onClick={addFeed}
-            disabled={isAdding}
-            className="btn-pill btn-pastel-lav"
-          >
-            {isAdding ? "Adding..." : "Add"}
+          <button onClick={addFeed} disabled={isAdding} className="filter-action-btn">
+            {isAdding ? "Adding..." : "Add feed"}
           </button>
         </div>
       </section>
 
-      <section
-        style={{
-          border: "1px solid var(--faint)",
-          borderRadius: 12,
-          background: "var(--surface)",
-          padding: "10px 14px",
-        }}
-      >
+      <section>
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
             gap: 12,
-            marginBottom: 10,
+            marginBottom: 12,
             flexWrap: "wrap",
           }}
         >
-          <div style={{ fontSize: 14, fontWeight: 600 }}>Your feeds ({filteredFeeds.length})</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 13, color: "var(--muted)" }}>Your feeds</div>
+            <div className="settings-count">{filteredFeeds.length}</div>
+          </div>
           <select
             value={selectedCategoryFilter}
             onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-            style={{ ...selectStyle, borderRadius: 999, padding: "6px 10px", minWidth: 170 }}
+            className="filter-select"
             aria-label="Filter feeds by category"
           >
             <option value="all">All categories</option>
             {RSS_CATEGORY_OPTIONS.map((opt) => (
               <option key={opt} value={opt}>
-                {getRssCategoryLabel(opt)}
+                {getRssCategoryLabel(opt)} ({categoryCounts.get(opt) ?? 0})
               </option>
             ))}
           </select>
         </div>
+
         {filteredFeeds.length === 0 ? (
-          <div style={{ color: "var(--muted)" }}>No RSS feeds yet.</div>
+          <div style={{ color: "var(--muted)", fontSize: 14 }}>No RSS feeds yet.</div>
         ) : (
           <div>
             {filteredFeeds.map((feed, index) => {
               const isBusy = busyId === feed.id;
               const isEditing = editingId === feed.id;
+              const itemCategory = feed.category ?? "other";
+
               return (
                 <div
                   key={feed.id}
-                  style={{
-                    borderBottom:
-                      index < filteredFeeds.length - 1 ? "1px solid var(--faint)" : "none",
-                    padding: "12px 0",
-                    display: "grid",
-                    gap: 6,
-                  }}
+                  className={`settings-feed-row ${categoryToneClass(itemCategory)}`}
+                  style={{ borderBottom: index < filteredFeeds.length - 1 ? "1px solid var(--faint)" : "none" }}
                 >
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "minmax(0, 1fr) auto",
-                      gap: 10,
-                      alignItems: "start",
-                    }}
-                  >
+                  <div className="settings-feed-main">
                     {isEditing ? (
                       <div style={{ display: "grid", gap: 8 }}>
                         <input
                           value={draft.name}
                           onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))}
                           placeholder="Feed name"
-                          style={{
-                            border: "1px solid var(--faint)",
-                            borderRadius: 8,
-                            padding: "6px 8px",
-                            background: "var(--surface)",
-                            color: "var(--text)",
-                          }}
+                          className="settings-input"
                         />
                         <input
                           value={draft.rssUrl}
                           onChange={(e) => setDraft((prev) => ({ ...prev, rssUrl: e.target.value }))}
                           placeholder="https://example.com/feed.xml"
-                          style={{
-                            border: "1px solid var(--faint)",
-                            borderRadius: 8,
-                            padding: "6px 8px",
-                            background: "var(--surface)",
-                            color: "var(--text)",
-                          }}
+                          className="settings-input"
                         />
                         <select
                           value={draft.category}
                           onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}
-                          style={{ ...selectStyle, borderRadius: 8, padding: "6px 8px" }}
+                          className="filter-select"
                         >
                           {RSS_CATEGORY_OPTIONS.map((opt) => (
                             <option key={opt} value={opt}>
@@ -356,24 +318,20 @@ export default function RssSettingsPage() {
                       </div>
                     ) : (
                       <div>
-                        <div style={{ fontWeight: 600 }}>{feed.name}</div>
-                        <div style={{ color: "var(--muted)", fontSize: 13 }}>{feed.rssUrl}</div>
-                        <div style={{ marginTop: 2 }}>
-                          <span className="category-badge">
-                            {getRssCategoryLabel(feed.category ?? "other")}
+                        <div className="settings-feed-title">{feed.name}</div>
+                        <div className="settings-feed-url">{feed.rssUrl}</div>
+                        <div style={{ marginTop: 4 }}>
+                          <span className={`category-badge ${categoryToneClass(itemCategory)}`}>
+                            {getRssCategoryLabel(itemCategory)}
                           </span>
                         </div>
                       </div>
                     )}
 
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <div className="settings-feed-actions">
                       {isEditing ? (
                         <>
-                          <button
-                            onClick={() => saveEdit(feed.id)}
-                            disabled={isBusy}
-                            className="btn-pill-sm btn-pastel-sky"
-                          >
+                          <button onClick={() => saveEdit(feed.id)} disabled={isBusy} className="filter-action-btn">
                             {isBusy ? "Saving..." : "Save"}
                           </button>
                           <button
@@ -385,11 +343,7 @@ export default function RssSettingsPage() {
                           </button>
                         </>
                       ) : (
-                        <button
-                          onClick={() => beginEdit(feed)}
-                          disabled={isBusy}
-                          className="btn-pill-sm btn-neutral"
-                        >
+                        <button onClick={() => beginEdit(feed)} disabled={isBusy} className="btn-pill-sm btn-neutral">
                           Edit
                         </button>
                       )}
@@ -424,7 +378,7 @@ export default function RssSettingsPage() {
                       </button>
                     </div>
                   </div>
-                  <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                  <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 5 }}>
                     {feed.lastSyncedAt
                       ? `Last synced: ${new Date(feed.lastSyncedAt).toLocaleString()}`
                       : "Not synced yet"}
@@ -436,7 +390,7 @@ export default function RssSettingsPage() {
         )}
       </section>
 
-      {notice && <div style={{ marginTop: 12, color: "var(--muted)", fontSize: 13 }}>{notice}</div>}
+      {notice && <div style={{ marginTop: 14, color: "var(--muted)", fontSize: 13 }}>{notice}</div>}
     </main>
   );
 }
