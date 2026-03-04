@@ -2,16 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-
-function getRssLookbackDays(): number {
-  const raw = Number(process.env.RSS_LOOKBACK_DAYS ?? 5);
-  if (!Number.isFinite(raw)) return 5;
-  return Math.min(30, Math.max(1, Math.floor(raw)));
-}
-
-function getRssLookbackCutoff(days: number): Date {
-  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-}
+import { getRssLookbackCutoff, getRssLookbackDays } from "@/lib/rss-helpers";
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
