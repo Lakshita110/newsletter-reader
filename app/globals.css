@@ -570,6 +570,23 @@ button.filter-select {
   padding: 18px;
 }
 
+.reader-content-shell mark {
+  background: #fff176;
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+:root[data-theme="dark"] .reader-content-shell mark {
+  background: #7c6b00;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .reader-content-shell mark {
+    background: #7c6b00;
+  }
+}
+
 .reader-original-frame {
   background: #ffffff;
   color: #111111;
