@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getRssLookbackCutoff, getRssLookbackDays } from "@/lib/rss-helpers";
+import {
+  extractImageUrlFromHtml,
+  getRssLookbackCutoff,
+  getRssLookbackDays,
+} from "@/lib/rss-helpers";
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
@@ -45,17 +49,6 @@ export async function GET(req: Request) {
 
   if (!sub) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const extractImageUrl = (html?: string | null): string | undefined => {
-    if (!html) return undefined;
-    const og = html.match(
-      /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i
-    );
-    if (og?.[1]) return og[1];
-    const img = html.match(/<img[^>]+src=["']([^"']+)["']/i);
-    if (img?.[1]) return img[1];
-    return undefined;
-  };
-
   return NextResponse.json({
     source: {
       id: sub.source.id,
@@ -76,7 +69,7 @@ export async function GET(req: Request) {
       publicationKey: `rss:${sub.source.id}`,
       isOverflow: false,
       externalUrl: item.link ?? undefined,
-      imageUrl: item.imageUrl ?? extractImageUrl(item.htmlRaw),
+      imageUrl: item.imageUrl ?? extractImageUrlFromHtml(item.htmlRaw),
     })),
   });
 }

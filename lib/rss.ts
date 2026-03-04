@@ -1,6 +1,11 @@
 import crypto from "crypto";
 import Parser from "rss-parser";
 import { prisma } from "@/lib/prisma";
+import {
+  extractImageUrlFromHtml,
+  getRssLookbackCutoff,
+  getRssLookbackDays,
+} from "@/lib/rss-helpers";
 
 const parser = new Parser({
   customFields: {
@@ -20,16 +25,6 @@ export function normalizeUrl(input: string): string {
   } catch {
     return input.trim();
   }
-}
-
-function getRssStorageDays(): number {
-  const raw = Number(process.env.RSS_LOOKBACK_DAYS ?? 5);
-  if (!Number.isFinite(raw)) return 5;
-  return Math.min(30, Math.max(1, Math.floor(raw)));
-}
-
-function getRssStorageCutoff(days: number): Date {
-  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
 function deriveExternalId(item: { guid?: string; link?: string; title?: string; isoDate?: string; pubDate?: string }) {
@@ -77,13 +72,7 @@ function extractRssImageUrl(item: Record<string, unknown>, html?: string | null)
     if (url) return url;
   }
 
-  const htmlText = (html ?? "").toString();
-  const og = htmlText.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
-  if (og?.[1]) return og[1];
-  const img = htmlText.match(/<img[^>]+src=["']([^"']+)["']/i);
-  if (img?.[1]) return img[1];
-
-  return undefined;
+  return extractImageUrlFromHtml(html ?? "");
 }
 
 export async function syncRssSource(rssSourceId: string) {
@@ -92,7 +81,7 @@ export async function syncRssSource(rssSourceId: string) {
 
   const feed = await parser.parseURL(source.rssUrl);
   const allItems = feed.items ?? [];
-  const storageCutoff = getRssStorageCutoff(getRssStorageDays());
+  const storageCutoff = getRssLookbackCutoff(getRssLookbackDays());
   const items = allItems.filter((item) => {
     const publishedAt = item.isoDate
       ? new Date(item.isoDate)

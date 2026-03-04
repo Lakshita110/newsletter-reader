@@ -10,6 +10,7 @@ import { normalizeRssCategory } from "@/lib/rss-categories";
 import { rankItemsForDailyCap } from "@/lib/rss-daily-cap-ranker";
 import {
   dayKeyUtc,
+  extractImageUrlFromHtml,
   getRssLookbackCutoff,
   getRssLookbackDays,
   getUserRssReadProfile,
@@ -42,7 +43,6 @@ type DayCandidate = {
   cap: number;
   priority: RssPriority;
   item: {
-    id: string;
     title: string;
     snippet: string | null;
     author: string | null;
@@ -63,15 +63,6 @@ function priorityScore(priority: RssPriority): number {
   if (priority === "HIGH") return 3;
   if (priority === "NORMAL") return 2;
   return 1;
-}
-
-function extractImageUrl(html?: string | null): string | undefined {
-  if (!html) return undefined;
-  const og = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
-  if (og?.[1]) return og[1];
-  const img = html.match(/<img[^>]+src=["']([^"']+)["']/i);
-  if (img?.[1]) return img[1];
-  return undefined;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -526,7 +517,7 @@ async function getRssFeed(
           category: normalizeRssCategory(sub.category) ?? "other",
           isOverflow: false,
           externalUrl: item.link ?? undefined,
-          imageUrl: item.imageUrl ?? extractImageUrl(item.htmlRaw),
+          imageUrl: item.imageUrl ?? extractImageUrlFromHtml(item.htmlRaw),
         };
         const candidates = rankingCandidatesByDay.get(dayKey) ?? [];
         candidates.push({
@@ -535,7 +526,6 @@ async function getRssFeed(
           cap,
           priority: sub.priority,
           item: {
-            id: item.id,
             title: item.title,
             snippet: item.snippet ?? null,
             author: item.author ?? null,

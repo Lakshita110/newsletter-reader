@@ -25,6 +25,15 @@ export function getRssLookbackCutoff(days: number): Date {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
+export function extractImageUrlFromHtml(html?: string | null): string | undefined {
+  if (!html) return undefined;
+  const og = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
+  if (og?.[1]) return og[1];
+  const img = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+  if (img?.[1]) return img[1];
+  return undefined;
+}
+
 export async function getUserRssReadProfile(userId: string): Promise<RssReadProfile> {
   const rows = await prisma.messageReadStat.findMany({
     where: {

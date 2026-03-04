@@ -9,8 +9,6 @@ type RssPriority = "HIGH" | "NORMAL" | "LOW";
 
 type Candidate = {
   id: string;
-  sourceId: string;
-  sourceName: string;
   priority: RssPriority;
   sortTimeMs: number;
   title: string;
@@ -70,8 +68,6 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
       if (dayKeyUtc(item.publishedAt ?? item.createdAt) !== dayKey) continue;
       candidates.push({
         id: `rss:${item.id}`,
-        sourceId: sub.source.id,
-        sourceName: sub.source.name,
         priority: sub.priority,
         sortTimeMs: item.publishedAt?.getTime() ?? item.createdAt.getTime(),
         title: item.title,
