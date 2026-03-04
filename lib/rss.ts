@@ -95,6 +95,7 @@ export async function syncRssSource(rssSourceId: string) {
     await prisma.rssItem.deleteMany({
       where: {
         rssSourceId: source.id,
+        highlights: { none: {} },
         OR: [
           { publishedAt: { lt: storageCutoff } },
           { AND: [{ publishedAt: null }, { createdAt: { lt: storageCutoff } }] },
@@ -191,10 +192,11 @@ export async function syncRssSource(rssSourceId: string) {
   }
 
   // Prune items older than the lookback window on every sync.
-  // SavedArticle records are never touched here — those are kept indefinitely.
+  // Items with highlights and SavedArticle records are never touched — those are kept indefinitely.
   await prisma.rssItem.deleteMany({
     where: {
       rssSourceId: source.id,
+      highlights: { none: {} },
       OR: [
         { publishedAt: { lt: storageCutoff } },
         { AND: [{ publishedAt: null }, { createdAt: { lt: storageCutoff } }] },

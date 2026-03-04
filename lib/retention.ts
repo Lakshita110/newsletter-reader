@@ -42,6 +42,7 @@ async function pruneRssByAge(days: number): Promise<number> {
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   const result = await prisma.rssItem.deleteMany({
     where: {
+      highlights: { none: {} },
       OR: [
         { publishedAt: { lt: cutoff } },
         { AND: [{ publishedAt: null }, { createdAt: { lt: cutoff } }] },
@@ -62,6 +63,9 @@ async function pruneRssPerSource(maxItemsPerSource: number): Promise<number> {
           ORDER BY COALESCE("publishedAt", "createdAt") DESC, "createdAt" DESC
         ) AS rn
       FROM "RssItem"
+      WHERE NOT EXISTS (
+        SELECT 1 FROM "Highlight" WHERE "Highlight"."rssItemId" = "RssItem"."id"
+      )
     ),
     deleted AS (
       DELETE FROM "RssItem" r
