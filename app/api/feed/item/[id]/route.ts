@@ -88,6 +88,31 @@ async function getGmailItem(id: string, accessToken: string) {
   };
 }
 
+const PAYWALLED_DOMAINS = new Set([
+  "wsj.com",
+  "www.wsj.com",
+  "nytimes.com",
+  "www.nytimes.com",
+  "theatlantic.com",
+  "www.theatlantic.com",
+  "foreignaffairs.com",
+  "www.foreignaffairs.com",
+  "ft.com",
+  "www.ft.com",
+  "bloomberg.com",
+  "www.bloomberg.com",
+  "economist.com",
+  "www.economist.com",
+]);
+
+function isPaywalled(url: string): boolean {
+  try {
+    return PAYWALLED_DOMAINS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
 async function getRssItem(userId: string, rawId: string) {
   const rssItemId = rawId.replace(/^rss:/, "");
   const item = await prisma.rssItem.findUnique({
@@ -106,20 +131,29 @@ async function getRssItem(userId: string, rawId: string) {
   let text = item.textExtracted ?? "";
 
   if (!html && !text && item.link) {
-    try {
-      const res = await fetch(item.link, { headers: { "User-Agent": "newsletter-reader/1.0" } });
-      if (res.ok) {
-        const fetchedHtml = await res.text();
-        const extracted = await extractArticleContent(fetchedHtml, item.link);
-        html = extracted.html || fetchedHtml;
-        text = extracted.text;
-        await prisma.rssItem.update({
-          where: { id: item.id },
-          data: { htmlRaw: html, textExtracted: text || null },
-        });
+    const urlsToTry = isPaywalled(item.link)
+      ? [`https://removepaywalls.com/${item.link}`, item.link]
+      : [item.link];
+
+    for (const fetchUrl of urlsToTry) {
+      try {
+        const res = await fetch(fetchUrl, { headers: { "User-Agent": "newsletter-reader/1.0" } });
+        if (res.ok) {
+          const fetchedHtml = await res.text();
+          const extracted = await extractArticleContent(fetchedHtml, item.link);
+          html = extracted.html || fetchedHtml;
+          text = extracted.text;
+          if (text) {
+            await prisma.rssItem.update({
+              where: { id: item.id },
+              data: { htmlRaw: html, textExtracted: text || null },
+            });
+            break;
+          }
+        }
+      } catch {
+        // try next URL
       }
-    } catch {
-      // fall through to external link fallback
     }
   }
 
