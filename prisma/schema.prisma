@@ -32,6 +32,8 @@ model User {
   rssSubscriptions UserRssSubscription[]
   rssRankSnapshots UserRssDailyRankSnapshot[]
   rssRankLocks     UserRssRankJobLock[]
+  savedArticles    SavedArticle[]
+  highlights       Highlight[]
 }
 
 model MessageReadStat {
@@ -91,24 +93,56 @@ model UserRssSubscription {
 }
 
 model RssItem {
-  id           String    @id @default(cuid())
-  rssSourceId  String
-  externalId   String
-  title        String
-  author       String?
-  link         String?
-  imageUrl     String?
-  publishedAt  DateTime?
-  snippet      String?
-  htmlRaw      String?   @db.Text
-  textExtracted String?  @db.Text
-  contentHash  String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  source       RssSource @relation(fields: [rssSourceId], references: [id], onDelete: Cascade)
+  id            String      @id @default(cuid())
+  rssSourceId   String
+  externalId    String
+  title         String
+  author        String?
+  link          String?
+  imageUrl      String?
+  publishedAt   DateTime?
+  snippet       String?
+  htmlRaw       String?     @db.Text
+  textExtracted String?     @db.Text
+  contentHash   String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  source        RssSource   @relation(fields: [rssSourceId], references: [id], onDelete: Cascade)
+  highlights    Highlight[]
 
   @@unique([rssSourceId, externalId])
   @@index([rssSourceId, publishedAt])
+}
+
+model SavedArticle {
+  id         String      @id @default(cuid())
+  userId     String
+  url        String
+  title      String
+  author     String?
+  source     String?
+  text       String      @db.Text
+  savedAt    DateTime    @default(now())
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  highlights Highlight[]
+
+  @@unique([userId, url])
+  @@index([userId, savedAt])
+}
+
+model Highlight {
+  id             String        @id @default(cuid())
+  userId         String
+  text           String
+  note           String?
+  rssItemId      String?
+  savedArticleId String?
+  createdAt      DateTime      @default(now())
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rssItem        RssItem?      @relation(fields: [rssItemId], references: [id], onDelete: SetNull)
+  savedArticle   SavedArticle? @relation(fields: [savedArticleId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
 }
 
 model UserRssDailyRankSnapshot {
