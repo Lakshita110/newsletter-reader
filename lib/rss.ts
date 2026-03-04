@@ -1,11 +1,7 @@
 import crypto from "crypto";
 import Parser from "rss-parser";
 import { prisma } from "@/lib/prisma";
-import {
-  extractImageUrlFromHtml,
-  getRssLookbackCutoff,
-  getRssLookbackDays,
-} from "@/lib/rss-helpers";
+import { extractImageUrlFromHtml } from "@/lib/rss-helpers";
 
 const parser = new Parser({
   customFields: {
@@ -80,29 +76,8 @@ export async function syncRssSource(rssSourceId: string) {
   if (!source || !source.isActive) return { inserted: 0, updated: 0 };
 
   const feed = await parser.parseURL(source.rssUrl);
-  const allItems = feed.items ?? [];
-  const storageCutoff = getRssLookbackCutoff(getRssLookbackDays());
-  const items = allItems.filter((item) => {
-    const publishedAt = item.isoDate
-      ? new Date(item.isoDate)
-      : item.pubDate
-      ? new Date(item.pubDate)
-      : null;
-    if (!publishedAt || Number.isNaN(publishedAt.getTime())) {
-      return true;
-    }
-    return publishedAt >= storageCutoff;
-  });
+  const items = feed.items ?? [];
   if (items.length === 0) {
-    await prisma.rssItem.deleteMany({
-      where: {
-        rssSourceId: source.id,
-        OR: [
-          { publishedAt: { lt: storageCutoff } },
-          { AND: [{ publishedAt: null }, { createdAt: { lt: storageCutoff } }] },
-        ],
-      },
-    });
     await prisma.rssSource.update({
       where: { id: source.id },
       data: { lastSyncedAt: new Date() },
@@ -191,17 +166,6 @@ export async function syncRssSource(rssSourceId: string) {
       skipDuplicates: true,
     });
   }
-
-  // Enforce storage lookback on every sync so old data does not linger in DB.
-  await prisma.rssItem.deleteMany({
-    where: {
-      rssSourceId: source.id,
-      OR: [
-        { publishedAt: { lt: storageCutoff } },
-        { AND: [{ publishedAt: null }, { createdAt: { lt: storageCutoff } }] },
-      ],
-    },
-  });
 
   await prisma.rssSource.update({
     where: { id: source.id },
