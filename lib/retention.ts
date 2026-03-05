@@ -1,16 +1,20 @@
 import { prisma } from "@/lib/prisma";
 
+// Retention applies only to RssItem (transient feed content).
+// SavedArticle and Highlight records are permanent — they represent
+// content the user explicitly chose to keep.
+
 type RetentionConfig = {
   rssRetentionDays: number;
   rssMaxItemsPerSource: number;
 };
 
 function getConfig(): RetentionConfig {
-  const rssRetentionDays = Number(process.env.RETENTION_RSS_DAYS ?? 5);
+  const rssRetentionDays = Number(process.env.RETENTION_RSS_DAYS ?? 30);
   const rssMaxItemsPerSource = Number(process.env.RETENTION_RSS_MAX_ITEMS_PER_SOURCE ?? 500);
 
   return {
-    rssRetentionDays: Number.isFinite(rssRetentionDays) ? rssRetentionDays : 5,
+    rssRetentionDays: Number.isFinite(rssRetentionDays) ? rssRetentionDays : 30,
     rssMaxItemsPerSource: Number.isFinite(rssMaxItemsPerSource) ? rssMaxItemsPerSource : 500,
   };
 }
@@ -38,6 +42,7 @@ async function pruneRssByAge(days: number): Promise<number> {
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   const result = await prisma.rssItem.deleteMany({
     where: {
+      highlights: { none: {} },
       OR: [
         { publishedAt: { lt: cutoff } },
         { AND: [{ publishedAt: null }, { createdAt: { lt: cutoff } }] },
@@ -58,6 +63,9 @@ async function pruneRssPerSource(maxItemsPerSource: number): Promise<number> {
           ORDER BY COALESCE("publishedAt", "createdAt") DESC, "createdAt" DESC
         ) AS rn
       FROM "RssItem"
+      WHERE NOT EXISTS (
+        SELECT 1 FROM "Highlight" WHERE "Highlight"."rssItemId" = "RssItem"."id"
+      )
     ),
     deleted AS (
       DELETE FROM "RssItem" r

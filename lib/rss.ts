@@ -88,15 +88,14 @@ export async function syncRssSource(rssSourceId: string) {
       : item.pubDate
       ? new Date(item.pubDate)
       : null;
-    if (!publishedAt || Number.isNaN(publishedAt.getTime())) {
-      return true;
-    }
+    if (!publishedAt || Number.isNaN(publishedAt.getTime())) return true;
     return publishedAt >= storageCutoff;
   });
   if (items.length === 0) {
     await prisma.rssItem.deleteMany({
       where: {
         rssSourceId: source.id,
+        highlights: { none: {} },
         OR: [
           { publishedAt: { lt: storageCutoff } },
           { AND: [{ publishedAt: null }, { createdAt: { lt: storageCutoff } }] },
@@ -192,10 +191,12 @@ export async function syncRssSource(rssSourceId: string) {
     });
   }
 
-  // Enforce storage lookback on every sync so old data does not linger in DB.
+  // Prune items older than the lookback window on every sync.
+  // Items with highlights and SavedArticle records are never touched — those are kept indefinitely.
   await prisma.rssItem.deleteMany({
     where: {
       rssSourceId: source.id,
+      highlights: { none: {} },
       OR: [
         { publishedAt: { lt: storageCutoff } },
         { AND: [{ publishedAt: null }, { createdAt: { lt: storageCutoff } }] },
