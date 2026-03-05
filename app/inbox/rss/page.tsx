@@ -19,7 +19,7 @@ import {
 } from "../lib/derive";
 import { getRelativeKeys } from "../lib/date";
 import { getRssCategoryLabel } from "@/lib/rss-categories";
-import { readMapFromStorage, saveMapToStorage, toReadStatusMap } from "../lib/client-utils";
+import { readMapFromStorage, saveMapToStorage, toReadStatusMap, toSavedMap } from "../lib/client-utils";
 import { buildContextById, postReadState } from "../lib/read-state";
 import { useFeedKeyboardNavigation } from "../hooks/useFeedKeyboardNavigation";
 import type { FeedReadStatus, InboxItem } from "../types";
@@ -159,7 +159,9 @@ export default function RssInboxPage() {
     (async () => {
       const res = await fetch("/api/read-state");
       if (!res.ok) return;
-      setStatusById(toReadStatusMap(await res.json()));
+      const payload = await res.json();
+      setStatusById(toReadStatusMap(payload));
+      setSavedById(toSavedMap(payload));
     })();
   }, [session?.user?.email]);
 
@@ -235,12 +237,46 @@ export default function RssInboxPage() {
     [contextById]
   );
 
+  const markUnread = useCallback((id: string) => {
+    setStatusById((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    postReadState({ messageId: id, state: "unread" }).catch(() => null);
+  }, []);
+
+  const toggleRead = useCallback(
+    (id: string) => {
+      if (statusById[id] === "read") {
+        markUnread(id);
+        return;
+      }
+      markRead(id);
+    },
+    [markRead, markUnread, statusById]
+  );
+
+  const toggleSaved = useCallback(
+    (id: string) => {
+      const isSaved = savedById[id] === true;
+      setSavedById((prev) => ({ ...prev, [id]: !isSaved }));
+      postReadState({
+        messageId: id,
+        state: isSaved ? "unsaved" : "saved",
+        metadata: contextById[id],
+      }).catch(() => null);
+    },
+    [contextById, savedById]
+  );
+
   useFeedKeyboardNavigation({
     ordered,
     activeSelectedIndex,
     setSelectedIndex,
     onOpen: markInProgress,
-    onMarkRead: markRead,
+    onToggleRead: toggleRead,
+    onToggleSaved: toggleSaved,
   });
 
   const catchUpOlder = useCallback(() => {
@@ -362,7 +398,7 @@ export default function RssInboxPage() {
         savedById={savedById}
         onOpen={markInProgress}
         onMarkRead={markRead}
-        onToggleSaved={(id) => setSavedById((prev) => ({ ...prev, [id]: !prev[id] }))}
+        onToggleSaved={toggleSaved}
       />
 
       {viewMode === "all" && <CatchUpOlderButton count={olderUnreadIds.length} onClick={catchUpOlder} />}

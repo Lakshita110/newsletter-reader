@@ -6,9 +6,10 @@ export function ReaderHeader({
   readingMinutes,
   view,
   onViewChange,
-  onMarkRead,
-  onMarkUnread,
+  onToggleRead,
+  onToggleSaved,
   isMarkedRead,
+  isSaved,
   showViewControls,
   externalUrl,
 }: {
@@ -16,9 +17,10 @@ export function ReaderHeader({
   readingMinutes: number | null;
   view: "clean" | "original" | "text";
   onViewChange: (view: "clean" | "original" | "text") => void;
-  onMarkRead: () => void;
-  onMarkUnread: () => void;
+  onToggleRead: () => void;
+  onToggleSaved: () => void;
   isMarkedRead: boolean;
+  isSaved: boolean;
   showViewControls: boolean;
   externalUrl?: string | null;
 }) {
@@ -61,8 +63,8 @@ export function ReaderHeader({
       return {
         ...basePill,
         border: "none",
-        background: "var(--surface-accent-soft)",
-        color: "var(--accent-blue)",
+        background: active ? "var(--surface-accent)" : "var(--surface-accent-soft)",
+        color: active ? "var(--accent-blue)" : "var(--muted)",
       };
     }
     return {
@@ -171,17 +173,17 @@ export function ReaderHeader({
                 Open full article
               </a>
             )}
-            {isMarkedRead && (
-              <button onClick={onMarkUnread} style={actionPillStyle("neutral")}>
-                Mark as unread
-              </button>
-            )}
             <button
-              onClick={onMarkRead}
-              disabled={isMarkedRead}
-              style={actionPillStyle("primary", isMarkedRead)}
+              onClick={onToggleSaved}
+              style={actionPillStyle("link", isSaved)}
             >
-              {isMarkedRead ? "Read" : "Mark as read"}
+              {isSaved ? "Saved" : "Save for later"}
+            </button>
+            <button
+              onClick={onToggleRead}
+              style={isMarkedRead ? actionPillStyle("neutral") : actionPillStyle("primary")}
+            >
+              {isMarkedRead ? "Mark as unread" : "Mark as read"}
             </button>
           </div>
         </div>

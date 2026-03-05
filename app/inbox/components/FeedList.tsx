@@ -70,6 +70,7 @@ export function FeedList({
                 }}
               >
                 <div
+                  className="feed-item-grid"
                   style={{
                     display: "grid",
                     gridTemplateColumns: hasThumb ? "minmax(0, 1fr) 96px" : "minmax(0, 1fr)",
@@ -80,6 +81,7 @@ export function FeedList({
                 >
                   <div style={{ minWidth: 0 }}>
                     <div
+                      className="feed-item-meta-row"
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -89,6 +91,7 @@ export function FeedList({
                       }}
                     >
                       <span
+                        className="feed-item-meta-text"
                         style={{
                           fontSize: 12,
                           color: "var(--muted)",
@@ -115,6 +118,7 @@ export function FeedList({
                       <div className="feed-item-actions" style={{ display: "flex", gap: 8 }}>
                         {it.externalUrl && (
                           <button
+                            className="feed-item-action-btn"
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
@@ -142,6 +146,7 @@ export function FeedList({
                         )}
                         {onToggleSaved && (
                           <button
+                            className="feed-item-action-btn feed-item-action-btn-saved"
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
@@ -149,20 +154,21 @@ export function FeedList({
                             }}
                             style={{
                               fontSize: 12,
-                              border: "1px solid var(--faint)",
-                              background: "var(--surface)",
+                              border: isSaved ? "1px solid color-mix(in oklab, var(--accent-blue) 55%, var(--faint))" : "1px solid var(--faint)",
+                              background: isSaved ? "var(--surface-accent-soft)" : "var(--surface)",
                               color: isSaved ? "var(--accent-blue)" : "var(--muted)",
                               borderRadius: 999,
                               padding: "3px 8px",
                               cursor: "pointer",
                             }}
-                            title={isSaved ? "Remove saved" : "Save item"}
+                            title={isSaved ? "Remove from saved" : "Save for later"}
                           >
-                            {isSaved ? "Saved" : "Save"}
+                            {isSaved ? "Saved" : "Save for later"}
                           </button>
                         )}
                         {!isRead && (
                           <button
+                            className="feed-item-action-btn"
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
@@ -215,11 +221,10 @@ export function FeedList({
                   {hasThumb && it.imageUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
+                      className="feed-item-thumb"
                       src={it.imageUrl}
                       alt=""
                       style={{
-                        gridColumn: 2,
-                        gridRow: "1 / span 4",
                         width: 96,
                         height: 64,
                         objectFit: "cover",

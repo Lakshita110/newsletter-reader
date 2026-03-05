@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FeedList } from "@/app/inbox/components/FeedList";
 import { enrichItems, groupItemsByDay } from "@/app/inbox/lib/derive";
-import { readMapFromStorage, saveMapToStorage, toReadStatusMap } from "@/app/inbox/lib/client-utils";
+import { readMapFromStorage, saveMapToStorage, toReadStatusMap, toSavedMap } from "@/app/inbox/lib/client-utils";
 import { buildContextById, postReadState } from "@/app/inbox/lib/read-state";
 import type { FeedReadStatus, InboxItem } from "@/app/inbox/types";
 
@@ -41,7 +41,9 @@ export default function SourcePage() {
     (async () => {
       const res = await fetch("/api/read-state");
       if (!res.ok) return;
-      setStatusById(toReadStatusMap(await res.json()));
+      const payload = await res.json();
+      setStatusById(toReadStatusMap(payload));
+      setSavedById(toSavedMap(payload));
     })();
   }, [session?.user?.email]);
 
@@ -74,6 +76,19 @@ export default function SourcePage() {
     [contextById]
   );
 
+  const toggleSaved = useCallback(
+    (id: string) => {
+      const isSaved = savedById[id] === true;
+      setSavedById((prev) => ({ ...prev, [id]: !isSaved }));
+      postReadState({
+        messageId: id,
+        state: isSaved ? "unsaved" : "saved",
+        metadata: contextById[id],
+      }).catch(() => null);
+    },
+    [contextById, savedById]
+  );
+
   useEffect(() => {
     window.localStorage.setItem(
       "nr_ordered_items",
@@ -101,7 +116,7 @@ export default function SourcePage() {
         savedById={savedById}
         onOpen={markInProgress}
         onMarkRead={markRead}
-        onToggleSaved={(id) => setSavedById((prev) => ({ ...prev, [id]: !prev[id] }))}
+        onToggleSaved={toggleSaved}
       />
     </main>
   );

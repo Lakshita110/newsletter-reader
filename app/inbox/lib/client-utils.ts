@@ -41,3 +41,14 @@ export function toReadStatusMap(data: unknown): Record<string, FeedReadStatus> {
   }
   return next;
 }
+
+export function toSavedMap(data: unknown): Record<string, boolean> {
+  const next: Record<string, boolean> = {};
+  const payload = (data && typeof data === "object" ? data : {}) as {
+    savedIds?: unknown[];
+  };
+  for (const id of payload.savedIds ?? []) {
+    if (typeof id === "string") next[id] = true;
+  }
+  return next;
+}

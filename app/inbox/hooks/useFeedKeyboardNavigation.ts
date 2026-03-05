@@ -10,7 +10,9 @@ type Params = {
   activeSelectedIndex: number;
   setSelectedIndex: Dispatch<SetStateAction<number>>;
   onOpen: (id: string) => void;
-  onMarkRead: (id: string) => void;
+  onToggleRead: (id: string) => void;
+  onToggleSaved: (id: string) => void;
+  onOpenExternal?: (url: string) => void;
 };
 
 export function useFeedKeyboardNavigation({
@@ -18,7 +20,9 @@ export function useFeedKeyboardNavigation({
   activeSelectedIndex,
   setSelectedIndex,
   onOpen,
-  onMarkRead,
+  onToggleRead,
+  onToggleSaved,
+  onOpenExternal,
 }: Params) {
   const router = useRouter();
 
@@ -47,13 +51,34 @@ export function useFeedKeyboardNavigation({
         router.push(`/read/${current.id}`);
       } else if (event.key === "r") {
         event.preventDefault();
-        onMarkRead(current.id);
+        onToggleRead(current.id);
+      } else if (event.key === "s") {
+        event.preventDefault();
+        onToggleSaved(current.id);
+      } else if (event.key === "f") {
+        if (current.externalUrl) {
+          event.preventDefault();
+          if (onOpenExternal) {
+            onOpenExternal(current.externalUrl);
+            return;
+          }
+          window.open(current.externalUrl, "_blank", "noopener,noreferrer");
+        }
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeSelectedIndex, onMarkRead, onOpen, ordered, router, setSelectedIndex]);
+  }, [
+    activeSelectedIndex,
+    onOpen,
+    onOpenExternal,
+    onToggleRead,
+    onToggleSaved,
+    ordered,
+    router,
+    setSelectedIndex,
+  ]);
 
   useEffect(() => {
     const current = ordered[activeSelectedIndex];

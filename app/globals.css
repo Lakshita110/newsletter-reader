@@ -148,10 +148,24 @@ a:hover {
   background: var(--surface-accent-soft);
 }
 
+.feed-item-thumb {
+  grid-column: 2;
+  grid-row: 1 / span 4;
+}
+
 .feed-item .feed-item-actions {
   opacity: 0;
   pointer-events: none;
   transition: opacity 120ms ease;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  max-width: 100%;
+}
+
+.feed-item-action-btn {
+  min-height: 28px;
+  min-width: 28px;
 }
 
 .feed-item:hover .feed-item-actions,
@@ -706,5 +720,42 @@ button.filter-select {
   .settings-grid .filter-action-btn,
   .settings-grid .settings-input {
     width: 100%;
+  }
+
+  .feed-item-meta-row {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 8px;
+  }
+
+  .feed-item-meta-text {
+    white-space: normal !important;
+  }
+
+  .feed-item .feed-item-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .feed-item-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .feed-item-thumb {
+    grid-column: 1;
+    grid-row: auto;
+    margin-top: 4px;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .feed-item .feed-item-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .feed-item-action-btn {
+    min-height: 32px;
+    padding: 5px 10px;
   }
 }

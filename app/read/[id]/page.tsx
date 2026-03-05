@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ReaderContent } from "./components/ReaderContent";
 import { ReaderHeader } from "./components/ReaderHeader";
 import { ReaderNav } from "./components/ReaderNav";
+import { toReadStatusMap, toSavedMap } from "@/app/inbox/lib/client-utils";
 import {
   cleanHtml,
   countWords,
@@ -46,6 +47,17 @@ export default function ReadPage() {
     if (!stored) return {};
     try {
       const parsed = JSON.parse(stored) as Record<string, string>;
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+  const [savedById, setSavedById] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {};
+    const stored = window.localStorage.getItem("nr_saved_items_map");
+    if (!stored) return {};
+    try {
+      const parsed = JSON.parse(stored) as Record<string, boolean>;
       return parsed && typeof parsed === "object" ? parsed : {};
     } catch {
       return {};
@@ -99,9 +111,25 @@ export default function ReadPage() {
     }).catch(() => null);
   }, [id]);
 
-  const isMarkedRead = id ? statusById[id] === "read" : false;
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      const res = await fetch("/api/read-state");
+      if (!res.ok) return;
+      const payload = await res.json();
+      if (!isMounted) return;
+      setStatusById(toReadStatusMap(payload));
+      setSavedById(toSavedMap(payload));
+    })().catch(() => null);
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
-  const markRead = () => {
+  const isMarkedRead = id ? statusById[id] === "read" : false;
+  const isSaved = id ? savedById[id] === true : false;
+
+  const markRead = useCallback(() => {
     if (!id) return;
     setStatusById((prev) => ({ ...prev, [id]: "read" }));
     if (typeof window !== "undefined") {
@@ -136,9 +164,9 @@ export default function ReadPage() {
         return next;
       });
     });
-  };
+  }, [id, msg]);
 
-  const markUnread = () => {
+  const markUnread = useCallback(() => {
     if (!id) return;
     setStatusById((prev) => {
       const next = { ...prev };
@@ -163,7 +191,50 @@ export default function ReadPage() {
     }).catch(() => {
       setStatusById((prev) => ({ ...prev, [id]: "read" }));
     });
-  };
+  }, [id]);
+
+  const toggleSaved = useCallback(() => {
+    if (!id) return;
+    const nextSaved = !isSaved;
+    setSavedById((prev) => ({ ...prev, [id]: nextSaved }));
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("nr_saved_items_map");
+      let parsed: Record<string, boolean> = {};
+      try {
+        parsed = stored ? (JSON.parse(stored) as Record<string, boolean>) : {};
+      } catch {
+        parsed = {};
+      }
+      if (nextSaved) parsed[id] = true;
+      else delete parsed[id];
+      window.localStorage.setItem("nr_saved_items_map", JSON.stringify(parsed));
+    }
+    fetch("/api/read-state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messageId: id,
+        state: nextSaved ? "saved" : "unsaved",
+        metadata: msg
+          ? {
+              title: msg.subject || "(No subject)",
+              sourceKind: msg.sourceKind,
+              publicationName: msg.publicationName ?? msg.from,
+            }
+          : undefined,
+      }),
+    }).catch(() => {
+      setSavedById((prev) => ({ ...prev, [id]: isSaved }));
+    });
+  }, [id, isSaved, msg]);
+
+  const toggleRead = useCallback(() => {
+    if (isMarkedRead) {
+      markUnread();
+      return;
+    }
+    markRead();
+  }, [isMarkedRead, markRead, markUnread]);
 
   const sanitized = useMemo(() => sanitizeHtml(msg?.html ?? ""), [msg?.html]);
   const cleanedHtml = useMemo(() => cleanHtml(sanitized), [sanitized]);
@@ -218,6 +289,23 @@ export default function ReadPage() {
         router.push(backHref);
         return;
       }
+      if (event.key === "r") {
+        event.preventDefault();
+        toggleRead();
+        return;
+      }
+      if (event.key === "s") {
+        event.preventDefault();
+        toggleSaved();
+        return;
+      }
+      if (event.key === "f") {
+        if (msg?.externalUrl) {
+          event.preventDefault();
+          window.open(msg.externalUrl, "_blank", "noopener,noreferrer");
+        }
+        return;
+      }
 
       if (event.key === "ArrowLeft" && nav?.prev) {
         event.preventDefault();
@@ -242,7 +330,7 @@ export default function ReadPage() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [msg?.sourceKind, nav, router]);
+  }, [msg?.externalUrl, msg?.sourceKind, nav, router, toggleRead, toggleSaved]);
 
   if (!id) {
     return (
@@ -275,9 +363,10 @@ export default function ReadPage() {
         readingMinutes={readingMinutes}
         view={activeView}
         onViewChange={setView}
-        onMarkRead={markRead}
-        onMarkUnread={markUnread}
+        onToggleRead={toggleRead}
+        onToggleSaved={toggleSaved}
         isMarkedRead={isMarkedRead}
+        isSaved={isSaved}
         showViewControls={showViewControls}
         externalUrl={msg.externalUrl}
       />

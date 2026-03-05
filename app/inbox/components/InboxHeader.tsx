@@ -183,10 +183,13 @@ export function InboxHeader({
                 <code>Enter</code> or <code>o</code> - Open item
               </li>
               <li>
-                <code>r</code> - Mark item as read
+                <code>r</code> - Toggle read/unread
               </li>
               <li>
-                <code>f</code> - Open full article (RSS)
+                <code>s</code> - Toggle save
+              </li>
+              <li>
+                <code>f</code> - Open full article when available
               </li>
               <li>
                 <code>Ctrl+W</code> / <code>Cmd+W</code> - Close full article tab/window

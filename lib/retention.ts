@@ -36,21 +36,41 @@ async function getDatabaseSizeBytes(): Promise<number> {
 async function pruneRssByAge(days: number): Promise<number> {
   if (days <= 0) return 0;
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  const result = await prisma.rssItem.deleteMany({
-    where: {
-      OR: [
-        { publishedAt: { lt: cutoff } },
-        { AND: [{ publishedAt: null }, { createdAt: { lt: cutoff } }] },
-      ],
-    },
-  });
-  return result.count;
+  const deletedRows = await prisma.$queryRaw<Array<{ count: bigint | number | string }>>`
+    WITH saved_items AS (
+      SELECT DISTINCT SUBSTRING("messageExternalId" FROM 5) AS id
+      FROM "MessageReadStat"
+      WHERE "savedAt" IS NOT NULL
+        AND "messageExternalId" LIKE 'rss:%'
+    ),
+    deleted AS (
+      DELETE FROM "RssItem" r
+      WHERE (
+        r."publishedAt" < ${cutoff}
+        OR (r."publishedAt" IS NULL AND r."createdAt" < ${cutoff})
+      )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM saved_items s
+          WHERE s.id = r.id
+        )
+      RETURNING 1
+    )
+    SELECT COUNT(*) AS count FROM deleted
+  `;
+  return toNumber(deletedRows[0]?.count);
 }
 
 async function pruneRssPerSource(maxItemsPerSource: number): Promise<number> {
   if (maxItemsPerSource <= 0) return 0;
   const deletedRows = await prisma.$queryRaw<Array<{ count: bigint | number | string }>>`
-    WITH ranked AS (
+    WITH saved_items AS (
+      SELECT DISTINCT SUBSTRING("messageExternalId" FROM 5) AS id
+      FROM "MessageReadStat"
+      WHERE "savedAt" IS NOT NULL
+        AND "messageExternalId" LIKE 'rss:%'
+    ),
+    ranked AS (
       SELECT
         id,
         ROW_NUMBER() OVER (
@@ -64,11 +84,46 @@ async function pruneRssPerSource(maxItemsPerSource: number): Promise<number> {
       USING ranked
       WHERE r.id = ranked.id
         AND ranked.rn > ${maxItemsPerSource}
+        AND NOT EXISTS (
+          SELECT 1
+          FROM saved_items s
+          WHERE s.id = r.id
+        )
       RETURNING 1
     )
     SELECT COUNT(*) AS count FROM deleted
   `;
   return toNumber(deletedRows[0]?.count);
+}
+
+async function compactSavedRssHtml(days: number): Promise<number> {
+  if (days <= 0) return 0;
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const updatedRows = await prisma.$queryRaw<Array<{ count: bigint | number | string }>>`
+    WITH saved_items AS (
+      SELECT DISTINCT SUBSTRING("messageExternalId" FROM 5) AS id
+      FROM "MessageReadStat"
+      WHERE "savedAt" IS NOT NULL
+        AND "messageExternalId" LIKE 'rss:%'
+    ),
+    updated AS (
+      UPDATE "RssItem" r
+      SET "htmlRaw" = NULL
+      WHERE r."htmlRaw" IS NOT NULL
+        AND (
+          r."publishedAt" < ${cutoff}
+          OR (r."publishedAt" IS NULL AND r."createdAt" < ${cutoff})
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM saved_items s
+          WHERE s.id = r.id
+        )
+      RETURNING 1
+    )
+    SELECT COUNT(*) AS count FROM updated
+  `;
+  return toNumber(updatedRows[0]?.count);
 }
 
 async function pruneOrphanRssSources(): Promise<number> {
@@ -86,6 +141,7 @@ export async function runRetentionNow() {
   const cfg = getConfig();
   const beforeDbBytes = await getDatabaseSizeBytes();
 
+  const rssSavedItemsCompacted = await compactSavedRssHtml(cfg.rssRetentionDays);
   const rssDeletedByAge = await pruneRssByAge(cfg.rssRetentionDays);
   const rssDeletedByPerSourceCap = await pruneRssPerSource(cfg.rssMaxItemsPerSource);
   const rssSourcesDeletedOrphaned = await pruneOrphanRssSources();
@@ -97,6 +153,7 @@ export async function runRetentionNow() {
   return {
     ok: true,
     config: cfg,
+    rssSavedItemsCompacted,
     rssDeletedByAge,
     rssDeletedByPerSourceCap,
     rssSourcesDeletedOrphaned,

@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-type ReadStateUpdate = "in_progress" | "read" | "unread";
+type ReadStateUpdate = "in_progress" | "read" | "unread" | "saved" | "unsaved";
 type SourceKind = "gmail" | "rss";
 
 type ReadStateMetadata = {
@@ -51,19 +51,30 @@ export async function GET() {
       messageExternalId: true,
       completedAt: true,
       completionPct: true,
+      savedAt: true,
+      firstOpenedAt: true,
+      lastOpenedAt: true,
+      openCount: true,
     },
   });
 
   const readIds: string[] = [];
   const inProgressIds: string[] = [];
+  const savedIds: string[] = [];
   for (const row of rows) {
-    if (row.completedAt || row.completionPct >= 99) readIds.push(row.messageExternalId);
-    else inProgressIds.push(row.messageExternalId);
+    const isRead = Boolean(row.completedAt) || row.completionPct >= 99;
+    const isInProgress =
+      !isRead &&
+      (row.completionPct > 0 || row.openCount > 0 || Boolean(row.firstOpenedAt) || Boolean(row.lastOpenedAt));
+    if (isRead) readIds.push(row.messageExternalId);
+    else if (isInProgress) inProgressIds.push(row.messageExternalId);
+    if (row.savedAt) savedIds.push(row.messageExternalId);
   }
 
   return NextResponse.json({
     readIds,
     inProgressIds,
+    savedIds,
   });
 }
 
@@ -81,7 +92,12 @@ export async function POST(req: Request) {
     ? body.messageIds.filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
     : [];
   const state: ReadStateUpdate =
-    body?.state === "read" || body?.state === "unread" ? body.state : "in_progress";
+    body?.state === "read" ||
+    body?.state === "unread" ||
+    body?.state === "saved" ||
+    body?.state === "unsaved"
+      ? body.state
+      : "in_progress";
   const singleMetadata =
     normalizeMetadata(body?.metadata) ??
     normalizeMetadata({
@@ -123,15 +139,18 @@ export async function POST(req: Request) {
       },
     };
 
-    if (state === "unread") {
-      await prisma.messageReadStat.deleteMany({
-        where: {
-          userId: user.id,
-          messageExternalId: targetId,
-        },
-      });
-      continue;
-    }
+    const existing = await prisma.messageReadStat.findUnique({
+      where,
+      select: {
+        id: true,
+        savedAt: true,
+        completedAt: true,
+        completionPct: true,
+        firstOpenedAt: true,
+        lastOpenedAt: true,
+        openCount: true,
+      },
+    });
 
     if (state === "read") {
       await prisma.messageReadStat.upsert({
@@ -156,6 +175,67 @@ export async function POST(req: Request) {
           ...metadataFields,
         },
       });
+      continue;
+    }
+
+    if (state === "saved") {
+      await prisma.messageReadStat.upsert({
+        where,
+        update: {
+          savedAt: now,
+          ...metadataFields,
+        },
+        create: {
+          userId: user.id,
+          messageExternalId: targetId,
+          savedAt: now,
+          ...metadataFields,
+        },
+      });
+      continue;
+    }
+
+    if (state === "unread") {
+      if (!existing) continue;
+      if (existing.savedAt) {
+        await prisma.messageReadStat.update({
+          where,
+          data: {
+            firstOpenedAt: null,
+            lastOpenedAt: null,
+            openCount: 0,
+            totalSecondsRead: 0,
+            maxScrollPct: 0,
+            completionPct: 0,
+            completedAt: null,
+          },
+        });
+      } else {
+        await prisma.messageReadStat.delete({
+          where,
+        });
+      }
+      continue;
+    }
+
+    if (state === "unsaved") {
+      if (!existing) continue;
+      const hasReadState =
+        Boolean(existing.completedAt) ||
+        existing.completionPct > 0 ||
+        existing.openCount > 0 ||
+        Boolean(existing.firstOpenedAt) ||
+        Boolean(existing.lastOpenedAt);
+      if (hasReadState) {
+        await prisma.messageReadStat.update({
+          where,
+          data: { savedAt: null },
+        });
+      } else {
+        await prisma.messageReadStat.delete({
+          where,
+        });
+      }
       continue;
     }
 
