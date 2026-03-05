@@ -117,18 +117,17 @@ export function FeedList({
 
                       <div className="feed-item-actions" style={{ display: "flex", gap: 8 }}>
                         {it.externalUrl && (
-                          <button
+                          <a
                             className="feed-item-action-btn"
+                            href={it.externalUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             onClick={(event) => {
-                              event.preventDefault();
                               event.stopPropagation();
                               const externalUrl = it.externalUrl;
-                              if (!externalUrl) return;
-                              if (onOpenExternal) {
-                                onOpenExternal(externalUrl);
-                                return;
-                              }
-                              window.open(externalUrl, "_blank", "noopener,noreferrer");
+                              if (!externalUrl || !onOpenExternal) return;
+                              event.preventDefault();
+                              onOpenExternal(externalUrl);
                             }}
                             style={{
                               fontSize: 12,
@@ -138,11 +137,12 @@ export function FeedList({
                               borderRadius: 999,
                               padding: "3px 8px",
                               cursor: "pointer",
+                              textDecoration: "none",
                             }}
                             title="Open full article"
                           >
                             Full article
-                          </button>
+                          </a>
                         )}
                         {onToggleSaved && (
                           <button

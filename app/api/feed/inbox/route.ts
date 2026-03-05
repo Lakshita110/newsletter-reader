@@ -587,6 +587,38 @@ async function getRssFeed(
   };
 }
 
+async function getRssFreshSyncStatus(userId: string, selectedSourceId?: string | null): Promise<boolean> {
+  const latestCronSnapshot = await prisma.userRssDailyRankSnapshot.findFirst({
+    where: {
+      userId,
+      source: "CRON",
+    },
+    orderBy: { updatedAt: "desc" },
+    select: { updatedAt: true },
+  });
+
+  if (!latestCronSnapshot) return false;
+
+  const newestItem = await prisma.rssItem.findFirst({
+    where: {
+      source: {
+        subscriptions: {
+          some: {
+            userId,
+            isActive: true,
+            ...(selectedSourceId ? { rssSourceId: selectedSourceId } : {}),
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+
+  if (!newestItem) return false;
+  return newestItem.createdAt > latestCronSnapshot.updatedAt;
+}
+
 export async function GET(req: Request) {
   const auth = await getUserAndToken();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -605,9 +637,10 @@ export async function GET(req: Request) {
     );
   }
 
-  const [gmailItems, rss] = await Promise.all([
+  const [gmailItems, rss, hasFreshSyncItems] = await Promise.all([
     getGmailFeed(auth.accessToken),
     getRssFeed(auth.userId, selectedSourceId, enableRanking, requestTag),
+    getRssFreshSyncStatus(auth.userId, selectedSourceId),
   ]);
 
   let items = [...gmailItems, ...rss.visible].sort((a, b) => {
@@ -622,6 +655,9 @@ export async function GET(req: Request) {
   return NextResponse.json({
     items,
     overflowBySource: rss.overflowBySource,
+    rssMeta: {
+      hasFreshSyncItems,
+    },
   });
 }
 
