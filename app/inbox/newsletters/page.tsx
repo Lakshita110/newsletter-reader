@@ -11,13 +11,13 @@ import { InboxModeTabs } from "../components/InboxModeTabs";
 import {
   buildDailyEdition,
   enrichItems,
+  filterByViewMode,
   filterItems,
   getDays,
   getPublications,
   getTodayStats,
   groupItemsByDay,
 } from "../lib/derive";
-import { getRelativeKeys } from "../lib/date";
 import { readMapFromStorage, saveMapToStorage, toReadStatusMap, toSavedMap } from "../lib/client-utils";
 import { buildContextById, postReadState } from "../lib/read-state";
 import { useFeedKeyboardNavigation } from "../hooks/useFeedKeyboardNavigation";
@@ -70,17 +70,16 @@ export default function NewslettersInboxPage() {
   const publications = useMemo(() => getPublications(items), [items]);
   const enriched = useMemo(() => enrichItems(items), [items]);
   const days = useMemo(() => getDays(enriched), [enriched]);
-  const { todayKey } = useMemo(() => getRelativeKeys(), []);
-
   const viewFiltered = useMemo(
     () =>
-      enriched.filter((it) => {
-        if (viewMode === "today") return it._dayKey === todayKey;
-        if (viewMode === "unread") return statusById[it.id] !== "read";
-        if (viewMode === "saved") return savedById[it.id] === true;
-        return true;
+      filterByViewMode(enriched, {
+        viewMode,
+        statusById,
+        savedById,
+        rolling24hCutoffMs: 0,
+        todayWindowMode: "calendarDay",
       }),
-    [enriched, savedById, statusById, todayKey, viewMode]
+    [enriched, savedById, statusById, viewMode]
   );
 
   const filtered = useMemo(
@@ -97,7 +96,10 @@ export default function NewslettersInboxPage() {
     [dailyEdition.grouped, filtered, selectedDay]
   );
   const ordered = useMemo(() => grouped.flatMap((group) => group.items), [grouped]);
-  const todayStats = useMemo(() => getTodayStats(enriched, statusById), [enriched, statusById]);
+  const todayStats = useMemo(
+    () => getTodayStats(enriched, statusById, { todayWindowMode: "calendarDay" }),
+    [enriched, statusById]
+  );
   const activeSelectedIndex = ordered.length === 0 ? 0 : Math.min(selectedIndex, ordered.length - 1);
   const contextById = useMemo(() => buildContextById(items, "gmail"), [items]);
   const olderUnreadIds = useMemo(() => {
@@ -216,7 +218,7 @@ export default function NewslettersInboxPage() {
         onPublicationChange={setSelectedPub}
         onDayChange={(key) => {
           setSelectedDay(key);
-          if (viewMode === "today" && key && key !== todayKey) setViewMode("all");
+          if (key) setViewMode("all");
         }}
       />
 

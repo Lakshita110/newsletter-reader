@@ -11,13 +11,13 @@ import { InboxModeTabs } from "../components/InboxModeTabs";
 import {
   buildDailyEdition,
   enrichItems,
+  filterByViewMode,
   filterItems,
   getDays,
   getPublications,
   getTodayStats,
   groupItemsByDay,
 } from "../lib/derive";
-import { getRelativeKeys } from "../lib/date";
 import { getRssCategoryLabel } from "@/lib/rss-categories";
 import { readMapFromStorage, saveMapToStorage, toReadStatusMap, toSavedMap } from "../lib/client-utils";
 import { buildContextById, postReadState } from "../lib/read-state";
@@ -185,18 +185,17 @@ export default function RssInboxPage() {
   }, [activeItems]);
   const enriched = useMemo(() => enrichItems(activeItems), [activeItems]);
   const days = useMemo(() => getDays(enriched), [enriched]);
-  const { todayKey } = useMemo(() => getRelativeKeys(), []);
-  const rolling24hCutoffMs = useMemo(() => Date.now() - 24 * 60 * 60 * 1000, []);
+  const [rolling24hCutoffMs] = useState(() => Date.now() - 24 * 60 * 60 * 1000);
   const isSourceFocused = Boolean(selectedPub);
 
   const viewFiltered = useMemo(
     () =>
-      enriched.filter((it) => {
-        const inRolling24h = Boolean(it._date && it._date.getTime() >= rolling24hCutoffMs);
-        if (viewMode === "today") return inRolling24h;
-        if (viewMode === "unread") return inRolling24h && statusById[it.id] !== "read";
-        if (viewMode === "saved") return savedById[it.id] === true;
-        return true;
+      filterByViewMode(enriched, {
+        viewMode,
+        statusById,
+        savedById,
+        rolling24hCutoffMs,
+        todayWindowMode: "none",
       }),
     [enriched, rolling24hCutoffMs, savedById, statusById, viewMode]
   );
@@ -215,7 +214,14 @@ export default function RssInboxPage() {
     [dailyEdition.grouped, filtered, isSourceFocused, selectedDay]
   );
   const ordered = useMemo(() => grouped.flatMap((group) => group.items), [grouped]);
-  const todayStats = useMemo(() => getTodayStats(enriched, statusById), [enriched, statusById]);
+  const todayStats = useMemo(
+    () =>
+      getTodayStats(enriched, statusById, {
+        rolling24hCutoffMs,
+        todayWindowMode: "rolling24h",
+      }),
+    [enriched, rolling24hCutoffMs, statusById]
+  );
   const activeSelectedIndex = ordered.length === 0 ? 0 : Math.min(selectedIndex, ordered.length - 1);
   const contextById = useMemo(() => buildContextById(activeItems, "rss"), [activeItems]);
   const olderUnreadIds = useMemo(() => {
@@ -347,7 +353,7 @@ export default function RssInboxPage() {
         onCategoryChange={setSelectedCategory}
         onDayChange={(key) => {
           setSelectedDay(key);
-          if (viewMode === "today" && key && key !== todayKey) setViewMode("all");
+          if (key) setViewMode("all");
         }}
         rightAction={
           <button
