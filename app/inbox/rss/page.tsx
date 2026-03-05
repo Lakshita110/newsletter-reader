@@ -35,6 +35,9 @@ function escapeSelectorValue(value: string): string {
 export default function RssInboxPage() {
   const { data: session } = useSession();
   const [items, setItems] = useState<InboxItem[]>([]);
+  const [searchItems, setSearchItems] = useState<InboxItem[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [viewMode, setViewMode] = useState<InboxViewMode>("today");
   const [selectedPub, setSelectedPub] = useState<string | null>(null);
@@ -76,6 +79,8 @@ export default function RssInboxPage() {
     const sourceId = selectedPub.slice(4).trim();
     return sourceId || null;
   }, [selectedPub]);
+  const searchQuery = q.trim();
+  const isServerSearchActive = searchQuery.length > 0;
 
   const loadRssInbox = useCallback(async () => {
     const params = new URLSearchParams({ kind: "rss" });
@@ -120,6 +125,68 @@ export default function RssInboxPage() {
   }, [loadRssInbox]);
 
   useEffect(() => {
+    if (!isServerSearchActive) {
+      setSearchItems([]);
+      setIsSearching(false);
+      setSearchError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setIsSearching(true);
+      setSearchError(null);
+      try {
+        const params = new URLSearchParams({ q: searchQuery });
+        if (selectedSourceId) params.set("sourceId", selectedSourceId);
+        const res = await fetch(`/api/search?${params.toString()}`, { signal: controller.signal });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || "Search failed.");
+        const rows: unknown[] = Array.isArray(data?.items) ? data.items : [];
+        const mapped: InboxItem[] = rows
+          .filter((row): row is Record<string, unknown> => typeof row === "object" && row !== null)
+          .map((row): InboxItem => {
+            const sourceId = typeof row.sourceId === "string" ? row.sourceId : "";
+            const sourceName =
+              typeof row.sourceName === "string" && row.sourceName.trim()
+                ? row.sourceName
+                : "Unknown source";
+            const publishedAt =
+              typeof row.publishedAt === "string" && row.publishedAt ? row.publishedAt : null;
+            const subject = typeof row.title === "string" ? row.title : "(No subject)";
+            const rawExcerpt = typeof row.excerpt === "string" ? row.excerpt : "";
+            return {
+              id: typeof row.id === "string" ? row.id : "",
+              sourceId: sourceId || undefined,
+              sourceKind: "rss",
+              subject,
+              from: sourceName,
+              date: publishedAt ?? new Date(0).toISOString(),
+              snippet: rawExcerpt.replace(/<\/?mark>/g, ""),
+              publicationName: sourceName,
+              publicationKey: sourceId ? `rss:${sourceId}` : sourceName.toLowerCase(),
+              category: "other",
+              externalUrl: typeof row.link === "string" ? row.link : undefined,
+            };
+          })
+          .filter((row) => row.id.startsWith("rss:"));
+        setSearchItems(mapped);
+      } catch {
+        if (controller.signal.aborted) return;
+        setSearchItems([]);
+        setSearchError("Search failed. Try again.");
+      } finally {
+        if (!controller.signal.aborted) setIsSearching(false);
+      }
+    }, 250);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [isServerSearchActive, searchQuery, selectedSourceId]);
+
+  useEffect(() => {
     if (!session?.user?.email) return;
     (async () => {
       const res = await fetch("/api/read-state");
@@ -146,17 +213,21 @@ export default function RssInboxPage() {
     window.localStorage.setItem("nr_saved_items_map", JSON.stringify(savedById));
   }, [savedById]);
 
-  const publications = useMemo(() => getPublications(items), [items]);
+  const activeItems = useMemo(
+    () => (isServerSearchActive ? searchItems : items),
+    [isServerSearchActive, items, searchItems]
+  );
+  const publications = useMemo(() => getPublications(activeItems), [activeItems]);
   const categories = useMemo(() => {
     const map = new Map<string, { key: string; count: number }>();
-    for (const item of items) {
+    for (const item of activeItems) {
       const key = item.category?.trim() || "uncategorized";
       const prev = map.get(key);
       map.set(key, { key, count: (prev?.count ?? 0) + 1 });
     }
     return [...map.values()].sort((a, b) => b.count - a.count);
-  }, [items]);
-  const enriched = useMemo(() => enrichItems(items), [items]);
+  }, [activeItems]);
+  const enriched = useMemo(() => enrichItems(activeItems), [activeItems]);
   const days = useMemo(() => getDays(enriched), [enriched]);
   const { todayKey } = useMemo(() => getRelativeKeys(), []);
   const isSourceFocused = Boolean(selectedPub);
@@ -176,8 +247,8 @@ export default function RssInboxPage() {
   }, [selectedCategory, viewFiltered]);
 
   const filtered = useMemo(
-    () => filterItems(categoryFiltered, q, selectedPub, selectedDay),
-    [categoryFiltered, q, selectedPub, selectedDay]
+    () => filterItems(categoryFiltered, isServerSearchActive ? "" : q, selectedPub, selectedDay),
+    [categoryFiltered, isServerSearchActive, q, selectedPub, selectedDay]
   );
 
   const dailyEdition = useMemo(
@@ -201,7 +272,7 @@ export default function RssInboxPage() {
   const contextById = useMemo(() => {
     const next: Record<string, { title: string; sourceKind: "gmail" | "rss"; publicationName: string }> =
       {};
-    for (const item of items) {
+    for (const item of activeItems) {
       next[item.id] = {
         title: item.subject || "(No subject)",
         sourceKind: item.sourceKind ?? "rss",
@@ -209,7 +280,7 @@ export default function RssInboxPage() {
       };
     }
     return next;
-  }, [items]);
+  }, [activeItems]);
 
   const handlePublicationChange = useCallback((key: string | null) => {
     setSelectedPub(key);
@@ -403,6 +474,15 @@ export default function RssInboxPage() {
       {rssSyncNotice && (
         <div style={{ margin: "-8px 0 14px", color: "var(--muted)", fontSize: 12 }}>
           {rssSyncNotice}
+        </div>
+      )}
+      {isServerSearchActive && (
+        <div style={{ margin: "-6px 0 14px", color: "var(--muted)", fontSize: 12 }}>
+          {isSearching
+            ? "Searching RSS articles..."
+            : searchError
+              ? searchError
+              : `Showing ${searchItems.length} search result${searchItems.length === 1 ? "" : "s"}.`}
         </div>
       )}
 
