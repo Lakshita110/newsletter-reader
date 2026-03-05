@@ -17,8 +17,11 @@ export async function POST(req: Request) {
 
   const { text, note, rssItemId, savedArticleId } = body;
   if (!text) return NextResponse.json({ error: "text is required" }, { status: 400 });
-  if (!rssItemId && !savedArticleId) {
-    return NextResponse.json({ error: "rssItemId or savedArticleId is required" }, { status: 400 });
+  if ((rssItemId && savedArticleId) || (!rssItemId && !savedArticleId)) {
+    return NextResponse.json(
+      { error: "Provide exactly one of rssItemId or savedArticleId" },
+      { status: 400 },
+    );
   }
 
   const user = await prisma.user.upsert({
@@ -27,6 +30,31 @@ export async function POST(req: Request) {
     create: { email },
     select: { id: true },
   });
+
+  if (savedArticleId) {
+    const savedArticle = await prisma.savedArticle.findFirst({
+      where: {
+        id: savedArticleId,
+        userId: user.id,
+      },
+      select: { id: true },
+    });
+
+    if (!savedArticle) {
+      return NextResponse.json({ error: "Saved article not found" }, { status: 404 });
+    }
+  }
+
+  if (rssItemId) {
+    const rssItem = await prisma.rssItem.findUnique({
+      where: { id: rssItemId },
+      select: { id: true },
+    });
+
+    if (!rssItem) {
+      return NextResponse.json({ error: "RSS item not found" }, { status: 404 });
+    }
+  }
 
   const highlight = await prisma.highlight.create({
     data: {
