@@ -209,6 +209,7 @@ export default function NewslettersInboxPage() {
 
       <InboxFilters
         viewMode={viewMode}
+        modeOrder={["today", "unread", "saved", "all"]}
         onViewModeChange={setViewMode}
         selectedPub={selectedPub}
         selectedCategory={null}

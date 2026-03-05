@@ -218,7 +218,10 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
   const prompt =
     `Task: choose which articles should appear in today's capped RSS inbox.\n\n` +
     `Selection target:\n` +
-    `- Select exactly ${req.cap} items (or fewer only if fewer candidates exist).\n` +
+    `- Choose 20-30 items whenever candidate volume allows.\n` +
+    `- Never exceed ${req.cap} items.\n` +
+    `- If ${req.cap} is within 20-30, select exactly ${req.cap}.\n` +
+    `- If ${req.cap} is outside 20-30, select min(${req.cap}, candidate_count) while staying as close to 20-30 as possible.\n` +
     `- Order selections from best to worst.\n\n` +
     `Context:\n` +
     `- source: ${req.sourceName}\n` +
