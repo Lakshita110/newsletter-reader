@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ReaderContent } from "./components/ReaderContent";
 import { ReaderHeader } from "./components/ReaderHeader";
 import { ReaderNav } from "./components/ReaderNav";
+import { HighlightPopover } from "./components/HighlightPopover";
 import {
   cleanHtml,
   countWords,
@@ -12,6 +13,8 @@ import {
   stripHtml,
   type ReadMessage,
 } from "./lib/read-utils";
+
+type Popover = { text: string; x: number; y: number };
 
 function isTypingTarget(target: EventTarget | null): boolean {
   const node = target as HTMLElement | null;
@@ -38,8 +41,12 @@ export default function ReadPage() {
     return decoded;
   }, [rawId]);
 
+  const articleRef = useRef<HTMLElement>(null);
   const [msg, setMsg] = useState<ReadMessage | null>(null);
   const [view, setView] = useState<"clean" | "original" | "text">("original");
+  const [highlights, setHighlights] = useState<string[]>([]);
+  const [popover, setPopover] = useState<Popover | null>(null);
+  const [savingHighlight, setSavingHighlight] = useState(false);
   const [statusById, setStatusById] = useState<Record<string, string>>(() => {
     if (typeof window === "undefined") return {};
     const stored = window.localStorage.getItem("nr_read_status_map");
@@ -165,6 +172,73 @@ export default function ReadPage() {
     });
   };
 
+  // Load existing highlights for RSS items
+  useEffect(() => {
+    if (!id || !msg || msg.sourceKind !== "rss") return;
+    fetch(`/api/highlights?rssItemId=${encodeURIComponent(id)}`)
+      .then((r) => r.json())
+      .then((data: { text: string }[]) => {
+        if (Array.isArray(data)) setHighlights(data.map((h) => h.text));
+      })
+      .catch(() => null);
+  }, [id, msg]);
+
+  // Apply mark.js highlighting after content renders
+  useEffect(() => {
+    if (!articleRef.current || highlights.length === 0) return;
+    import("mark.js").then(({ default: Mark }) => {
+      const instance = new Mark(articleRef.current!);
+      instance.unmark({
+        done: () => {
+          for (const text of highlights) {
+            instance.mark(text, { separateWordSearch: false, acrossElements: true });
+          }
+        },
+      });
+    });
+  }, [highlights, msg]);
+
+  const handleMouseUp = useCallback(() => {
+    if (!articleRef.current) return;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) {
+      setPopover(null);
+      return;
+    }
+    const text = selection.toString().trim();
+    if (!text) {
+      setPopover(null);
+      return;
+    }
+    // Only show popover if selection is within article
+    const range = selection.getRangeAt(0);
+    if (!articleRef.current.contains(range.commonAncestorContainer)) {
+      setPopover(null);
+      return;
+    }
+    const rect = range.getBoundingClientRect();
+    setPopover({ text, x: rect.left + rect.width / 2, y: rect.top + window.scrollY });
+  }, []);
+
+  const saveHighlight = useCallback(async () => {
+    if (!popover || !id || !msg || msg.sourceKind !== "rss") return;
+    setSavingHighlight(true);
+    try {
+      await fetch("/api/highlights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rssItemId: id, text: popover.text }),
+      });
+      setHighlights((prev) => [...prev, popover.text]);
+      window.getSelection()?.removeAllRanges();
+      setPopover(null);
+    } catch {
+      // ignore
+    } finally {
+      setSavingHighlight(false);
+    }
+  }, [popover, id, msg]);
+
   const sanitized = useMemo(() => sanitizeHtml(msg?.html ?? ""), [msg?.html]);
   const cleanedHtml = useMemo(() => cleanHtml(sanitized), [sanitized]);
 
@@ -282,7 +356,11 @@ export default function ReadPage() {
         externalUrl={msg.externalUrl}
       />
 
-      <article className="reader-content-shell">
+      <article
+        ref={articleRef}
+        className="reader-content-shell"
+        onMouseUp={msg.sourceKind === "rss" ? handleMouseUp : undefined}
+      >
         <ReaderContent
           message={msg}
           view={activeView}
@@ -290,6 +368,15 @@ export default function ReadPage() {
           cleanedHtml={cleanedHtml}
         />
       </article>
+
+      {popover && msg.sourceKind === "rss" && (
+        <HighlightPopover
+          x={popover.x}
+          y={popover.y}
+          saving={savingHighlight}
+          onSave={saveHighlight}
+        />
+      )}
 
       <ReaderNav nav={nav} />
     </main>
