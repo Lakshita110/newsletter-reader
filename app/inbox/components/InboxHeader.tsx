@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { signOut } from "next-auth/react";
+import { ThemeToggle } from "@/app/components/ThemeToggle";
 
 type Props = {
   todayCount: number;
@@ -82,6 +83,7 @@ export function InboxHeader({
           >
             ?
           </button>
+          <ThemeToggle />
           <div ref={profileMenuRef} style={{ position: "relative" }}>
             <button
               type="button"

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { formatDateTime, type ReadMessage } from "../lib/read-utils";
+import { ThemeToggle } from "@/app/components/ThemeToggle";
 
 export function ReaderHeader({
   message,
@@ -84,7 +85,7 @@ export function ReaderHeader({
 
   return (
     <>
-      <div style={{ marginBottom: 14 }}>
+      <div style={{ marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <Link
           href={backHref}
           style={{
@@ -97,6 +98,7 @@ export function ReaderHeader({
         >
           Back to inbox
         </Link>
+        <ThemeToggle />
       </div>
       <header style={{ marginBottom: 18 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>

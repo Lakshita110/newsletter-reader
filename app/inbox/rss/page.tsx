@@ -72,6 +72,7 @@ export default function RssInboxPage() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isSyncingRss, setIsSyncingRss] = useState(false);
   const [rssSyncNotice, setRssSyncNotice] = useState<string | null>(null);
+  const [hasFreshSyncItems, setHasFreshSyncItems] = useState(false);
   const [statusById, setStatusById] = useState<Record<string, FeedReadStatus>>(() =>
     readMapFromStorage<FeedReadStatus>("nr_read_status_map")
   );
@@ -94,6 +95,7 @@ export default function RssInboxPage() {
     const data = await res.json();
     setItems(Array.isArray(data?.items) ? data.items : []);
     setOverflowBySource(Array.isArray(data?.overflowBySource) ? data.overflowBySource : []);
+    setHasFreshSyncItems(data?.rssMeta?.hasFreshSyncItems === true);
   }, [selectedSourceId]);
 
   const syncRssFeeds = useCallback(async () => {
@@ -109,7 +111,12 @@ export default function RssInboxPage() {
         return;
       }
       await loadRssInbox();
-      setRssSyncNotice(`Synced: ${data?.inserted ?? 0} new, ${data?.updated ?? 0} already present.`);
+      const insertedCount = Number.isFinite(data?.inserted) ? data.inserted : Number(data?.inserted ?? 0);
+      if (insertedCount > 0) {
+        setSelectedDay(null);
+        setViewMode("today");
+      }
+      setRssSyncNotice(`Synced: ${insertedCount} new, ${data?.updated ?? 0} already present.`);
     } finally {
       syncingRef.current = false;
       setIsSyncingRss(false);
@@ -326,6 +333,7 @@ export default function RssInboxPage() {
         viewMode={viewMode}
         modeOrder={["recommended", "today", "unread", "saved", "all"]}
         onViewModeChange={setViewMode}
+        modeLabelOverrides={hasFreshSyncItems ? { today: "New" } : undefined}
         selectedPub={selectedPub}
         selectedCategory={selectedCategory}
         selectedDay={selectedDay}
