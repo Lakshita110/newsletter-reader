@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { formatDayPillLabel } from "../lib/date";
 
-export type InboxViewMode = "today" | "unread" | "saved" | "all";
+export type InboxViewMode = "recommended" | "today" | "unread" | "saved" | "all";
 
-const modeLabel: Record<InboxViewMode, string> = {
+const defaultModeLabel: Record<InboxViewMode, string> = {
+  recommended: "Recommended",
   today: "Today",
   unread: "Unread",
   saved: "Saved",
@@ -25,6 +26,8 @@ export function InboxFilters({
   onCategoryChange,
   onDayChange,
   rightAction,
+  modeOrder,
+  modeLabelOverrides,
 }: {
   viewMode: InboxViewMode;
   onViewModeChange: (mode: InboxViewMode) => void;
@@ -38,6 +41,8 @@ export function InboxFilters({
   onCategoryChange?: (key: string | null) => void;
   onDayChange: (key: string | null) => void;
   rightAction?: React.ReactNode;
+  modeOrder?: InboxViewMode[];
+  modeLabelOverrides?: Partial<Record<InboxViewMode, string>>;
 }) {
   const [showSourceMenu, setShowSourceMenu] = useState(false);
   const sourceMenuRef = useRef<HTMLDivElement | null>(null);
@@ -57,11 +62,15 @@ export function InboxFilters({
 
     window.addEventListener("mousedown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
+  
     return () => {
       window.removeEventListener("mousedown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [showSourceMenu]);
+
+  const modeList = modeOrder ?? ["today", "unread", "saved", "all"];
+  const modeLabel = { ...defaultModeLabel, ...(modeLabelOverrides ?? {}) };
 
   const tagStyle: React.CSSProperties = {
     display: "inline-flex",
@@ -98,7 +107,7 @@ export function InboxFilters({
         }}
       >
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          {(Object.keys(modeLabel) as InboxViewMode[]).map((mode) => (
+          {modeList.map((mode) => (
             <button
               key={mode}
               type="button"

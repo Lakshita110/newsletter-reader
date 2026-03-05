@@ -17,8 +17,8 @@ import {
   getTodayStats,
   groupItemsByDay,
 } from "../lib/derive";
-import { getRelativeKeys } from "../lib/date";
 import { getRssCategoryLabel } from "@/lib/rss-categories";
+import { getRelativeKeys } from "../lib/date";
 import { readMapFromStorage, saveMapToStorage, toReadStatusMap, toSavedMap } from "../lib/client-utils";
 import { buildContextById, postReadState } from "../lib/read-state";
 import { useFeedKeyboardNavigation } from "../hooks/useFeedKeyboardNavigation";
@@ -61,7 +61,7 @@ export default function RssInboxPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [viewMode, setViewMode] = useState<InboxViewMode>("today");
+  const [viewMode, setViewMode] = useState<InboxViewMode>("recommended");
   const [selectedPub, setSelectedPub] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
@@ -186,20 +186,15 @@ export default function RssInboxPage() {
   const enriched = useMemo(() => enrichItems(activeItems), [activeItems]);
   const days = useMemo(() => getDays(enriched), [enriched]);
   const { todayKey } = useMemo(() => getRelativeKeys(), []);
-  const rolling24hCutoffMs = useMemo(() => Date.now() - 24 * 60 * 60 * 1000, []);
   const isSourceFocused = Boolean(selectedPub);
 
-  const viewFiltered = useMemo(
-    () =>
-      enriched.filter((it) => {
-        const inRolling24h = Boolean(it._date && it._date.getTime() >= rolling24hCutoffMs);
-        if (viewMode === "today") return inRolling24h;
-        if (viewMode === "unread") return inRolling24h && statusById[it.id] !== "read";
-        if (viewMode === "saved") return savedById[it.id] === true;
-        return true;
-      }),
-    [enriched, rolling24hCutoffMs, savedById, statusById, viewMode]
-  );
+  const viewFiltered = useMemo(() => {
+    if (viewMode === "recommended") return enriched;
+    if (viewMode === "today") return enriched.filter((it) => it._dayKey === todayKey);
+    if (viewMode === "unread") return enriched.filter((it) => statusById[it.id] !== "read");
+    if (viewMode === "saved") return enriched.filter((it) => savedById[it.id] === true);
+    return enriched;
+  }, [enriched, savedById, statusById, todayKey, viewMode]);
   const categoryFiltered = useMemo(
     () => (selectedCategory ? viewFiltered.filter((it) => (it.category?.trim() || "uncategorized") === selectedCategory) : viewFiltered),
     [selectedCategory, viewFiltered]
@@ -215,7 +210,10 @@ export default function RssInboxPage() {
     [dailyEdition.grouped, filtered, isSourceFocused, selectedDay]
   );
   const ordered = useMemo(() => grouped.flatMap((group) => group.items), [grouped]);
-  const todayStats = useMemo(() => getTodayStats(enriched, statusById), [enriched, statusById]);
+  const todayStats = useMemo(
+    () => getTodayStats(enriched, statusById, { todayWindowMode: "calendarDay" }),
+    [enriched, statusById]
+  );
   const activeSelectedIndex = ordered.length === 0 ? 0 : Math.min(selectedIndex, ordered.length - 1);
   const contextById = useMemo(() => buildContextById(activeItems, "rss"), [activeItems]);
   const olderUnreadIds = useMemo(() => {
@@ -326,6 +324,7 @@ export default function RssInboxPage() {
 
       <InboxFilters
         viewMode={viewMode}
+        modeOrder={["recommended", "today", "unread", "saved", "all"]}
         onViewModeChange={setViewMode}
         selectedPub={selectedPub}
         selectedCategory={selectedCategory}
@@ -336,19 +335,9 @@ export default function RssInboxPage() {
           label: c.key === "uncategorized" ? "Uncategorized" : getRssCategoryLabel(c.key),
         }))}
         dayOptions={toDayOptions(days)}
-        onPublicationChange={(key) => {
-          setSelectedPub(key);
-          if (key) {
-            setViewMode("all");
-            setSelectedDay(null);
-            setShowAllEarlier(true);
-          }
-        }}
+        onPublicationChange={setSelectedPub}
         onCategoryChange={setSelectedCategory}
-        onDayChange={(key) => {
-          setSelectedDay(key);
-          if (viewMode === "today" && key && key !== todayKey) setViewMode("all");
-        }}
+        onDayChange={setSelectedDay}
         rightAction={
           <button
             type="button"

@@ -37,6 +37,35 @@ export function getDays(enriched: EnrichedInboxItem[]) {
   return [...map.values()].sort((a, b) => b.key.localeCompare(a.key)).slice(0, 4);
 }
 
+
+export type TodayWindowMode = "rolling24h" | "calendarDay" | "none";
+
+export type ViewModeFilterArgs = {
+  viewMode: "recommended" | "today" | "unread" | "saved" | "all";
+  statusById: Record<string, FeedReadStatus>;
+  savedById: Record<string, boolean>;
+  rolling24hCutoffMs: number;
+  todayWindowMode?: TodayWindowMode;
+};
+
+export function filterByViewMode(
+  items: EnrichedInboxItem[],
+  { viewMode, statusById, savedById, rolling24hCutoffMs, todayWindowMode = "rolling24h" }: ViewModeFilterArgs
+): EnrichedInboxItem[] {
+  return items.filter((item) => {
+    const inRolling24h = Boolean(item._date && item._date.getTime() >= rolling24hCutoffMs);
+    if (viewMode === "today") {
+      if (todayWindowMode === "none") return true;
+      if (todayWindowMode === "calendarDay") return item._dayKey === getRelativeKeys().todayKey;
+      return inRolling24h;
+    }
+    if (viewMode === "recommended") return true;
+    if (viewMode === "unread") return statusById[item.id] !== "read";
+    if (viewMode === "saved") return savedById[item.id] === true;
+    return true;
+  });
+}
+
 export function filterItems(
   items: EnrichedInboxItem[],
   q: string,
@@ -87,14 +116,16 @@ export function groupItemsByDay(filtered: EnrichedInboxItem[]): GroupedInboxItem
 
 export function getTodayStats(
   items: EnrichedInboxItem[],
-  statusById: Record<string, FeedReadStatus>
+  statusById: Record<string, FeedReadStatus>,
+  opts?: { rolling24hCutoffMs?: number; todayWindowMode?: TodayWindowMode }
 ) {
-  const { todayKey } = getRelativeKeys();
-  const todayItems = items.filter((it) => it._dayKey === todayKey);
+  const todayWindowMode = opts?.todayWindowMode ?? "calendarDay";
+  const todayItems =
+    todayWindowMode === "rolling24h"
+      ? items.filter((it) => Boolean(it._date && it._date.getTime() >= (opts?.rolling24hCutoffMs ?? 0)))
+      : items.filter((it) => it._dayKey === getRelativeKeys().todayKey);
   const readToday = todayItems.filter((it) => statusById[it.id] === "read").length;
-  const inProgressToday = todayItems.filter(
-    (it) => statusById[it.id] === "in-progress"
-  ).length;
+  const inProgressToday = todayItems.filter((it) => statusById[it.id] === "in-progress").length;
   return { readToday, inProgressToday, totalToday: todayItems.length };
 }
 
