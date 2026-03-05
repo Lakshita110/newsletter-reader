@@ -155,6 +155,9 @@ export default function RssInboxPage() {
               typeof row.publishedAt === "string" && row.publishedAt ? row.publishedAt : null;
             const subject = typeof row.title === "string" ? row.title : "(No subject)";
             const rawExcerpt = typeof row.excerpt === "string" ? row.excerpt : "";
+            const category = typeof row.category === "string" && row.category.trim()
+              ? row.category.trim()
+              : "other";
             return {
               id: typeof row.id === "string" ? row.id : "",
               sourceId: sourceId || undefined,
@@ -165,7 +168,7 @@ export default function RssInboxPage() {
               snippet: rawExcerpt.replace(/<\/?mark>/g, ""),
               publicationName: sourceName,
               publicationKey: sourceId ? `rss:${sourceId}` : sourceName.toLowerCase(),
-              category: "other",
+              category,
               externalUrl: typeof row.link === "string" ? row.link : undefined,
             };
           })

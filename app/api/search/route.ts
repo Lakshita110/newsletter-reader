@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 type SearchRow = {
   id: string;
   sourceId: string;
+  category: string | null;
   title: string;
   link: string | null;
   publishedAt: Date | null;
@@ -42,12 +43,16 @@ export async function GET(req: Request) {
   });
 
   const likeQuery = `%${q}%`;
+  const sourceFilter = sourceId
+    ? Prisma.sql`AND ri."rssSourceId" = ${sourceId}`
+    : Prisma.sql``;
   let rows: SearchRow[] = [];
   try {
     rows = await prisma.$queryRaw<SearchRow[]>`
       SELECT
         ri.id,
         ri."rssSourceId" AS "sourceId",
+        urs.category,
         ri.title,
         ri.link,
         ri."publishedAt",
@@ -68,7 +73,7 @@ export async function GET(req: Request) {
         AND urs."isActive" = true
       , plainto_tsquery('english', ${q}) query
       WHERE ri."searchVector" @@ query
-        AND (${sourceId ?? null} IS NULL OR ri."rssSourceId" = ${sourceId ?? null})
+        ${sourceFilter}
       ORDER BY rank DESC
       LIMIT 30
     `;
@@ -78,6 +83,7 @@ export async function GET(req: Request) {
       SELECT
         ri.id,
         ri."rssSourceId" AS "sourceId",
+        urs.category,
         ri.title,
         ri.link,
         ri."publishedAt",
@@ -95,7 +101,7 @@ export async function GET(req: Request) {
         ri.title ILIKE ${likeQuery}
         OR coalesce(ri."textExtracted", ri.snippet, '') ILIKE ${likeQuery}
       )
-      AND (${sourceId ?? null} IS NULL OR ri."rssSourceId" = ${sourceId ?? null})
+      ${sourceFilter}
       ORDER BY coalesce(ri."publishedAt", ri."createdAt") DESC
       LIMIT 30
     `;
@@ -104,6 +110,7 @@ export async function GET(req: Request) {
   const items = rows.map((row) => ({
     id: `rss:${row.id}`,
     sourceId: row.sourceId,
+    category: row.category ?? "other",
     title: row.title,
     link: row.link,
     publishedAt: row.publishedAt ?? row.createdAt,
