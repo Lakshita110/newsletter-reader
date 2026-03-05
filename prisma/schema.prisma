@@ -80,7 +80,6 @@ model UserRssSubscription {
   isActive    Boolean     @default(true)
   category    String      @default("other")
   priority    RssPriority @default(NORMAL)
-  dailyCap    Int         @default(2)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)

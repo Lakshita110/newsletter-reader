@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncRssSource } from "@/lib/rss";
 import { rankItemsForDailyCap } from "@/lib/rss-daily-cap-ranker";
-import { dayKeyUtc, getUserRssReadProfile } from "@/lib/rss-helpers";
+import { dayKeyUtc, getRssDailyTargetCap, getUserRssReadProfile } from "@/lib/rss-helpers";
 
 type RssPriority = "HIGH" | "NORMAL" | "LOW";
 
@@ -61,9 +61,7 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
   });
 
   const candidates: Candidate[] = [];
-  let totalCap = 0;
   for (const sub of subscriptions) {
-    if (sub.dailyCap > 0) totalCap += sub.dailyCap;
     for (const item of sub.source.items) {
       if (dayKeyUtc(item.publishedAt ?? item.createdAt) !== dayKey) continue;
       candidates.push({
@@ -84,6 +82,7 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     if (pa !== pb) return pb - pa;
     return b.sortTimeMs - a.sortTimeMs;
   });
+  const totalCap = getRssDailyTargetCap(sortedFallback.length);
 
   const deterministicIds =
     totalCap <= 0

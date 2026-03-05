@@ -37,7 +37,6 @@ export async function GET() {
       siteUrl: sub.source.siteUrl,
       isActive: sub.isActive,
       priority: sub.priority,
-      dailyCap: sub.dailyCap,
       category: parseRssCategoryInput(sub.category).value ?? "other",
       lastSyncedAt: sub.source.lastSyncedAt,
     }))

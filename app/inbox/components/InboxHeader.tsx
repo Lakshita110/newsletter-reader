@@ -186,6 +186,12 @@ export function InboxHeader({
                 <code>r</code> - Mark item as read
               </li>
               <li>
+                <code>f</code> - Open full article (RSS)
+              </li>
+              <li>
+                <code>Ctrl+W</code> / <code>Cmd+W</code> - Close full article tab/window
+              </li>
+              <li>
                 <code>u</code> - Back to inbox from reader
               </li>
               <li>

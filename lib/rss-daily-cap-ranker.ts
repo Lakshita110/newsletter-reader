@@ -216,7 +216,7 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
       : "- no strong preference signals yet";
 
   const prompt =
-    `Task: choose which articles should appear in today's capped RSS inbox for one source.\n\n` +
+    `Task: choose which articles should appear in today's capped RSS inbox.\n\n` +
     `Selection target:\n` +
     `- Select exactly ${req.cap} items (or fewer only if fewer candidates exist).\n` +
     `- Order selections from best to worst.\n\n` +
@@ -235,6 +235,12 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
     `3) Novelty: avoid selecting near-duplicate headlines on the same event unless materially distinct.\n` +
     `4) Diversity: keep a useful spread of subtopics when quality is similar.\n` +
     `5) Timeliness: break ties toward more recent publication time.\n\n` +
+    `Editorial balance constraints (apply when candidates exist):\n` +
+    `- Do not make the list politics-only.\n` +
+    `- Include culture coverage: pick at least 1 culture/arts/society item, and prefer 2 when cap >= 8.\n` +
+    `- Include top tech coverage: pick at least 1 strong tech/AI/product/security/business-of-tech item.\n` +
+    `- Include depth: pick 1-2 long-form or high-depth pieces (analysis, feature, investigation, interview, deep explainer).\n` +
+    `- If a constraint cannot be satisfied from candidates, choose the closest available non-duplicate alternative.\n\n` +
     `Output format rules (strict):\n` +
     `- Return JSON only.\n` +
     `- Use exactly this schema: {"ids":[<index_or_id>, <index_or_id>, ...]}\n` +

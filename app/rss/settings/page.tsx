@@ -13,7 +13,6 @@ type Feed = {
   rssUrl: string;
   category?: string | null;
   isActive: boolean;
-  dailyCap: number;
   lastSyncedAt?: string | null;
 };
 

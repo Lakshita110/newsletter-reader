@@ -601,7 +601,8 @@ button.filter-select {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: color-mix(in oklab, var(--bg) 65%, black 35%);
+  background: color-mix(in oklab, var(--bg) 20%, black 22%);
+  backdrop-filter: blur(2px) saturate(108%);
   display: flex;
   align-items: center;
   justify-content: center;

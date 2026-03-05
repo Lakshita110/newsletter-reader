@@ -7,7 +7,7 @@ import type { InboxItem } from "@/app/inbox/types";
 import { formatDateTime } from "@/app/inbox/lib/date";
 
 type SourcePayload = {
-  source?: { id: string; name: string; dailyCap: number };
+  source?: { id: string; name: string };
   items?: InboxItem[];
 };
 
@@ -49,7 +49,7 @@ export default function SourcePage() {
       </div>
       <h1 style={{ margin: "0 0 8px" }}>{data.source?.name ?? "Source"}</h1>
       <div style={{ color: "var(--muted)", marginBottom: 16, fontSize: 13 }}>
-        Showing all items. Main daily feed cap for this source: {data.source?.dailyCap ?? 0}
+        Showing all recent items from this source.
       </div>
 
       <section>

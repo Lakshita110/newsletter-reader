@@ -326,6 +326,11 @@ export default function RssInboxPage() {
     setSavedById((prev) => ({ ...prev, [id]: !prev[id] }));
   }, []);
 
+  const openExternalArticle = useCallback((url: string) => {
+    const popup = window.open(url, "nr-full-article");
+    if (popup) popup.focus();
+  }, []);
+
   const catchUpOlder = () => {
     if (olderUnreadIds.length === 0) return;
 
@@ -386,12 +391,17 @@ export default function RssInboxPage() {
         const current = ordered[activeSelectedIndex];
         if (!current) return;
         markRead(current.id);
+      } else if (event.key === "f") {
+        const current = ordered[activeSelectedIndex];
+        if (!current?.externalUrl) return;
+        event.preventDefault();
+        openExternalArticle(current.externalUrl);
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeSelectedIndex, markInProgress, markRead, ordered, router]);
+  }, [activeSelectedIndex, markInProgress, markRead, openExternalArticle, ordered, router]);
 
   useEffect(() => {
     if (ordered.length === 0) return;
@@ -551,6 +561,7 @@ export default function RssInboxPage() {
         savedById={savedById}
         onOpen={markInProgress}
         onMarkRead={markRead}
+        onOpenExternal={openExternalArticle}
         onToggleSaved={toggleSaved}
       />
       {viewMode === "all" && olderUnreadIds.length > 0 && (

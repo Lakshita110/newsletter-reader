@@ -11,6 +11,7 @@ import { rankItemsForDailyCap } from "@/lib/rss-daily-cap-ranker";
 import {
   dayKeyUtc,
   extractImageUrlFromHtml,
+  getRssDailyTargetCap,
   getRssLookbackCutoff,
   getRssLookbackDays,
   getUserRssReadProfile,
@@ -40,7 +41,6 @@ type RankSnapshotSource = "CRON" | "ON_DEMAND";
 type DayCandidate = {
   sourceId: string;
   sourceName: string;
-  cap: number;
   priority: RssPriority;
   item: {
     title: string;
@@ -483,7 +483,6 @@ async function getRssFeed(
   const rankingCandidatesByDay = new Map<string, DayCandidate[]>();
 
   for (const sub of subscriptions) {
-    const isSelectedSource = selectedSourceId != null && sub.source.id === selectedSourceId;
     const byDay = new Map<string, typeof sub.source.items>();
     for (const item of sub.source.items) {
       const key = dayKeyUtc(item.publishedAt ?? null);
@@ -499,7 +498,6 @@ async function getRssFeed(
         return tb - ta;
       });
 
-      const cap = isSelectedSource ? Number.POSITIVE_INFINITY : sub.dailyCap;
       const dayKey = dayKeyUtc(dayItems[0]?.publishedAt ?? null);
 
       for (let i = 0; i < dayItems.length; i++) {
@@ -523,7 +521,6 @@ async function getRssFeed(
         candidates.push({
           sourceId: sub.source.id,
           sourceName: sub.source.name,
-          cap,
           priority: sub.priority,
           item: {
             title: item.title,
@@ -548,19 +545,8 @@ async function getRssFeed(
       return b.sortTimeMs - a.sortTimeMs;
     });
 
-    const capBySource = new Map<string, number>();
-    for (const candidate of dayCandidates) {
-      if (!capBySource.has(candidate.sourceId)) {
-        capBySource.set(candidate.sourceId, candidate.cap);
-      }
-    }
-    const caps = [...capBySource.values()];
-    const hasInfiniteCap = caps.some((value) => !Number.isFinite(value));
-    const totalCap = caps.reduce((sum, value) => {
-      if (!Number.isFinite(value)) return sum;
-      if (value <= 0) return sum;
-      return sum + value;
-    }, 0);
+    const totalCap =
+      selectedSourceId != null ? sortedFallback.length : getRssDailyTargetCap(sortedFallback.length);
 
     let selectedIds = new Set<string>();
     const shouldRankThisDay = enableRanking && dayKey === todayDayKey;
@@ -572,7 +558,7 @@ async function getRssFeed(
     if (shouldRankThisDay) {
       if (totalCap <= 0) {
         selectedIds = new Set();
-      } else if (hasInfiniteCap || sortedFallback.length <= totalCap) {
+      } else if (sortedFallback.length <= totalCap) {
         selectedIds = new Set(sortedFallback.map((candidate) => candidate.feedItem.id));
       } else {
         console.info(
@@ -599,9 +585,7 @@ async function getRssFeed(
         }
       }
     } else {
-      if (hasInfiniteCap) {
-        selectedIds = new Set(sortedFallback.map((candidate) => candidate.feedItem.id));
-      } else if (totalCap > 0) {
+      if (totalCap > 0) {
         selectedIds = new Set(sortedFallback.slice(0, totalCap).map((candidate) => candidate.feedItem.id));
       } else {
         selectedIds = new Set();

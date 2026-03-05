@@ -25,6 +25,21 @@ export function getRssLookbackCutoff(days: number): Date {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
+export function getRssDailyTargetCap(totalCandidates: number): number {
+  const minRaw = Number(process.env.RSS_DAILY_TARGET_MIN ?? 10);
+  const maxRaw = Number(process.env.RSS_DAILY_TARGET_MAX ?? 15);
+  const defaultRaw = Number(process.env.RSS_DAILY_TARGET_DEFAULT ?? 12);
+
+  const minCap = Number.isFinite(minRaw) ? Math.max(1, Math.floor(minRaw)) : 10;
+  const maxCap = Number.isFinite(maxRaw) ? Math.max(minCap, Math.floor(maxRaw)) : 15;
+  const defaultCap = Number.isFinite(defaultRaw)
+    ? Math.min(maxCap, Math.max(minCap, Math.floor(defaultRaw)))
+    : 12;
+
+  if (!Number.isFinite(totalCandidates) || totalCandidates <= 0) return 0;
+  return Math.min(Math.floor(totalCandidates), defaultCap);
+}
+
 export function extractImageUrlFromHtml(html?: string | null): string | undefined {
   if (!html) return undefined;
   const og = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);

@@ -55,7 +55,6 @@ export async function GET(req: Request) {
       name: sub.source.name,
       rssUrl: sub.source.rssUrl,
       siteUrl: sub.source.siteUrl,
-      dailyCap: sub.dailyCap,
     },
     items: sub.source.items.map((item) => ({
       id: `rss:${item.id}`,

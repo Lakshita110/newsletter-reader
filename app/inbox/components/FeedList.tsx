@@ -25,6 +25,7 @@ export function FeedList({
   savedById,
   onOpen,
   onMarkRead,
+  onOpenExternal,
   onToggleSaved,
 }: {
   grouped: GroupedInboxItems[];
@@ -34,6 +35,7 @@ export function FeedList({
   savedById?: Record<string, boolean>;
   onOpen: (id: string) => void;
   onMarkRead: (id: string) => void;
+  onOpenExternal?: (url: string) => void;
   onToggleSaved?: (id: string) => void;
 }) {
   return (
@@ -111,6 +113,33 @@ export function FeedList({
                       </span>
 
                       <div className="feed-item-actions" style={{ display: "flex", gap: 8 }}>
+                        {it.externalUrl && (
+                          <button
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              const externalUrl = it.externalUrl;
+                              if (!externalUrl) return;
+                              if (onOpenExternal) {
+                                onOpenExternal(externalUrl);
+                                return;
+                              }
+                              window.open(externalUrl, "_blank", "noopener,noreferrer");
+                            }}
+                            style={{
+                              fontSize: 12,
+                              border: "1px solid var(--faint)",
+                              background: "var(--surface)",
+                              color: "var(--muted)",
+                              borderRadius: 999,
+                              padding: "3px 8px",
+                              cursor: "pointer",
+                            }}
+                            title="Open full article"
+                          >
+                            Full article
+                          </button>
+                        )}
                         {onToggleSaved && (
                           <button
                             onClick={(event) => {
