@@ -186,17 +186,19 @@ export default function RssInboxPage() {
   const enriched = useMemo(() => enrichItems(activeItems), [activeItems]);
   const days = useMemo(() => getDays(enriched), [enriched]);
   const { todayKey } = useMemo(() => getRelativeKeys(), []);
+  const rolling24hCutoffMs = useMemo(() => Date.now() - 24 * 60 * 60 * 1000, []);
   const isSourceFocused = Boolean(selectedPub);
 
   const viewFiltered = useMemo(
     () =>
       enriched.filter((it) => {
-        if (viewMode === "today") return it._dayKey === todayKey;
-        if (viewMode === "unread") return statusById[it.id] !== "read";
+        const inRolling24h = Boolean(it._date && it._date.getTime() >= rolling24hCutoffMs);
+        if (viewMode === "today") return inRolling24h;
+        if (viewMode === "unread") return inRolling24h && statusById[it.id] !== "read";
         if (viewMode === "saved") return savedById[it.id] === true;
         return true;
       }),
-    [enriched, savedById, statusById, todayKey, viewMode]
+    [enriched, rolling24hCutoffMs, savedById, statusById, viewMode]
   );
   const categoryFiltered = useMemo(
     () => (selectedCategory ? viewFiltered.filter((it) => (it.category?.trim() || "uncategorized") === selectedCategory) : viewFiltered),
