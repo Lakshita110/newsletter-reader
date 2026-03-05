@@ -2,9 +2,13 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import type { InboxItem } from "@/app/inbox/types";
-import { formatDateTime } from "@/app/inbox/lib/date";
+import { useSession } from "next-auth/react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { FeedList } from "@/app/inbox/components/FeedList";
+import { enrichItems, groupItemsByDay } from "@/app/inbox/lib/derive";
+import { readMapFromStorage, saveMapToStorage, toReadStatusMap } from "@/app/inbox/lib/client-utils";
+import { buildContextById, postReadState } from "@/app/inbox/lib/read-state";
+import type { FeedReadStatus, InboxItem } from "@/app/inbox/types";
 
 type SourcePayload = {
   source?: { id: string; name: string };
@@ -14,7 +18,14 @@ type SourcePayload = {
 export default function SourcePage() {
   const params = useParams();
   const sourceId = typeof params?.sourceId === "string" ? params.sourceId : "";
+  const { data: session } = useSession();
   const [data, setData] = useState<SourcePayload>({});
+  const [statusById, setStatusById] = useState<Record<string, FeedReadStatus>>(() =>
+    readMapFromStorage<FeedReadStatus>("nr_read_status_map")
+  );
+  const [savedById, setSavedById] = useState<Record<string, boolean>>(() =>
+    readMapFromStorage<boolean>("nr_saved_items_map")
+  );
 
   useEffect(() => {
     if (!sourceId) return;
@@ -25,25 +36,55 @@ export default function SourcePage() {
     })();
   }, [sourceId]);
 
-  const items = useMemo(() => (Array.isArray(data.items) ? data.items : []), [data.items]);
+  useEffect(() => {
+    if (!session?.user?.email) return;
+    (async () => {
+      const res = await fetch("/api/read-state");
+      if (!res.ok) return;
+      setStatusById(toReadStatusMap(await res.json()));
+    })();
+  }, [session?.user?.email]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    saveMapToStorage("nr_read_status_map", statusById);
+  }, [statusById]);
+
+  useEffect(() => {
+    saveMapToStorage("nr_saved_items_map", savedById);
+  }, [savedById]);
+
+  const items = useMemo(() => (Array.isArray(data.items) ? data.items : []), [data.items]);
+  const grouped = useMemo(() => groupItemsByDay(enrichItems(items)), [items]);
+  const ordered = useMemo(() => grouped.flatMap((group) => group.items), [grouped]);
+  const contextById = useMemo(() => buildContextById(items, "rss"), [items]);
+
+  const markInProgress = useCallback(
+    (id: string) => {
+      setStatusById((prev) => (prev[id] === "read" ? prev : { ...prev, [id]: "in-progress" }));
+      postReadState({ messageId: id, state: "in_progress", metadata: contextById[id] }).catch(() => null);
+    },
+    [contextById]
+  );
+
+  const markRead = useCallback(
+    (id: string) => {
+      setStatusById((prev) => ({ ...prev, [id]: "read" }));
+      postReadState({ messageId: id, state: "read", metadata: contextById[id] }).catch(() => null);
+    },
+    [contextById]
+  );
+
+  useEffect(() => {
     window.localStorage.setItem(
       "nr_ordered_items",
-      JSON.stringify(
-        items.map((it) => ({
-          id: it.id,
-          subject: it.subject || "(No subject)",
-        }))
-      )
+      JSON.stringify(ordered.map((it) => ({ id: it.id, subject: it.subject || "(No subject)" })))
     );
-  }, [items]);
+  }, [ordered]);
 
   return (
     <main style={{ maxWidth: 780, margin: "44px auto", padding: 20 }}>
       <div style={{ marginBottom: 12 }}>
-        <Link href="/inbox" style={{ color: "var(--muted)", fontSize: 13 }}>
+        <Link href="/inbox/rss" style={{ color: "var(--muted)", fontSize: 13 }}>
           Back to inbox
         </Link>
       </div>
@@ -52,29 +93,16 @@ export default function SourcePage() {
         Showing all recent items from this source.
       </div>
 
-      <section>
-        {items.map((it) => (
-          <Link
-            key={it.id}
-            href={`/read/${it.id}`}
-            className="feed-item"
-            style={{
-              display: "block",
-              padding: "12px 10px",
-              borderBottom: "1px solid var(--faint)",
-              borderRadius: 10,
-            }}
-          >
-            <div style={{ fontSize: 17, fontWeight: 500 }}>{it.subject || "(No subject)"}</div>
-            <div style={{ marginTop: 6, color: "var(--muted)", fontSize: 12 }}>
-              {formatDateTime(it.date)}
-            </div>
-            {it.snippet && (
-              <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 14 }}>{it.snippet}</div>
-            )}
-          </Link>
-        ))}
-      </section>
+      <FeedList
+        grouped={grouped}
+        ordered={ordered}
+        selectedIndex={0}
+        statusById={statusById}
+        savedById={savedById}
+        onOpen={markInProgress}
+        onMarkRead={markRead}
+        onToggleSaved={(id) => setSavedById((prev) => ({ ...prev, [id]: !prev[id] }))}
+      />
     </main>
   );
 }
