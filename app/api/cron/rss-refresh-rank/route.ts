@@ -46,12 +46,19 @@ function buildRankInputFingerprint(dayKey: string, cap: number, items: Array<{ i
 }
 
 async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
+  const rollingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const subscriptions = await prisma.userRssSubscription.findMany({
     where: { userId, isActive: true },
     include: {
       source: {
         include: {
           items: {
+            where: {
+              OR: [
+                { publishedAt: { gte: rollingCutoff } },
+                { AND: [{ publishedAt: null }, { createdAt: { gte: rollingCutoff } }] },
+              ],
+            },
             orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
             take: 300,
           },
@@ -63,7 +70,6 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
   const candidates: Candidate[] = [];
   for (const sub of subscriptions) {
     for (const item of sub.source.items) {
-      if (dayKeyUtc(item.publishedAt ?? item.createdAt) !== dayKey) continue;
       candidates.push({
         id: `rss:${item.id}`,
         priority: sub.priority,
@@ -76,7 +82,22 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     }
   }
 
-  const sortedFallback = candidates.sort((a, b) => {
+  const candidateIds = candidates.map((candidate) => candidate.id);
+  const readRows =
+    candidateIds.length === 0
+      ? []
+      : await prisma.messageReadStat.findMany({
+          where: {
+            userId,
+            messageExternalId: { in: candidateIds },
+            OR: [{ completedAt: { not: null } }, { completionPct: { gte: 99 } }],
+          },
+          select: { messageExternalId: true },
+        });
+  const readIdSet = new Set(readRows.map((row) => row.messageExternalId));
+  const unreadCandidates = candidates.filter((candidate) => !readIdSet.has(candidate.id));
+
+  const sortedFallback = unreadCandidates.sort((a, b) => {
     const pa = priorityScore(a.priority);
     const pb = priorityScore(b.priority);
     if (pa !== pb) return pb - pa;

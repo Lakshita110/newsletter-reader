@@ -12,8 +12,6 @@ import {
   dayKeyUtc,
   extractImageUrlFromHtml,
   getRssDailyTargetCap,
-  getRssLookbackCutoff,
-  getRssLookbackDays,
   getUserRssReadProfile,
   type RssReadProfile,
 } from "@/lib/rss-helpers";
@@ -444,8 +442,7 @@ async function getRssFeed(
   enableRanking: boolean = true,
   requestTag: string = "req"
 ) {
-  const rssLookbackDays = getRssLookbackDays();
-  const rssCutoff = getRssLookbackCutoff(rssLookbackDays);
+  const rollingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   let readProfilePromise: Promise<RssReadProfile> | null = null;
   const getReadProfile = async () => {
     if (!readProfilePromise) {
@@ -466,8 +463,8 @@ async function getRssFeed(
           items: {
             where: {
               OR: [
-                { publishedAt: { gte: rssCutoff } },
-                { AND: [{ publishedAt: null }, { createdAt: { gte: rssCutoff } }] },
+                { publishedAt: { gte: rollingCutoff } },
+                { AND: [{ publishedAt: null }, { createdAt: { gte: rollingCutoff } }] },
               ],
             },
             orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
@@ -480,132 +477,108 @@ async function getRssFeed(
 
   const visible: FeedItem[] = [];
   const overflowBySource = new Map<string, { sourceId: string; sourceName: string; count: number }>();
-  const rankingCandidatesByDay = new Map<string, DayCandidate[]>();
+  const allCandidates: DayCandidate[] = [];
 
   for (const sub of subscriptions) {
-    const byDay = new Map<string, typeof sub.source.items>();
     for (const item of sub.source.items) {
-      const key = dayKeyUtc(item.publishedAt ?? null);
-      const list = byDay.get(key) ?? [];
-      list.push(item);
-      byDay.set(key, list);
-    }
-
-    for (const [, dayItems] of byDay) {
-      dayItems.sort((a, b) => {
-        const ta = a.publishedAt?.getTime() ?? a.createdAt.getTime();
-        const tb = b.publishedAt?.getTime() ?? b.createdAt.getTime();
-        return tb - ta;
+      const feedItem: FeedItem = {
+        id: `rss:${item.id}`,
+        sourceId: sub.source.id,
+        sourceKind: "rss",
+        subject: item.title,
+        from: item.author ?? sub.source.name,
+        date: (item.publishedAt ?? item.createdAt).toISOString(),
+        snippet: item.snippet ?? "",
+        publicationName: sub.source.name,
+        publicationKey: `rss:${sub.source.id}`,
+        category: normalizeRssCategory(sub.category) ?? "other",
+        isOverflow: false,
+        externalUrl: item.link ?? undefined,
+        imageUrl: item.imageUrl ?? extractImageUrlFromHtml(item.htmlRaw),
+      };
+      allCandidates.push({
+        sourceId: sub.source.id,
+        sourceName: sub.source.name,
+        priority: sub.priority,
+        item: {
+          title: item.title,
+          snippet: item.snippet ?? null,
+          author: item.author ?? null,
+          publishedAt: item.publishedAt ?? null,
+          createdAt: item.createdAt,
+        },
+        feedItem,
+        sortTimeMs: item.publishedAt?.getTime() ?? item.createdAt.getTime(),
       });
-
-      const dayKey = dayKeyUtc(dayItems[0]?.publishedAt ?? null);
-
-      for (let i = 0; i < dayItems.length; i++) {
-        const item = dayItems[i];
-        const feedItem: FeedItem = {
-          id: `rss:${item.id}`,
-          sourceId: sub.source.id,
-          sourceKind: "rss",
-          subject: item.title,
-          from: item.author ?? sub.source.name,
-          date: (item.publishedAt ?? item.createdAt).toISOString(),
-          snippet: item.snippet ?? "",
-          publicationName: sub.source.name,
-          publicationKey: `rss:${sub.source.id}`,
-          category: normalizeRssCategory(sub.category) ?? "other",
-          isOverflow: false,
-          externalUrl: item.link ?? undefined,
-          imageUrl: item.imageUrl ?? extractImageUrlFromHtml(item.htmlRaw),
-        };
-        const candidates = rankingCandidatesByDay.get(dayKey) ?? [];
-        candidates.push({
-          sourceId: sub.source.id,
-          sourceName: sub.source.name,
-          priority: sub.priority,
-          item: {
-            title: item.title,
-            snippet: item.snippet ?? null,
-            author: item.author ?? null,
-            publishedAt: item.publishedAt ?? null,
-            createdAt: item.createdAt,
-          },
-          feedItem,
-          sortTimeMs: item.publishedAt?.getTime() ?? item.createdAt.getTime(),
-        });
-        rankingCandidatesByDay.set(dayKey, candidates);
-      }
     }
   }
 
-  for (const [dayKey, dayCandidates] of rankingCandidatesByDay) {
-    const sortedFallback = [...dayCandidates].sort((a, b) => {
-      const pa = priorityScore(a.priority);
-      const pb = priorityScore(b.priority);
-      if (pa !== pb) return pb - pa;
-      return b.sortTimeMs - a.sortTimeMs;
-    });
-
-    const totalCap =
-      selectedSourceId != null ? sortedFallback.length : getRssDailyTargetCap(sortedFallback.length);
-
-    let selectedIds = new Set<string>();
-    const shouldRankThisDay = enableRanking && dayKey === todayDayKey;
-    if (enableRanking && !shouldRankThisDay) {
-      console.info(
-        `[rss-inbox][${requestTag}] ranking skipped for day="${dayKey}" reason="not_today" today="${todayDayKey}"`
-      );
-    }
-    if (shouldRankThisDay) {
-      if (totalCap <= 0) {
-        selectedIds = new Set();
-      } else if (sortedFallback.length <= totalCap) {
-        selectedIds = new Set(sortedFallback.map((candidate) => candidate.feedItem.id));
-      } else {
-        console.info(
-          `[rss-inbox][${requestTag}] ranking requested all-sources day="${dayKey}" items=${sortedFallback.length} cap=${totalCap}`
-        );
-        const rankedIds = await getOrCreateTodayRankedIds({
-          userId,
-          dayKey,
-          cap: totalCap,
-          sortedFallback,
-          readProfile: await getReadProfile(),
-          requestTag,
+  const candidateIds = allCandidates.map((candidate) => candidate.feedItem.id);
+  const readRows =
+    candidateIds.length === 0
+      ? []
+      : await prisma.messageReadStat.findMany({
+          where: {
+            userId,
+            messageExternalId: { in: candidateIds },
+            OR: [{ completedAt: { not: null } }, { completionPct: { gte: 99 } }],
+          },
+          select: { messageExternalId: true },
         });
-        if (rankedIds && rankedIds.length > 0) {
-          console.info(
-            `[rss-inbox][${requestTag}] ranking applied all-sources day="${dayKey}" selected=${rankedIds.length}`
-          );
-          selectedIds = selectIdsFromRanked(rankedIds, sortedFallback, totalCap);
-        } else {
-          console.warn(
-            `[rss-inbox][${requestTag}] ranking unavailable, using fallback order all-sources day="${dayKey}"`
-          );
-          selectedIds = new Set(sortedFallback.slice(0, totalCap).map((candidate) => candidate.feedItem.id));
-        }
-      }
-    } else {
-      if (totalCap > 0) {
-        selectedIds = new Set(sortedFallback.slice(0, totalCap).map((candidate) => candidate.feedItem.id));
-      } else {
-        selectedIds = new Set();
-      }
-    }
+  const readIdSet = new Set(readRows.map((row) => row.messageExternalId));
+  const unreadCandidates = allCandidates.filter((candidate) => !readIdSet.has(candidate.feedItem.id));
 
-    for (const candidate of sortedFallback) {
-      if (selectedIds.has(candidate.feedItem.id)) {
-        candidate.feedItem.isOverflow = false;
-        visible.push(candidate.feedItem);
-        continue;
-      }
-      const prev = overflowBySource.get(candidate.sourceId) ?? {
-        sourceId: candidate.sourceId,
-        sourceName: candidate.sourceName,
-        count: 0,
-      };
-      prev.count += 1;
-      overflowBySource.set(candidate.sourceId, prev);
+  const sortedFallback = unreadCandidates.sort((a, b) => {
+    const pa = priorityScore(a.priority);
+    const pb = priorityScore(b.priority);
+    if (pa !== pb) return pb - pa;
+    return b.sortTimeMs - a.sortTimeMs;
+  });
+
+  const totalCap = selectedSourceId != null ? sortedFallback.length : getRssDailyTargetCap(sortedFallback.length);
+  let selectedIds = new Set<string>();
+  if (totalCap <= 0) {
+    selectedIds = new Set();
+  } else if (!enableRanking || sortedFallback.length <= totalCap) {
+    selectedIds = new Set(sortedFallback.slice(0, totalCap).map((candidate) => candidate.feedItem.id));
+  } else {
+    console.info(
+      `[rss-inbox][${requestTag}] ranking requested rolling24h day="${todayDayKey}" items=${sortedFallback.length} cap=${totalCap}`
+    );
+    const rankedIds = await getOrCreateTodayRankedIds({
+      userId,
+      dayKey: todayDayKey,
+      cap: totalCap,
+      sortedFallback,
+      readProfile: await getReadProfile(),
+      requestTag,
+    });
+    if (rankedIds && rankedIds.length > 0) {
+      console.info(
+        `[rss-inbox][${requestTag}] ranking applied rolling24h day="${todayDayKey}" selected=${rankedIds.length}`
+      );
+      selectedIds = selectIdsFromRanked(rankedIds, sortedFallback, totalCap);
+    } else {
+      console.warn(
+        `[rss-inbox][${requestTag}] ranking unavailable, using fallback rolling24h day="${todayDayKey}"`
+      );
+      selectedIds = new Set(sortedFallback.slice(0, totalCap).map((candidate) => candidate.feedItem.id));
     }
+  }
+
+  for (const candidate of sortedFallback) {
+    if (selectedIds.has(candidate.feedItem.id)) {
+      candidate.feedItem.isOverflow = false;
+      visible.push(candidate.feedItem);
+      continue;
+    }
+    const prev = overflowBySource.get(candidate.sourceId) ?? {
+      sourceId: candidate.sourceId,
+      sourceName: candidate.sourceName,
+      count: 0,
+    };
+    prev.count += 1;
+    overflowBySource.set(candidate.sourceId, prev);
   }
 
   return {
