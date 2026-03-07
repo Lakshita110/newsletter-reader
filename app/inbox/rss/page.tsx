@@ -69,6 +69,7 @@ export default function RssInboxPage() {
   const [overflowBySource, setOverflowBySource] = useState<
     { sourceId: string; sourceName: string; count: number }[]
   >([]);
+  const [recommendedIds, setRecommendedIds] = useState<string[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isSyncingRss, setIsSyncingRss] = useState(false);
   const [rssSyncNotice, setRssSyncNotice] = useState<string | null>(null);
@@ -101,6 +102,11 @@ export default function RssInboxPage() {
     const nextItems = Array.isArray(data?.items) ? data.items : [];
     setItems(nextItems);
     setOverflowBySource(Array.isArray(data?.overflowBySource) ? data.overflowBySource : []);
+    setRecommendedIds(
+      Array.isArray(data?.rssMeta?.recommendedIds)
+        ? data.rssMeta.recommendedIds.filter((id: unknown): id is string => typeof id === "string")
+        : []
+    );
     return nextItems as InboxItem[];
   }, [selectedSourceId, viewMode]);
 
@@ -200,6 +206,7 @@ export default function RssInboxPage() {
   const { todayKey } = useMemo(() => getRelativeKeys(), []);
   const isSourceFocused = Boolean(selectedPub);
   const manualSyncedIdSet = useMemo(() => new Set(manualSyncedIds), [manualSyncedIds]);
+  const recommendedIdSet = useMemo(() => new Set(recommendedIds), [recommendedIds]);
   const modeOrder = useMemo<InboxViewMode[]>(
     () =>
       manualSyncedIds.length > 0
@@ -209,13 +216,15 @@ export default function RssInboxPage() {
   );
 
   const viewFiltered = useMemo(() => {
-    if (viewMode === "recommended") return enriched.filter((it) => !manualSyncedIdSet.has(it.id));
+    if (viewMode === "recommended") {
+      return enriched.filter((it) => recommendedIdSet.has(it.id) && !manualSyncedIdSet.has(it.id));
+    }
     if (viewMode === "manual-sync") return enriched.filter((it) => manualSyncedIdSet.has(it.id));
     if (viewMode === "today") return enriched.filter((it) => it._dayKey === todayKey);
     if (viewMode === "unread") return enriched.filter((it) => statusById[it.id] !== "read");
     if (viewMode === "saved") return enriched.filter((it) => savedById[it.id] === true);
     return enriched;
-  }, [enriched, manualSyncedIdSet, savedById, statusById, todayKey, viewMode]);
+  }, [enriched, manualSyncedIdSet, recommendedIdSet, savedById, statusById, todayKey, viewMode]);
   const categoryFiltered = useMemo(
     () => (selectedCategory ? viewFiltered.filter((it) => (it.category?.trim() || "uncategorized") === selectedCategory) : viewFiltered),
     [selectedCategory, viewFiltered]

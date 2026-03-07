@@ -122,7 +122,7 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
   let status: "AI_SUCCESS" | "FALLBACK_DETERMINISTIC" = "FALLBACK_DETERMINISTIC";
   let expiresAt = rankSnapshotExpiryUtc(dayKey);
 
-  const shouldAttemptAi = totalCap > 0 && aiItems.length > totalCap;
+  const shouldAttemptAi = totalCap > 0 && aiItems.length > 0;
   if (shouldAttemptAi) {
     const readProfile = await getUserRssReadProfile(userId);
     const aiRanked = await rankItemsForDailyCap({
@@ -135,13 +135,15 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     }).catch(() => null);
 
     if (aiRanked && aiRanked.length > 0) {
-      const ordered = [...aiRanked];
-      for (const fallbackId of deterministicIds) {
+      const allowed = new Set(sortedFallback.map((candidate) => candidate.id));
+      const ordered: string[] = [];
+      for (const id of aiRanked) {
+        if (!allowed.has(id)) continue;
+        if (ordered.includes(id)) continue;
+        ordered.push(id);
         if (ordered.length >= totalCap) break;
-        if (ordered.includes(fallbackId)) continue;
-        ordered.push(fallbackId);
       }
-      rankedIds = ordered.slice(0, totalCap);
+      rankedIds = ordered;
       status = "AI_SUCCESS";
     } else {
       expiresAt = new Date(Date.now() + FALLBACK_SNAPSHOT_TTL_MS);
@@ -179,77 +181,108 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
 }
 
 export async function GET(req: Request) {
+  const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  console.info(
+    `[rss-refresh-rank][${requestId}] invoked method="${req.method}" userAgent="${req.headers.get("user-agent") ?? ""}" hasAuth="${Boolean(req.headers.get("authorization"))}" hasCronSecret="${Boolean(req.headers.get("x-cron-secret"))}"`
+  );
   if (!isAuthorized(req)) {
+    console.warn(`[rss-refresh-rank][${requestId}] unauthorized`);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const dayKey = dayKeyUtc(new Date());
-  const activeSources = await prisma.userRssSubscription.findMany({
-    where: { isActive: true },
-    select: { rssSourceId: true },
-    distinct: ["rssSourceId"],
-  });
+  try {
+    const dayKey = dayKeyUtc(new Date());
+    const activeSources = await prisma.userRssSubscription.findMany({
+      where: { isActive: true },
+      select: { rssSourceId: true },
+      distinct: ["rssSourceId"],
+    });
+    console.info(
+      `[rss-refresh-rank][${requestId}] starting sync day="${dayKey}" activeSources=${activeSources.length}`
+    );
 
-  let syncedSources = 0;
-  let syncInserted = 0;
-  let syncUpdated = 0;
-  const syncErrors: string[] = [];
-  for (const row of activeSources) {
-    try {
-      const result = await syncRssSource(row.rssSourceId);
-      syncInserted += result.inserted;
-      syncUpdated += result.updated;
-      syncedSources += 1;
-    } catch (error) {
-      syncErrors.push(
-        `${row.rssSourceId}: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
+    let syncedSources = 0;
+    let syncInserted = 0;
+    let syncUpdated = 0;
+    const syncErrors: string[] = [];
+    for (const row of activeSources) {
+      try {
+        const result = await syncRssSource(row.rssSourceId);
+        syncInserted += result.inserted;
+        syncUpdated += result.updated;
+        syncedSources += 1;
+        console.info(
+          `[rss-refresh-rank][${requestId}] synced sourceId="${row.rssSourceId}" inserted=${result.inserted} updated=${result.updated}`
+        );
+      } catch (error) {
+        const message = `${row.rssSourceId}: ${error instanceof Error ? error.message : "Unknown error"}`;
+        syncErrors.push(message);
+        console.error(`[rss-refresh-rank][${requestId}] sync failed ${message}`);
+      }
     }
-  }
 
-  const activeUsers = await prisma.userRssSubscription.findMany({
-    where: { isActive: true },
-    select: { userId: true },
-    distinct: ["userId"],
-  });
+    const activeUsers = await prisma.userRssSubscription.findMany({
+      where: { isActive: true },
+      select: { userId: true },
+      distinct: ["userId"],
+    });
+    console.info(
+      `[rss-refresh-rank][${requestId}] starting ranking day="${dayKey}" activeUsers=${activeUsers.length}`
+    );
 
-  let rankedUsers = 0;
-  const rankErrors: string[] = [];
-  const rankSummaries: Array<{
-    userId: string;
-    candidates: number;
-    selected: number;
-    status: string;
-    totalCap: number;
-  }> = [];
+    let rankedUsers = 0;
+    const rankErrors: string[] = [];
+    const rankSummaries: Array<{
+      userId: string;
+      candidates: number;
+      selected: number;
+      status: string;
+      totalCap: number;
+    }> = [];
 
-  for (const row of activeUsers) {
-    try {
-      const result = await refreshTodaySnapshotForUser(row.userId, dayKey);
-      rankedUsers += 1;
-      rankSummaries.push({
-        userId: row.userId,
-        candidates: result.candidates,
-        selected: result.selected,
-        status: result.status,
-        totalCap: result.totalCap,
-      });
-    } catch (error) {
-      rankErrors.push(`${row.userId}: ${error instanceof Error ? error.message : "Unknown error"}`);
+    for (const row of activeUsers) {
+      try {
+        const result = await refreshTodaySnapshotForUser(row.userId, dayKey);
+        rankedUsers += 1;
+        rankSummaries.push({
+          userId: row.userId,
+          candidates: result.candidates,
+          selected: result.selected,
+          status: result.status,
+          totalCap: result.totalCap,
+        });
+        console.info(
+          `[rss-refresh-rank][${requestId}] ranked userId="${row.userId}" candidates=${result.candidates} selected=${result.selected} totalCap=${result.totalCap} status="${result.status}"`
+        );
+      } catch (error) {
+        const message = `${row.userId}: ${error instanceof Error ? error.message : "Unknown error"}`;
+        rankErrors.push(message);
+        console.error(`[rss-refresh-rank][${requestId}] ranking failed ${message}`);
+      }
     }
-  }
 
-  return NextResponse.json({
-    ok: true,
-    dayKey,
-    syncedSources,
-    syncInserted,
-    syncUpdated,
-    rankedUsers,
-    syncErrors,
-    rankErrors,
-    rankSummaries: rankSummaries.slice(0, 20),
-  });
+    console.info(
+      `[rss-refresh-rank][${requestId}] completed day="${dayKey}" syncedSources=${syncedSources} syncInserted=${syncInserted} syncUpdated=${syncUpdated} rankedUsers=${rankedUsers} syncErrors=${syncErrors.length} rankErrors=${rankErrors.length}`
+    );
+
+    return NextResponse.json({
+      ok: true,
+      dayKey,
+      syncedSources,
+      syncInserted,
+      syncUpdated,
+      rankedUsers,
+      syncErrors,
+      rankErrors,
+      rankSummaries: rankSummaries.slice(0, 20),
+    });
+  } catch (error) {
+    console.error(
+      `[rss-refresh-rank][${requestId}] fatal error`,
+      error
+    );
+    return NextResponse.json({ error: "Cron execution failed" }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {

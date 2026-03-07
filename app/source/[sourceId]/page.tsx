@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FeedList } from "@/app/inbox/components/FeedList";
+import { useFeedKeyboardNavigation } from "@/app/inbox/hooks/useFeedKeyboardNavigation";
 import { enrichItems, groupItemsByDay } from "@/app/inbox/lib/derive";
 import { readMapFromStorage, saveMapToStorage, toReadStatusMap, toSavedMap } from "@/app/inbox/lib/client-utils";
 import { buildContextById, postReadState } from "@/app/inbox/lib/read-state";
@@ -26,6 +27,7 @@ export default function SourcePage() {
   const [savedById, setSavedById] = useState<Record<string, boolean>>(() =>
     readMapFromStorage<boolean>("nr_saved_items_map")
   );
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
   useEffect(() => {
     if (!sourceId) return;
@@ -58,6 +60,7 @@ export default function SourcePage() {
   const items = useMemo(() => (Array.isArray(data.items) ? data.items : []), [data.items]);
   const grouped = useMemo(() => groupItemsByDay(enrichItems(items)), [items]);
   const ordered = useMemo(() => grouped.flatMap((group) => group.items), [grouped]);
+  const activeSelectedIndex = ordered.length === 0 ? 0 : Math.min(selectedIndex, ordered.length - 1);
   const contextById = useMemo(() => buildContextById(items, "rss"), [items]);
 
   const markInProgress = useCallback(
@@ -89,6 +92,35 @@ export default function SourcePage() {
     [contextById, savedById]
   );
 
+  const markUnread = useCallback((id: string) => {
+    setStatusById((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    postReadState({ messageId: id, state: "unread" }).catch(() => null);
+  }, []);
+
+  const toggleRead = useCallback(
+    (id: string) => {
+      if (statusById[id] === "read") {
+        markUnread(id);
+        return;
+      }
+      markRead(id);
+    },
+    [markRead, markUnread, statusById]
+  );
+
+  useFeedKeyboardNavigation({
+    ordered,
+    activeSelectedIndex,
+    setSelectedIndex,
+    onOpen: markInProgress,
+    onToggleRead: toggleRead,
+    onToggleSaved: toggleSaved,
+  });
+
   useEffect(() => {
     window.localStorage.setItem(
       "nr_ordered_items",
@@ -111,7 +143,7 @@ export default function SourcePage() {
       <FeedList
         grouped={grouped}
         ordered={ordered}
-        selectedIndex={0}
+        selectedIndex={activeSelectedIndex}
         statusById={statusById}
         savedById={savedById}
         onOpen={markInProgress}

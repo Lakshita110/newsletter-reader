@@ -35,6 +35,11 @@ type FeedItem = {
 
 type RankSnapshotStatus = "AI_SUCCESS" | "FALLBACK_DETERMINISTIC";
 type RankSnapshotSource = "CRON" | "ON_DEMAND";
+type RankedIdsResult = {
+  selectedRankIds: string[] | null;
+  recommendedRankIds: string[];
+  status: RankSnapshotStatus | null;
+};
 
 type DayCandidate = {
   sourceId: string;
@@ -51,7 +56,7 @@ type DayCandidate = {
   sortTimeMs: number;
 };
 
-const onDemandRankingInFlight = new Map<string, Promise<string[] | null>>();
+const onDemandRankingInFlight = new Map<string, Promise<RankedIdsResult>>();
 const LOCK_LEASE_MS = 60_000;
 const LOCK_WAIT_MS = 4_000;
 const LOCK_POLL_MS = 350;
@@ -104,6 +109,22 @@ function selectIdsFromRanked(
     }
   }
   return new Set(selected);
+}
+
+function sanitizeRankedIds(
+  rankedIds: string[],
+  sortedFallback: DayCandidate[],
+  cap: number
+): string[] {
+  const allowed = new Set(sortedFallback.map((candidate) => candidate.feedItem.id));
+  const selected: string[] = [];
+  for (const id of rankedIds) {
+    if (!allowed.has(id)) continue;
+    if (selected.includes(id)) continue;
+    selected.push(id);
+    if (selected.length >= cap) break;
+  }
+  return selected;
 }
 
 async function readValidRankSnapshot(userId: string, dayKey: string, now: Date) {
@@ -298,7 +319,7 @@ async function getOrCreateTodayRankedIds(params: {
   sortedFallback: DayCandidate[];
   readProfile: RssReadProfile;
   requestTag: string;
-}): Promise<string[] | null> {
+}): Promise<RankedIdsResult> {
   const { userId, dayKey, cap, sortedFallback, readProfile, requestTag } = params;
   const aiItems = sortedFallback.map((candidate) => ({
     id: candidate.feedItem.id,
@@ -312,11 +333,17 @@ async function getOrCreateTodayRankedIds(params: {
   const snapshot = await readValidRankSnapshot(userId, dayKey, now);
   if (snapshot) {
     const ids = idsFromSnapshotJson(snapshot.rankedItemIds);
+    const recommendedRankIds =
+      snapshot.status === "AI_SUCCESS" ? sanitizeRankedIds(ids, sortedFallback, cap) : [];
     if (snapshot.inputFingerprint === inputFingerprint) {
       console.info(
         `[rss-inbox][${requestTag}] ranking snapshot hit day="${dayKey}" status="${snapshot.status}" source="${snapshot.source}" ids=${ids.length}`
       );
-      return ids;
+      return {
+        selectedRankIds: ids,
+        recommendedRankIds,
+        status: snapshot.status,
+      };
     }
     const fallbackOrderedIds = sortedFallback.map((candidate) => candidate.feedItem.id);
     const snapshotSet = new Set(ids);
@@ -341,15 +368,18 @@ async function getOrCreateTodayRankedIds(params: {
     console.info(
       `[rss-inbox][${requestTag}] ranking snapshot stale-input day="${dayKey}" status="${snapshot.status}" source="${snapshot.source}" existingIds=${ids.length} mergedIds=${merged.length}`
     );
-    return merged;
+    return {
+      selectedRankIds: merged,
+      recommendedRankIds,
+      status: snapshot.status,
+    };
   }
 
   const inFlightKey = `${userId}:${dayKey}`;
   const existingInFlight = onDemandRankingInFlight.get(inFlightKey);
   if (existingInFlight) {
     console.info(`[rss-inbox][${requestTag}] waiting for in-process ranking day="${dayKey}"`);
-    const ids = await existingInFlight;
-    return ids;
+    return await existingInFlight;
   }
 
   const ownerId = randomUUID();
@@ -362,19 +392,34 @@ async function getOrCreateTodayRankedIds(params: {
       console.info(
         `[rss-inbox][${requestTag}] ranking snapshot arrived after wait day="${dayKey}" ids=${ids.length}`
       );
-      return ids;
+      return {
+        selectedRankIds: ids,
+        recommendedRankIds:
+          waited.status === "AI_SUCCESS" ? sanitizeRankedIds(ids, sortedFallback, cap) : [],
+        status: waited.status,
+      };
     }
     console.warn(
       `[rss-inbox][${requestTag}] ranking lock wait timed out day="${dayKey}", using request fallback`
     );
-    return null;
+    return {
+      selectedRankIds: null,
+      recommendedRankIds: [],
+      status: null,
+    };
   }
 
-  const rankingTask = (async (): Promise<string[] | null> => {
+  const rankingTask = (async (): Promise<RankedIdsResult> => {
     try {
       const secondCheck = await readValidRankSnapshot(userId, dayKey, new Date());
       if (secondCheck) {
-        return idsFromSnapshotJson(secondCheck.rankedItemIds);
+        const ids = idsFromSnapshotJson(secondCheck.rankedItemIds);
+        return {
+          selectedRankIds: ids,
+          recommendedRankIds:
+            secondCheck.status === "AI_SUCCESS" ? sanitizeRankedIds(ids, sortedFallback, cap) : [],
+          status: secondCheck.status,
+        };
       }
       const rankedIds = await rankItemsForDailyCap({
         sourceName: "All RSS Sources",
@@ -392,7 +437,7 @@ async function getOrCreateTodayRankedIds(params: {
       });
 
       if (rankedIds && rankedIds.length > 0) {
-        const normalizedIds = [...selectIdsFromRanked(rankedIds, sortedFallback, cap)];
+        const normalizedIds = sanitizeRankedIds(rankedIds, sortedFallback, cap);
         await persistRankSnapshot({
           userId,
           dayKey,
@@ -406,7 +451,11 @@ async function getOrCreateTodayRankedIds(params: {
         console.info(
           `[rss-inbox][${requestTag}] ranking snapshot persisted day="${dayKey}" status="AI_SUCCESS" ids=${normalizedIds.length}`
         );
-        return normalizedIds;
+        return {
+          selectedRankIds: normalizedIds,
+          recommendedRankIds: normalizedIds,
+          status: "AI_SUCCESS",
+        };
       }
 
       const fallbackIds = deterministicFallbackIds(sortedFallback, cap);
@@ -423,7 +472,11 @@ async function getOrCreateTodayRankedIds(params: {
       console.warn(
         `[rss-inbox][${requestTag}] ranking snapshot persisted day="${dayKey}" status="FALLBACK_DETERMINISTIC" ids=${fallbackIds.length}`
       );
-      return fallbackIds;
+      return {
+        selectedRankIds: fallbackIds,
+        recommendedRankIds: [],
+        status: "FALLBACK_DETERMINISTIC",
+      };
     } finally {
       await releaseRankLock(userId, dayKey, ownerId);
     }
@@ -476,7 +529,6 @@ async function getRssFeed(
     },
   });
 
-  const visible: FeedItem[] = [];
   const overflowBySource = new Map<string, { sourceId: string; sourceName: string; count: number }>();
   const allCandidates: DayCandidate[] = [];
 
@@ -538,15 +590,16 @@ async function getRssFeed(
 
   const totalCap = getRssDailyTargetCap(sortedFallback.length);
   let selectedIds = new Set<string>();
+  let recommendedIds = new Set<string>();
   if (totalCap <= 0) {
     selectedIds = new Set();
-  } else if (!enableRanking || sortedFallback.length <= totalCap) {
+  } else if (!enableRanking) {
     selectedIds = new Set(sortedFallback.slice(0, totalCap).map((candidate) => candidate.feedItem.id));
   } else {
     console.info(
       `[rss-inbox][${requestTag}] ranking requested rolling24h day="${todayDayKey}" items=${sortedFallback.length} cap=${totalCap}`
     );
-    const rankedIds = await getOrCreateTodayRankedIds({
+    const rankingResult = await getOrCreateTodayRankedIds({
       userId,
       dayKey: todayDayKey,
       cap: totalCap,
@@ -554,11 +607,12 @@ async function getRssFeed(
       readProfile: await getReadProfile(),
       requestTag,
     });
-    if (rankedIds && rankedIds.length > 0) {
+    recommendedIds = new Set(rankingResult.recommendedRankIds);
+    if (rankingResult.selectedRankIds && rankingResult.selectedRankIds.length > 0) {
       console.info(
-        `[rss-inbox][${requestTag}] ranking applied rolling24h day="${todayDayKey}" selected=${rankedIds.length}`
+        `[rss-inbox][${requestTag}] ranking applied rolling24h day="${todayDayKey}" selected=${rankingResult.selectedRankIds.length} recommended=${rankingResult.recommendedRankIds.length} status="${rankingResult.status ?? "NONE"}"`
       );
-      selectedIds = selectIdsFromRanked(rankedIds, sortedFallback, totalCap);
+      selectedIds = selectIdsFromRanked(rankingResult.selectedRankIds, sortedFallback, totalCap);
     } else {
       console.warn(
         `[rss-inbox][${requestTag}] ranking unavailable, using fallback rolling24h day="${todayDayKey}"`
@@ -568,11 +622,8 @@ async function getRssFeed(
   }
 
   for (const candidate of sortedFallback) {
-    if (selectedIds.has(candidate.feedItem.id)) {
-      candidate.feedItem.isOverflow = false;
-      visible.push(candidate.feedItem);
-      continue;
-    }
+    candidate.feedItem.isOverflow = !selectedIds.has(candidate.feedItem.id);
+    if (!candidate.feedItem.isOverflow) continue;
     const prev = overflowBySource.get(candidate.sourceId) ?? {
       sourceId: candidate.sourceId,
       sourceName: candidate.sourceName,
@@ -583,7 +634,8 @@ async function getRssFeed(
   }
 
   return {
-    visible,
+    visible: allCandidates.map((candidate) => candidate.feedItem),
+    recommendedIds: [...recommendedIds],
     overflowBySource: [...overflowBySource.values()].sort((a, b) => b.count - a.count),
   };
 }
@@ -655,6 +707,7 @@ export async function GET(req: Request) {
     overflowBySource: rss.overflowBySource,
     rssMeta: {
       hasFreshSyncItems,
+      recommendedIds: rss.recommendedIds,
     },
   });
 }
