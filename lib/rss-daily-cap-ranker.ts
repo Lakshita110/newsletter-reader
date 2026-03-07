@@ -232,10 +232,9 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
     .map(
       (item, index) =>
         `${index + 1}. id=${item.id}\n` +
+        `source=${req.sourceName}\n` +
         `title=${item.title}\n` +
-        `author=${item.author ?? "unknown"}\n` +
-        `published_at=${item.publishedAtIso}\n` +
-        `snippet=${item.snippet ?? ""}`
+        `author=${item.author ?? "unknown"}`
     )
     .join("\n\n");
   const validIds = req.items.map((item) => item.id).join(", ");
@@ -253,39 +252,19 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
       : "- no strong preference signals yet";
 
   const prompt =
-    `Task: choose which articles should appear in today's capped RSS inbox.\n\n` +
-    `Selection target:\n` +
-    `- Select exactly ${Math.min(req.cap, req.items.length)} items.\n` +
-    `- Never exceed ${req.cap} items.\n` +
-    `- Order selections from best to worst.\n\n` +
+    `Pick the best ${Math.min(req.cap, req.items.length)} RSS items for this user and order them best-to-worst.\n\n` +
     `Context:\n` +
-    `- source: ${req.sourceName}\n` +
-    `- category: ${req.category}\n` +
-    `- day: ${req.dayKey}\n\n` +
-    `User read-history profile (use this heavily):\n` +
-    `- top_publications: ${topPubsLine}\n` +
-    `- avg_completion_pct: ${req.userProfile?.avgCompletionPct ?? 0}\n` +
-    `- recent_reads_7d: ${req.userProfile?.recentReadCount7d ?? 0}\n` +
+    `source=${req.sourceName}\n` +
+    `category=${req.category}\n` +
+    `day=${req.dayKey}\n\n` +
+    `User profile:\n` +
+    `top_publications=${topPubsLine}\n` +
+    `avg_completion_pct=${req.userProfile?.avgCompletionPct ?? 0}\n` +
+    `recent_reads_7d=${req.userProfile?.recentReadCount7d ?? 0}\n` +
     `${profileNotes}\n\n` +
-    `Ranking policy:\n` +
-    `1) Personal relevance: prioritize topics and angles likely to match what this user actually finishes.\n` +
-    `2) Quality signal: favor concrete, high-information pieces over shallow rewrites/clickbait.\n` +
-    `3) Novelty: avoid selecting near-duplicate headlines on the same event unless materially distinct.\n` +
-    `4) Diversity: keep a useful spread of subtopics when quality is similar.\n` +
-    `5) Timeliness: break ties toward more recent publication time.\n\n` +
-    `Editorial balance constraints (apply when candidates exist):\n` +
-    `- Do not make the list politics-only.\n` +
-    `- Include culture coverage: pick at least 1 culture/arts/society item, and prefer 2 when cap >= 8.\n` +
-    `- Include top tech coverage: pick at least 1 strong tech/AI/product/security/business-of-tech item.\n` +
-    `- Include depth: pick 1-2 long-form or high-depth pieces (analysis, feature, investigation, interview, deep explainer).\n` +
-    `- If a constraint cannot be satisfied from candidates, choose the closest available non-duplicate alternative.\n\n` +
-    `Output format rules (strict):\n` +
-    `- Return exactly one line of JSON only (no markdown, no prose).\n` +
-    `- Use exactly this schema: {"ids":["rss:...", "rss:...", ...]}.\n` +
-    `- Use ID strings only (no indexes).\n` +
-    `- ids must be unique and length must equal ${Math.min(req.cap, req.items.length)}.\n` +
-    `- Every id must be from this valid set: ${validIds}\n` +
-    `- Do not include explanations.\n\n` +
+    `Prioritize personal relevance, quality, diversity, novelty, and recency. Avoid near-duplicates and politics-only lists. Include culture coverage, at least 1 strong tech item, and 1-2 deeper pieces when available.\n\n` +
+    `Return exactly one line of JSON only: {"ids":["rss:...", "..."]}\n` +
+    `Rules: ids only, no indexes, no prose, unique ids, exactly ${Math.min(req.cap, req.items.length)} ids, and every id must be from: ${validIds}\n\n` +
     `Candidates:\n${candidates}`;
 
   const rankingPromise = (async (): Promise<string[] | null> => {
