@@ -185,6 +185,13 @@ function withTimeoutMs(): number {
   return ms;
 }
 
+function withMaxTokens(cap: number): number {
+  const fallback = Math.min(1200, Math.max(400, cap * 12));
+  const raw = Number(process.env.OPENROUTER_MAX_TOKENS ?? fallback);
+  if (!Number.isFinite(raw) || raw < 128) return fallback;
+  return Math.floor(raw);
+}
+
 export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] | null> {
   if (req.cap <= 0) return [];
   if (req.items.length === 0) return [];
@@ -290,6 +297,7 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
           body: JSON.stringify({
             model: selectedModel,
             temperature: 0.1,
+            max_tokens: withMaxTokens(req.cap),
             messages: [
               {
                 role: "system",
@@ -345,6 +353,11 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
     }
 
     const content = contentToString(data.choices?.[0]?.message?.content);
+    if (!content) {
+      console.warn(
+        `[rss-ranker] empty content returned modelResponsePreview="${JSON.stringify(data).slice(0, 400)}"`
+      );
+    }
     const parsedTokens = parseRankedTokens(content);
     if (!parsedTokens || parsedTokens.length === 0) {
       console.warn(
