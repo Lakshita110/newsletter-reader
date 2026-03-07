@@ -59,8 +59,16 @@ function parseRankedTokens(raw: string): Array<string | number> | null {
       indexes?: unknown;
       indices?: unknown;
       selected?: unknown;
+      ranked_ids?: unknown;
+      rankedIds?: unknown;
     };
-    const pick = parsed.ids ?? parsed.indexes ?? parsed.indices ?? parsed.selected;
+    const pick =
+      parsed.ids ??
+      parsed.ranked_ids ??
+      parsed.rankedIds ??
+      parsed.indexes ??
+      parsed.indices ??
+      parsed.selected;
     if (!Array.isArray(pick)) return null;
     return pick.filter(
       (value): value is string | number =>
@@ -81,7 +89,9 @@ function parseRankedTokens(raw: string): Array<string | number> | null {
       if (Number.isFinite(numeric) && token.match(/^\d+$/)) tokens.push(numeric);
       else tokens.push(token);
     }
-    return tokens.length > 0 ? tokens : null;
+    if (tokens.length > 0) return tokens;
+    const idMatches = raw.match(/\brss:[A-Za-z0-9_-]+\b/g);
+    return idMatches && idMatches.length > 0 ? idMatches : null;
   }
 }
 
@@ -194,14 +204,14 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
   const candidates = req.items
     .map(
       (item, index) =>
-        `${index + 1}. index=${index + 1}\n` +
-        `id=${item.id}\n` +
+        `${index + 1}. id=${item.id}\n` +
         `title=${item.title}\n` +
         `author=${item.author ?? "unknown"}\n` +
         `published_at=${item.publishedAtIso}\n` +
         `snippet=${item.snippet ?? ""}`
     )
     .join("\n\n");
+  const validIds = req.items.map((item) => item.id).join(", ");
 
   const topPubsLine =
     req.userProfile?.topPublications?.length
@@ -218,10 +228,8 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
   const prompt =
     `Task: choose which articles should appear in today's capped RSS inbox.\n\n` +
     `Selection target:\n` +
-    `- Choose 20-30 items whenever candidate volume allows.\n` +
+    `- Select exactly ${Math.min(req.cap, req.items.length)} items.\n` +
     `- Never exceed ${req.cap} items.\n` +
-    `- If ${req.cap} is within 20-30, select exactly ${req.cap}.\n` +
-    `- If ${req.cap} is outside 20-30, select min(${req.cap}, candidate_count) while staying as close to 20-30 as possible.\n` +
     `- Order selections from best to worst.\n\n` +
     `Context:\n` +
     `- source: ${req.sourceName}\n` +
@@ -245,10 +253,11 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
     `- Include depth: pick 1-2 long-form or high-depth pieces (analysis, feature, investigation, interview, deep explainer).\n` +
     `- If a constraint cannot be satisfied from candidates, choose the closest available non-duplicate alternative.\n\n` +
     `Output format rules (strict):\n` +
-    `- Return JSON only.\n` +
-    `- Use exactly this schema: {"ids":[<index_or_id>, <index_or_id>, ...]}\n` +
-    `- Each element can be either the candidate index number (preferred) or exact id string.\n` +
-    `- Values must come from candidate list only.\n` +
+    `- Return exactly one line of JSON only (no markdown, no prose).\n` +
+    `- Use exactly this schema: {"ids":["rss:...", "rss:...", ...]}.\n` +
+    `- Use ID strings only (no indexes).\n` +
+    `- ids must be unique and length must equal ${Math.min(req.cap, req.items.length)}.\n` +
+    `- Every id must be from this valid set: ${validIds}\n` +
     `- Do not include explanations.\n\n` +
     `Candidates:\n${candidates}`;
 
@@ -275,7 +284,14 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
           body: JSON.stringify({
             model: selectedModel,
             temperature: 0.1,
-            messages: [{ role: "user", content: prompt }],
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are a ranking engine. Output exactly one-line JSON matching the requested schema with no extra text.",
+              },
+              { role: "user", content: prompt },
+            ],
           }),
           signal: controller.signal,
         });
@@ -345,11 +361,13 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
     for (const token of parsedTokens) {
       let id: string | undefined;
       if (typeof token === "number") {
-        id = byIndex.get(Math.floor(token));
+        const n = Math.floor(token);
+        id = byIndex.get(n) ?? byIndex.get(n + 1);
       } else if (typeof token === "string") {
         const numeric = Number(token);
         if (Number.isFinite(numeric) && token.match(/^\d+$/)) {
-          id = byIndex.get(Math.floor(numeric));
+          const n = Math.floor(numeric);
+          id = byIndex.get(n) ?? byIndex.get(n + 1);
         } else {
           id = token.trim();
         }

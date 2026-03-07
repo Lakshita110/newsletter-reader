@@ -32,6 +32,7 @@ export async function POST(req: Request) {
 
   let inserted = 0;
   let updated = 0;
+  const newItemIds: string[] = [];
   const errors: string[] = [];
 
   for (const sub of subscriptions) {
@@ -39,6 +40,9 @@ export async function POST(req: Request) {
       const result = await syncRssSource(sub.rssSourceId);
       inserted += result.inserted;
       updated += result.updated;
+      if (Array.isArray(result.insertedItemIds) && result.insertedItemIds.length > 0) {
+        for (const id of result.insertedItemIds) newItemIds.push(`rss:${id}`);
+      }
     } catch (error) {
       errors.push(`${sub.rssSourceId}: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
@@ -49,7 +53,7 @@ export async function POST(req: Request) {
     sourceCount: subscriptions.length,
     inserted,
     updated,
+    newItemIds,
     errors,
   });
 }
-

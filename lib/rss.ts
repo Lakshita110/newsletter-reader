@@ -77,7 +77,7 @@ function extractRssImageUrl(item: Record<string, unknown>, html?: string | null)
 
 export async function syncRssSource(rssSourceId: string) {
   const source = await prisma.rssSource.findUnique({ where: { id: rssSourceId } });
-  if (!source || !source.isActive) return { inserted: 0, updated: 0 };
+  if (!source || !source.isActive) return { inserted: 0, updated: 0, insertedItemIds: [] as string[] };
 
   const feed = await parser.parseURL(source.rssUrl);
   const allItems = feed.items ?? [];
@@ -107,7 +107,7 @@ export async function syncRssSource(rssSourceId: string) {
       where: { id: source.id },
       data: { lastSyncedAt: new Date() },
     });
-    return { inserted: 0, updated: 0 };
+    return { inserted: 0, updated: 0, insertedItemIds: [] as string[] };
   }
 
   const externalIds = items.map((item) => deriveExternalId(item));
@@ -132,6 +132,7 @@ export async function syncRssSource(rssSourceId: string) {
     htmlRaw: string | null;
     textExtracted: string | null;
   }> = [];
+  const insertedExternalIds: string[] = [];
   let inserted = 0;
   let updated = 0;
 
@@ -182,6 +183,7 @@ export async function syncRssSource(rssSourceId: string) {
       htmlRaw: null,
       textExtracted: null,
     });
+    insertedExternalIds.push(externalId);
     inserted += 1;
   }
 
@@ -191,6 +193,17 @@ export async function syncRssSource(rssSourceId: string) {
       skipDuplicates: true,
     });
   }
+
+  const insertedRows =
+    insertedExternalIds.length === 0
+      ? []
+      : await prisma.rssItem.findMany({
+          where: {
+            rssSourceId: source.id,
+            externalId: { in: insertedExternalIds },
+          },
+          select: { id: true },
+        });
 
   // Enforce storage lookback on every sync so old data does not linger in DB.
   await prisma.rssItem.deleteMany({
@@ -208,6 +221,6 @@ export async function syncRssSource(rssSourceId: string) {
     data: { lastSyncedAt: new Date() },
   });
 
-  return { inserted, updated };
+  return { inserted, updated, insertedItemIds: insertedRows.map((row) => row.id) };
 }
 

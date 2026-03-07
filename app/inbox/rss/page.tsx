@@ -72,7 +72,7 @@ export default function RssInboxPage() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isSyncingRss, setIsSyncingRss] = useState(false);
   const [rssSyncNotice, setRssSyncNotice] = useState<string | null>(null);
-  const [hasFreshSyncItems, setHasFreshSyncItems] = useState(false);
+  const [manualSyncedIds, setManualSyncedIds] = useState<string[]>([]);
   const [statusById, setStatusById] = useState<Record<string, FeedReadStatus>>(() =>
     readMapFromStorage<FeedReadStatus>("nr_read_status_map")
   );
@@ -88,15 +88,21 @@ export default function RssInboxPage() {
   const searchQuery = q.trim();
   const isServerSearchActive = searchQuery.length > 0;
 
-  const loadRssInbox = useCallback(async () => {
+  const loadRssInbox = useCallback(async (opts?: { forceRecommendedPool?: boolean }) => {
     const params = new URLSearchParams({ kind: "rss" });
-    if (selectedSourceId) params.set("sourceId", selectedSourceId);
+    const sourceFilterForApi = opts?.forceRecommendedPool
+      ? null
+      : viewMode === "recommended"
+        ? null
+        : selectedSourceId;
+    if (sourceFilterForApi) params.set("sourceId", sourceFilterForApi);
     const res = await fetch(`/api/feed/inbox?${params.toString()}`);
     const data = await res.json();
-    setItems(Array.isArray(data?.items) ? data.items : []);
+    const nextItems = Array.isArray(data?.items) ? data.items : [];
+    setItems(nextItems);
     setOverflowBySource(Array.isArray(data?.overflowBySource) ? data.overflowBySource : []);
-    setHasFreshSyncItems(data?.rssMeta?.hasFreshSyncItems === true);
-  }, [selectedSourceId]);
+    return nextItems as InboxItem[];
+  }, [selectedSourceId, viewMode]);
 
   const syncRssFeeds = useCallback(async () => {
     if (syncingRef.current) return;
@@ -110,13 +116,12 @@ export default function RssInboxPage() {
         setRssSyncNotice(data?.error || "RSS sync failed.");
         return;
       }
-      await loadRssInbox();
-      const insertedCount = Number.isFinite(data?.inserted) ? data.inserted : Number(data?.inserted ?? 0);
-      if (insertedCount > 0) {
-        setSelectedDay(null);
-        setViewMode("today");
-      }
-      setRssSyncNotice(`Synced: ${insertedCount} new, ${data?.updated ?? 0} already present.`);
+      const newItemIds = Array.isArray(data?.newItemIds)
+        ? data.newItemIds.filter((id: unknown): id is string => typeof id === "string")
+        : [];
+      setManualSyncedIds(newItemIds);
+      await loadRssInbox({ forceRecommendedPool: true });
+      setRssSyncNotice(`Synced: ${data?.inserted ?? 0} new, ${data?.updated ?? 0} already present.`);
     } finally {
       syncingRef.current = false;
       setIsSyncingRss(false);
@@ -194,14 +199,23 @@ export default function RssInboxPage() {
   const days = useMemo(() => getDays(enriched), [enriched]);
   const { todayKey } = useMemo(() => getRelativeKeys(), []);
   const isSourceFocused = Boolean(selectedPub);
+  const manualSyncedIdSet = useMemo(() => new Set(manualSyncedIds), [manualSyncedIds]);
+  const modeOrder = useMemo<InboxViewMode[]>(
+    () =>
+      manualSyncedIds.length > 0
+        ? ["recommended", "today", "manual-sync", "unread", "saved", "all"]
+        : ["recommended", "today", "unread", "saved", "all"],
+    [manualSyncedIds.length]
+  );
 
   const viewFiltered = useMemo(() => {
-    if (viewMode === "recommended") return enriched;
+    if (viewMode === "recommended") return enriched.filter((it) => !manualSyncedIdSet.has(it.id));
+    if (viewMode === "manual-sync") return enriched.filter((it) => manualSyncedIdSet.has(it.id));
     if (viewMode === "today") return enriched.filter((it) => it._dayKey === todayKey);
     if (viewMode === "unread") return enriched.filter((it) => statusById[it.id] !== "read");
     if (viewMode === "saved") return enriched.filter((it) => savedById[it.id] === true);
     return enriched;
-  }, [enriched, savedById, statusById, todayKey, viewMode]);
+  }, [enriched, manualSyncedIdSet, savedById, statusById, todayKey, viewMode]);
   const categoryFiltered = useMemo(
     () => (selectedCategory ? viewFiltered.filter((it) => (it.category?.trim() || "uncategorized") === selectedCategory) : viewFiltered),
     [selectedCategory, viewFiltered]
@@ -305,6 +319,11 @@ export default function RssInboxPage() {
   }, [contextById, olderUnreadIds]);
 
   useEffect(() => {
+    if (manualSyncedIds.length > 0) return;
+    if (viewMode === "manual-sync") setViewMode("recommended");
+  }, [manualSyncedIds.length, viewMode]);
+
+  useEffect(() => {
     window.localStorage.setItem(
       "nr_ordered_items",
       JSON.stringify(ordered.map((it) => ({ id: it.id, subject: it.subject || "(No subject)" })))
@@ -331,9 +350,8 @@ export default function RssInboxPage() {
 
       <InboxFilters
         viewMode={viewMode}
-        modeOrder={["recommended", "today", "unread", "saved", "all"]}
+        modeOrder={modeOrder}
         onViewModeChange={setViewMode}
-        modeLabelOverrides={hasFreshSyncItems ? { today: "New" } : undefined}
         selectedPub={selectedPub}
         selectedCategory={selectedCategory}
         selectedDay={selectedDay}

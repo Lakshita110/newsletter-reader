@@ -135,7 +135,13 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     }).catch(() => null);
 
     if (aiRanked && aiRanked.length > 0) {
-      rankedIds = aiRanked;
+      const ordered = [...aiRanked];
+      for (const fallbackId of deterministicIds) {
+        if (ordered.length >= totalCap) break;
+        if (ordered.includes(fallbackId)) continue;
+        ordered.push(fallbackId);
+      }
+      rankedIds = ordered.slice(0, totalCap);
       status = "AI_SUCCESS";
     } else {
       expiresAt = new Date(Date.now() + FALLBACK_SNAPSHOT_TTL_MS);
