@@ -82,6 +82,11 @@ function parseRankedTokens(raw: string): Array<string | number> | null {
     if (lines.length === 0) return null;
     const tokens: Array<string | number> = [];
     for (const line of lines) {
+      const embeddedIds = line.match(/\brss:[A-Za-z0-9_-]+\b/g);
+      if (embeddedIds?.length) {
+        tokens.push(...embeddedIds);
+        continue;
+      }
       const m = line.match(/^[-*\d.)\s]*(.+)$/);
       const token = (m?.[1] ?? line).trim();
       if (!token) continue;
@@ -93,6 +98,28 @@ function parseRankedTokens(raw: string): Array<string | number> | null {
     const idMatches = raw.match(/\brss:[A-Za-z0-9_-]+\b/g);
     return idMatches && idMatches.length > 0 ? idMatches : null;
   }
+}
+
+function normalizeRankToken(
+  token: string | number,
+  byIndex: Map<number, string>
+): string | undefined {
+  if (typeof token === "number") {
+    const n = Math.floor(token);
+    return byIndex.get(n) ?? byIndex.get(n + 1);
+  }
+
+  const trimmed = token.trim();
+  const embeddedId = trimmed.match(/\brss:[A-Za-z0-9_-]+\b/)?.[0];
+  if (embeddedId) return embeddedId;
+
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric) && trimmed.match(/^\d+$/)) {
+    const n = Math.floor(numeric);
+    return byIndex.get(n) ?? byIndex.get(n + 1);
+  }
+
+  return trimmed;
 }
 
 function getConfiguredModels(primaryModel: string): string[] {
@@ -153,8 +180,8 @@ function maybeExtractResetMs(errorBody: string): number | null {
 }
 
 function withTimeoutMs(): number {
-  const ms = Number(process.env.OPENROUTER_TIMEOUT_MS ?? 15000);
-  if (!Number.isFinite(ms) || ms < 1000) return 15000;
+  const ms = Number(process.env.OPENROUTER_TIMEOUT_MS ?? 300000);
+  if (!Number.isFinite(ms) || ms < 1000) return 300000;
   return ms;
 }
 
@@ -359,26 +386,19 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
     }
     const deduped: string[] = [];
     for (const token of parsedTokens) {
-      let id: string | undefined;
-      if (typeof token === "number") {
-        const n = Math.floor(token);
-        id = byIndex.get(n) ?? byIndex.get(n + 1);
-      } else if (typeof token === "string") {
-        const numeric = Number(token);
-        if (Number.isFinite(numeric) && token.match(/^\d+$/)) {
-          const n = Math.floor(numeric);
-          id = byIndex.get(n) ?? byIndex.get(n + 1);
-        } else {
-          id = token.trim();
-        }
-      }
+      const id = normalizeRankToken(token, byIndex);
       if (!id) continue;
       if (!allowed.has(id)) continue;
       if (deduped.includes(id)) continue;
       deduped.push(id);
     }
     if (deduped.length === 0) {
-      console.warn("[rss-ranker] ranked ids filtered out to empty set");
+      console.warn(
+        `[rss-ranker] ranked ids filtered out to empty set tokenPreview="${parsedTokens
+          .slice(0, 8)
+          .map((token) => String(token).slice(0, 80))
+          .join(" | ")}"`
+      );
       rankCache.set(cacheKey, {
         expiresAt: Date.now() + getFailureCooldownMs(),
         value: null,
