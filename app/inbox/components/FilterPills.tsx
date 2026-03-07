@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { formatDayPillLabel } from "../lib/date";
 
-export type InboxViewMode = "recommended" | "today" | "unread" | "saved" | "all";
+export type InboxViewMode = "recommended" | "today" | "manual-sync" | "unread" | "saved" | "all";
 
 const defaultModeLabel: Record<InboxViewMode, string> = {
   recommended: "Recommended",
   today: "Today",
+  "manual-sync": "New",
   unread: "Unread",
   saved: "Saved",
   all: "All",

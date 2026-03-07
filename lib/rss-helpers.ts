@@ -26,15 +26,15 @@ export function getRssLookbackCutoff(days: number): Date {
 }
 
 export function getRssDailyTargetCap(totalCandidates: number): number {
-  const minRaw = Number(process.env.RSS_DAILY_TARGET_MIN ?? 10);
-  const maxRaw = Number(process.env.RSS_DAILY_TARGET_MAX ?? 15);
-  const defaultRaw = Number(process.env.RSS_DAILY_TARGET_DEFAULT ?? 12);
+  const minRaw = Number(process.env.RSS_DAILY_TARGET_MIN ?? 30);
+  const maxRaw = Number(process.env.RSS_DAILY_TARGET_MAX ?? 40);
+  const defaultRaw = Number(process.env.RSS_DAILY_TARGET_DEFAULT ?? 35);
 
   const minCap = Number.isFinite(minRaw) ? Math.max(1, Math.floor(minRaw)) : 10;
   const maxCap = Number.isFinite(maxRaw) ? Math.max(minCap, Math.floor(maxRaw)) : 15;
   const defaultCap = Number.isFinite(defaultRaw)
     ? Math.min(maxCap, Math.max(minCap, Math.floor(defaultRaw)))
-    : 12;
+    : 35;
 
   if (!Number.isFinite(totalCandidates) || totalCandidates <= 0) return 0;
   return Math.min(Math.floor(totalCandidates), defaultCap);

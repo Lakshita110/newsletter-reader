@@ -41,7 +41,7 @@ export function getDays(enriched: EnrichedInboxItem[]) {
 export type TodayWindowMode = "rolling24h" | "calendarDay" | "none";
 
 export type ViewModeFilterArgs = {
-  viewMode: "recommended" | "today" | "unread" | "saved" | "all";
+  viewMode: "today" | "recommended" | "manual-sync" | "unread" | "saved" | "all";
   statusById: Record<string, FeedReadStatus>;
   savedById: Record<string, boolean>;
   rolling24hCutoffMs: number;
@@ -59,7 +59,7 @@ export function filterByViewMode(
       if (todayWindowMode === "calendarDay") return item._dayKey === getRelativeKeys().todayKey;
       return inRolling24h;
     }
-    if (viewMode === "recommended") return true;
+    if (viewMode === "recommended" || viewMode === "manual-sync") return true;
     if (viewMode === "unread") return statusById[item.id] !== "read";
     if (viewMode === "saved") return savedById[item.id] === true;
     return true;

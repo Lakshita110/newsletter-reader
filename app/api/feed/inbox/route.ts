@@ -392,10 +392,11 @@ async function getOrCreateTodayRankedIds(params: {
       });
 
       if (rankedIds && rankedIds.length > 0) {
+        const normalizedIds = [...selectIdsFromRanked(rankedIds, sortedFallback, cap)];
         await persistRankSnapshot({
           userId,
           dayKey,
-          rankedIds,
+          rankedIds: normalizedIds,
           status: "AI_SUCCESS",
           source: "ON_DEMAND",
           model: process.env.OPENROUTER_MODEL ?? null,
@@ -403,9 +404,9 @@ async function getOrCreateTodayRankedIds(params: {
           expiresAt: rankSnapshotExpiryUtc(dayKey),
         });
         console.info(
-          `[rss-inbox][${requestTag}] ranking snapshot persisted day="${dayKey}" status="AI_SUCCESS" ids=${rankedIds.length}`
+          `[rss-inbox][${requestTag}] ranking snapshot persisted day="${dayKey}" status="AI_SUCCESS" ids=${normalizedIds.length}`
         );
-        return rankedIds;
+        return normalizedIds;
       }
 
       const fallbackIds = deterministicFallbackIds(sortedFallback, cap);
@@ -535,7 +536,7 @@ async function getRssFeed(
     return b.sortTimeMs - a.sortTimeMs;
   });
 
-  const totalCap = selectedSourceId != null ? sortedFallback.length : getRssDailyTargetCap(sortedFallback.length);
+  const totalCap = getRssDailyTargetCap(sortedFallback.length);
   let selectedIds = new Set<string>();
   if (totalCap <= 0) {
     selectedIds = new Set();
@@ -625,15 +626,12 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const kind = url.searchParams.get("kind");
   const selectedSourceId = url.searchParams.get("sourceId");
-  const hasSourceFilter = Boolean(selectedSourceId && selectedSourceId.trim().length > 0);
   const isNewsletterOnly = kind === "newsletters";
-  const enableRanking = !hasSourceFilter && !isNewsletterOnly;
+  const enableRanking = !isNewsletterOnly;
   const requestTag = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   if (!enableRanking) {
     console.info(
-      `[rss-inbox][${requestTag}] ranking disabled due to filters kind="${kind ?? ""}" sourceId="${
-        selectedSourceId ?? ""
-      }"`
+      `[rss-inbox][${requestTag}] ranking disabled due to kind="${kind ?? ""}"`
     );
   }
 
