@@ -8,6 +8,7 @@ import { parseFrom, normalizePublicationKey } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
 import { normalizeRssCategory } from "@/lib/rss-categories";
 import { rankItemsForDailyCap } from "@/lib/rss-daily-cap-ranker";
+import { normalizeRecommendationPrompt } from "@/lib/rss-recommendation-settings";
 import {
   dayKeyUtc,
   extractImageUrlFromHtml,
@@ -217,11 +218,17 @@ async function getUserAndToken() {
     where: { email },
     update: {},
     create: { email },
-    select: { id: true },
+    select: {
+      id: true,
+      rssRecommendationCap: true,
+      rssRecommendationPrompt: true,
+    },
   });
   return {
     userId: user.id,
     accessToken: session?.accessToken as string | undefined,
+    recommendationCap: user.rssRecommendationCap,
+    recommendationPrompt: user.rssRecommendationPrompt,
   };
 }
 
@@ -494,7 +501,9 @@ async function getRssFeed(
   userId: string,
   selectedSourceId?: string | null,
   enableRanking: boolean = true,
-  requestTag: string = "req"
+  requestTag: string = "req",
+  recommendationCap?: number | null,
+  recommendationPrompt?: string | null
 ) {
   const rollingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   let readProfilePromise: Promise<RssReadProfile> | null = null;
@@ -588,7 +597,7 @@ async function getRssFeed(
     return b.sortTimeMs - a.sortTimeMs;
   });
 
-  const totalCap = getRssDailyTargetCap(sortedFallback.length);
+  const totalCap = getRssDailyTargetCap(sortedFallback.length, recommendationCap);
   let selectedIds = new Set<string>();
   let recommendedIds = new Set<string>();
   if (totalCap <= 0) {
@@ -604,7 +613,10 @@ async function getRssFeed(
       dayKey: todayDayKey,
       cap: totalCap,
       sortedFallback,
-      readProfile: await getReadProfile(),
+      readProfile: {
+        ...(await getReadProfile()),
+        customPrompt: normalizeRecommendationPrompt(recommendationPrompt),
+      },
       requestTag,
     });
     recommendedIds = new Set(rankingResult.recommendedRankIds);
@@ -689,7 +701,14 @@ export async function GET(req: Request) {
 
   const [gmailItems, rss, hasFreshSyncItems] = await Promise.all([
     getGmailFeed(auth.accessToken),
-    getRssFeed(auth.userId, selectedSourceId, enableRanking, requestTag),
+    getRssFeed(
+      auth.userId,
+      selectedSourceId,
+      enableRanking,
+      requestTag,
+      auth.recommendationCap,
+      auth.recommendationPrompt
+    ),
     getRssFreshSyncStatus(auth.userId, selectedSourceId),
   ]);
 

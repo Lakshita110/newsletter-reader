@@ -24,14 +24,16 @@ enum RssRankSnapshotSource {
 }
 
 model User {
-  id               String            @id @default(cuid())
-  email            String            @unique
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  messageReadStats MessageReadStat[]
-  rssSubscriptions UserRssSubscription[]
-  rssRankSnapshots UserRssDailyRankSnapshot[]
-  rssRankLocks     UserRssRankJobLock[]
+  id                       String                    @id @default(cuid())
+  email                    String                    @unique
+  rssRecommendationCap     Int                       @default(35)
+  rssRecommendationPrompt  String?                   @db.VarChar(500)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  messageReadStats         MessageReadStat[]
+  rssSubscriptions         UserRssSubscription[]
+  rssRankSnapshots         UserRssDailyRankSnapshot[]
+  rssRankLocks             UserRssRankJobLock[]
 }
 
 model MessageReadStat {

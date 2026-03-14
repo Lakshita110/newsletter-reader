@@ -5,6 +5,7 @@ export type RssReadProfile = {
   avgCompletionPct: number;
   recentReadCount7d: number;
   preferenceSummary: string[];
+  customPrompt?: string | null;
 };
 
 export function dayKeyUtc(value: Date | null): string {
@@ -25,16 +26,20 @@ export function getRssLookbackCutoff(days: number): Date {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
-export function getRssDailyTargetCap(totalCandidates: number): number {
+export function getRssDailyTargetCap(totalCandidates: number, preferredCap?: number | null): number {
   const minRaw = Number(process.env.RSS_DAILY_TARGET_MIN ?? 30);
   const maxRaw = Number(process.env.RSS_DAILY_TARGET_MAX ?? 40);
   const defaultRaw = Number(process.env.RSS_DAILY_TARGET_DEFAULT ?? 35);
 
   const minCap = Number.isFinite(minRaw) ? Math.max(1, Math.floor(minRaw)) : 10;
   const maxCap = Number.isFinite(maxRaw) ? Math.max(minCap, Math.floor(maxRaw)) : 15;
-  const defaultCap = Number.isFinite(defaultRaw)
+  const envDefaultCap = Number.isFinite(defaultRaw)
     ? Math.min(maxCap, Math.max(minCap, Math.floor(defaultRaw)))
     : 35;
+  const preferred = Number.isFinite(preferredCap as number)
+    ? Math.floor(preferredCap as number)
+    : envDefaultCap;
+  const defaultCap = Math.min(maxCap, Math.max(minCap, preferred));
 
   if (!Number.isFinite(totalCandidates) || totalCandidates <= 0) return 0;
   return Math.min(Math.floor(totalCandidates), defaultCap);
