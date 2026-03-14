@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -20,6 +21,17 @@ const display = Playfair_Display({
   variable: "--font-display",
 });
 
+export const metadata: Metadata = {
+  title: "Cluck's Feed",
+  description:
+    "A calm, focused way to read newsletters and RSS in one keyboard-friendly inbox.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -37,4 +49,3 @@ export default function RootLayout({
     </html>
   );
 }
-
