@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { formatDateTime } from "../lib/date";
 import type { EnrichedInboxItem, FeedReadStatus, GroupedInboxItems } from "../types";
 
@@ -27,6 +28,7 @@ export function FeedList({
   onMarkRead,
   onOpenExternal,
   onToggleSaved,
+  onDelete,
 }: {
   grouped: GroupedInboxItems[];
   ordered: EnrichedInboxItem[];
@@ -37,7 +39,18 @@ export function FeedList({
   onMarkRead: (id: string) => void;
   onOpenExternal?: (url: string) => void;
   onToggleSaved?: (id: string) => void;
+  onDelete?: (id: string) => void;
 }) {
+  const actionButtonStyle: CSSProperties = {
+    fontSize: 12,
+    border: "1px solid var(--faint)",
+    background: "var(--surface)",
+    color: "var(--muted)",
+    borderRadius: 999,
+    padding: "3px 8px",
+    cursor: "pointer",
+  };
+
   return (
     <section>
       {grouped.map((group) => (
@@ -130,13 +143,7 @@ export function FeedList({
                               onOpenExternal(externalUrl);
                             }}
                             style={{
-                              fontSize: 12,
-                              border: "1px solid var(--faint)",
-                              background: "var(--surface)",
-                              color: "var(--muted)",
-                              borderRadius: 999,
-                              padding: "3px 8px",
-                              cursor: "pointer",
+                              ...actionButtonStyle,
                               textDecoration: "none",
                             }}
                             title="Open full article"
@@ -153,13 +160,10 @@ export function FeedList({
                               onToggleSaved(it.id);
                             }}
                             style={{
-                              fontSize: 12,
-                              border: isSaved ? "1px solid color-mix(in oklab, var(--accent-blue) 55%, var(--faint))" : "1px solid var(--faint)",
-                              background: isSaved ? "var(--surface-accent-soft)" : "var(--surface)",
-                              color: isSaved ? "var(--accent-blue)" : "var(--muted)",
-                              borderRadius: 999,
-                              padding: "3px 8px",
-                              cursor: "pointer",
+                              ...actionButtonStyle,
+                              border: isSaved ? "1px solid color-mix(in oklab, var(--accent-blue) 55%, var(--faint))" : actionButtonStyle.border,
+                              background: isSaved ? "var(--surface-accent-soft)" : actionButtonStyle.background,
+                              color: isSaved ? "var(--accent-blue)" : actionButtonStyle.color,
                             }}
                             title={isSaved ? "Remove from saved" : "Save for later"}
                           >
@@ -174,17 +178,23 @@ export function FeedList({
                               event.stopPropagation();
                               onMarkRead(it.id);
                             }}
-                            style={{
-                              fontSize: 12,
-                              border: "1px solid var(--faint)",
-                              background: "var(--surface)",
-                              color: "var(--muted)",
-                              borderRadius: 999,
-                              padding: "3px 8px",
-                              cursor: "pointer",
-                            }}
+                            style={actionButtonStyle}
                           >
                             Mark read
+                          </button>
+                        )}
+                        {onDelete && it.sourceKind === "rss" && (
+                          <button
+                            className="feed-item-action-btn"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onDelete(it.id);
+                            }}
+                            style={actionButtonStyle}
+                            title="Delete item"
+                          >
+                            Delete
                           </button>
                         )}
                       </div>

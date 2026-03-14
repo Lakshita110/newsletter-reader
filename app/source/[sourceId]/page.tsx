@@ -112,6 +112,33 @@ export default function SourcePage() {
     [markRead, markUnread, statusById]
   );
 
+  const deleteItem = useCallback(async (id: string) => {
+    const shouldDelete = window.confirm("Delete this article from your RSS database?");
+    if (!shouldDelete) return;
+
+    try {
+      const res = await fetch(`/api/feed/item/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok) return;
+
+      setData((prev) => ({
+        ...prev,
+        items: Array.isArray(prev.items) ? prev.items.filter((item) => item.id !== id) : [],
+      }));
+      setStatusById((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setSavedById((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    } catch {
+      // Ignore temporary network failures; item will remain visible.
+    }
+  }, []);
+
   useFeedKeyboardNavigation({
     ordered,
     activeSelectedIndex,
@@ -119,6 +146,7 @@ export default function SourcePage() {
     onOpen: markInProgress,
     onToggleRead: toggleRead,
     onToggleSaved: toggleSaved,
+    onDelete: deleteItem,
   });
 
   useEffect(() => {
@@ -149,6 +177,7 @@ export default function SourcePage() {
         onOpen={markInProgress}
         onMarkRead={markRead}
         onToggleSaved={toggleSaved}
+        onDelete={deleteItem}
       />
     </main>
   );

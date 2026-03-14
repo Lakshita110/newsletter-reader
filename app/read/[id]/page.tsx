@@ -284,7 +284,7 @@ export default function ReadPage() {
       if (isTypingTarget(event.target)) return;
 
       const backHref = msg?.sourceKind === "rss" ? "/inbox/rss" : "/inbox/newsletters";
-      if (event.key === "u") {
+      if (event.key === "b") {
         event.preventDefault();
         router.push(backHref);
         return;

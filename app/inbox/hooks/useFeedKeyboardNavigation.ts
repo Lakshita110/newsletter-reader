@@ -13,6 +13,7 @@ type Params = {
   onToggleRead: (id: string) => void;
   onToggleSaved: (id: string) => void;
   onOpenExternal?: (url: string) => void;
+  onDelete?: (id: string) => void;
 };
 
 export function useFeedKeyboardNavigation({
@@ -23,6 +24,7 @@ export function useFeedKeyboardNavigation({
   onToggleRead,
   onToggleSaved,
   onOpenExternal,
+  onDelete,
 }: Params) {
   const router = useRouter();
 
@@ -64,6 +66,9 @@ export function useFeedKeyboardNavigation({
           }
           window.open(current.externalUrl, "_blank", "noopener,noreferrer");
         }
+      } else if (event.key === "d" && onDelete) {
+        event.preventDefault();
+        onDelete(current.id);
       }
     };
 
@@ -73,6 +78,7 @@ export function useFeedKeyboardNavigation({
     activeSelectedIndex,
     onOpen,
     onOpenExternal,
+    onDelete,
     onToggleRead,
     onToggleSaved,
     ordered,
