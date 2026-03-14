@@ -17,6 +17,7 @@ type RankRequest = {
     avgCompletionPct: number;
     recentReadCount7d: number;
     preferenceSummary: string[];
+    customPrompt?: string | null;
   };
 };
 
@@ -258,21 +259,46 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
       ? req.userProfile.preferenceSummary.map((x) => `- ${x}`).join("\n")
       : "- no strong preference signals yet";
 
+  const defaultInterestPrompt =
+    "Prioritize personal relevance, quality, diversity, novelty, and recency. Avoid near-duplicates and politics-only lists. Include culture coverage, at least 1 strong tech item, and 1-2 deeper pieces when available.";
+  const customInterestPrompt = req.userProfile?.customPrompt?.trim();
+
   const prompt =
-    `Pick the best ${Math.min(req.cap, req.items.length)} RSS items for this user and order them best-to-worst.\n\n` +
-    `Context:\n` +
-    `source=${req.sourceName}\n` +
-    `category=${req.category}\n` +
-    `day=${req.dayKey}\n\n` +
-    `User profile:\n` +
-    `top_publications=${topPubsLine}\n` +
-    `avg_completion_pct=${req.userProfile?.avgCompletionPct ?? 0}\n` +
-    `recent_reads_7d=${req.userProfile?.recentReadCount7d ?? 0}\n` +
-    `${profileNotes}\n\n` +
-    `Prioritize personal relevance, quality, diversity, novelty, and recency. Avoid near-duplicates and politics-only lists. Include culture coverage, at least 1 strong tech item, and 1-2 deeper pieces when available.\n\n` +
-    `Return exactly one line of JSON only: {"ids":["rss:...", "..."]}\n` +
-    `Rules: ids only, no indexes, no prose, unique ids, exactly ${Math.min(req.cap, req.items.length)} ids, and every id must be from: ${validIds}\n\n` +
-    `Candidates:\n${candidates}`;
+    `Pick the best ${Math.min(req.cap, req.items.length)} RSS items for this user and order them best-to-worst.
+
+` +
+    `Context:
+` +
+    `source=${req.sourceName}
+` +
+    `category=${req.category}
+` +
+    `day=${req.dayKey}
+
+` +
+    `User profile:
+` +
+    `top_publications=${topPubsLine}
+` +
+    `avg_completion_pct=${req.userProfile?.avgCompletionPct ?? 0}
+` +
+    `recent_reads_7d=${req.userProfile?.recentReadCount7d ?? 0}
+` +
+    `${profileNotes}
+
+` +
+    `Interest guidance:
+` +
+    `${customInterestPrompt ? `User-stated interests: ${customInterestPrompt}` : defaultInterestPrompt}
+
+` +
+    `Return exactly one line of JSON only: {"ids":["rss:...", "..."]}
+` +
+    `Rules: ids only, no indexes, no prose, unique ids, exactly ${Math.min(req.cap, req.items.length)} ids, and every id must be from: ${validIds}
+
+` +
+    `Candidates:
+${candidates}`;
 
   const rankingPromise = (async (): Promise<string[] | null> => {
     console.info(
