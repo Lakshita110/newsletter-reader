@@ -5,11 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getRssCategoryLabel, RSS_CATEGORY_OPTIONS } from "@/lib/rss-categories";
-import {
-  RSS_RECOMMENDATION_CAP_MAX,
-  RSS_RECOMMENDATION_CAP_MIN,
-  RSS_RECOMMENDATION_PROMPT_MAX_CHARS,
-} from "@/lib/rss-recommendation-settings";
 
 type Feed = {
   id: string;
@@ -45,9 +40,6 @@ export default function RssSettingsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<FeedDraft>({ name: "", rssUrl: "", category: "other" });
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("all");
-  const [recommendationCap, setRecommendationCap] = useState<number>(35);
-  const [recommendationPrompt, setRecommendationPrompt] = useState<string>("");
-  const [isSavingRecommendations, setIsSavingRecommendations] = useState(false);
 
   const loadFeeds = async () => {
     const res = await fetch("/api/sources/rss", { cache: "no-store" });
@@ -56,19 +48,9 @@ export default function RssSettingsPage() {
     setFeeds(Array.isArray(data) ? data : []);
   };
 
-  const loadRecommendationSettings = async () => {
-    const res = await fetch("/api/rss/recommendations-settings", { cache: "no-store" });
-    if (!res.ok) return;
-    const data = await res.json().catch(() => null);
-    if (!data) return;
-    setRecommendationCap(Number(data.recommendationCap) || 35);
-    setRecommendationPrompt(typeof data.recommendationPrompt === "string" ? data.recommendationPrompt : "");
-  };
-
   useEffect(() => {
     if (!session?.user?.email) return;
     loadFeeds().catch(() => null);
-    loadRecommendationSettings().catch(() => null);
   }, [session?.user?.email]);
 
   useEffect(() => {
@@ -188,33 +170,6 @@ export default function RssSettingsPage() {
     }
   };
 
-  const saveRecommendationSettings = async () => {
-    setIsSavingRecommendations(true);
-    setNotice(null);
-    try {
-      const res = await fetch("/api/rss/recommendations-settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          recommendationCap,
-          recommendationPrompt,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setNotice(data?.error || "Could not save recommendation settings.");
-        return;
-      }
-      setRecommendationCap(Number(data.recommendationCap) || recommendationCap);
-      setRecommendationPrompt(
-        typeof data.recommendationPrompt === "string" ? data.recommendationPrompt : recommendationPrompt
-      );
-      setNotice("Recommendation settings saved.");
-    } finally {
-      setIsSavingRecommendations(false);
-    }
-  };
-
   const filteredFeeds = feeds.filter((feed) => {
     if (selectedCategoryFilter === "all") return true;
     return (feed.category ?? "other") === selectedCategoryFilter;
@@ -255,51 +210,11 @@ export default function RssSettingsPage() {
               Manage your sources, categories, and sync readiness.
             </p>
           </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <Link href="/rss/settings/recommendations" className="back-link-muted">
-              Manage recommendations
-            </Link>
-            <Link href="/inbox/rss" className="back-link-muted">
-              Back to RSS inbox
-            </Link>
-          </div>
+          <Link href="/inbox/rss" className="back-link-muted">
+            Back to RSS inbox
+          </Link>
         </div>
       </header>
-
-      <section style={{ marginBottom: 18, borderBottom: "1px solid var(--faint)", paddingBottom: 16 }}>
-        <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>Manage recommendations</div>
-        <div style={{ display: "grid", gap: 10 }}>
-          <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
-            <span style={{ color: "var(--muted)" }}>Recommended article count</span>
-            <input
-              type="number"
-              min={RSS_RECOMMENDATION_CAP_MIN}
-              max={RSS_RECOMMENDATION_CAP_MAX}
-              value={recommendationCap}
-              onChange={(e) => setRecommendationCap(Number(e.target.value) || RSS_RECOMMENDATION_CAP_MIN)}
-              className="settings-input"
-            />
-          </label>
-          <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
-            <span style={{ color: "var(--muted)" }}>Interest prompt for AI (optional)</span>
-            <textarea
-              value={recommendationPrompt}
-              onChange={(e) => setRecommendationPrompt(e.target.value.slice(0, RSS_RECOMMENDATION_PROMPT_MAX_CHARS))}
-              placeholder="Example: Focus on startups, AI safety, developer tools, and long-form explainers."
-              className="settings-input"
-              rows={4}
-            />
-            <span style={{ color: "var(--muted)", fontSize: 12 }}>
-              {recommendationPrompt.length}/{RSS_RECOMMENDATION_PROMPT_MAX_CHARS}
-            </span>
-          </label>
-          <div>
-            <button onClick={saveRecommendationSettings} disabled={isSavingRecommendations} className="filter-action-btn">
-              {isSavingRecommendations ? "Saving..." : "Save recommendations"}
-            </button>
-          </div>
-        </div>
-      </section>
 
       <section style={{ marginBottom: 18, borderBottom: "1px solid var(--faint)", paddingBottom: 16 }}>
         <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>Add feed</div>

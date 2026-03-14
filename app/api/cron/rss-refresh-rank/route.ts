@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { syncRssSource } from "@/lib/rss";
 import { rankItemsForDailyCap } from "@/lib/rss-daily-cap-ranker";
 import { dayKeyUtc, getRssDailyTargetCap, getUserRssReadProfile } from "@/lib/rss-helpers";
+import { normalizeRecommendationPrompt } from "@/lib/rss-recommendation-settings";
 
 type RssPriority = "HIGH" | "NORMAL" | "LOW";
 
@@ -40,12 +41,18 @@ function rankSnapshotExpiryUtc(dayKey: string): Date {
   return nextDay;
 }
 
-function buildRankInputFingerprint(dayKey: string, cap: number, items: Array<{ id: string }>): string {
-  const payload = `${dayKey}|${cap}|${items.map((item) => item.id).join(",")}`;
+function buildRankInputFingerprint(dayKey: string, cap: number, prompt: string, items: Array<{ id: string }>): string {
+  const payload = `${dayKey}|${cap}|${prompt}|${items.map((item) => item.id).join(",")}`;
   return createHash("sha256").update(payload).digest("hex");
 }
 
 async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
+  const userSettings = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { rssRecommendationPrompt: true },
+  });
+  const customPrompt = normalizeRecommendationPrompt(userSettings?.rssRecommendationPrompt) ?? "";
+
   const rollingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const subscriptions = await prisma.userRssSubscription.findMany({
     where: { userId, isActive: true },
@@ -116,7 +123,7 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     author: candidate.author,
     publishedAtIso: candidate.publishedAtIso,
   }));
-  const inputFingerprint = buildRankInputFingerprint(dayKey, totalCap, aiItems);
+  const inputFingerprint = buildRankInputFingerprint(dayKey, totalCap, customPrompt, aiItems);
 
   let rankedIds = deterministicIds;
   let status: "AI_SUCCESS" | "FALLBACK_DETERMINISTIC" = "FALLBACK_DETERMINISTIC";
@@ -130,7 +137,7 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
       dayKey,
       category: "mixed",
       cap: totalCap,
-      userProfile: readProfile,
+      userProfile: { ...readProfile, customPrompt: customPrompt || null },
       items: aiItems,
     }).catch(() => null);
 

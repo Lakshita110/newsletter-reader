@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
+  RSS_RECOMMENDATION_CAP_DEFAULT,
   RSS_RECOMMENDATION_CAP_MAX,
   RSS_RECOMMENDATION_CAP_MIN,
   RSS_RECOMMENDATION_PROMPT_MAX_CHARS,
@@ -13,10 +14,10 @@ import {
 export default function RecommendationSettingsPage() {
   const { data: session } = useSession();
   const router = useRouter();
-  const [recommendationCap, setRecommendationCap] = useState<number>(35);
+  const [recommendationCap, setRecommendationCap] = useState<number>(RSS_RECOMMENDATION_CAP_DEFAULT);
   const [recommendationPrompt, setRecommendationPrompt] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; kind: "success" | "error" } | null>(null);
 
   useEffect(() => {
     if (session === null) router.replace("/sign-in");
@@ -29,7 +30,7 @@ export default function RecommendationSettingsPage() {
       if (!res.ok) return;
       const data = await res.json().catch(() => null);
       if (!data) return;
-      setRecommendationCap(Number(data.recommendationCap) || 35);
+      setRecommendationCap(Number(data.recommendationCap) || RSS_RECOMMENDATION_CAP_DEFAULT);
       setRecommendationPrompt(typeof data.recommendationPrompt === "string" ? data.recommendationPrompt : "");
     };
     load().catch(() => null);
@@ -54,70 +55,95 @@ export default function RecommendationSettingsPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setNotice(data?.error || "Could not save recommendation settings.");
+        setNotice({ text: data?.error || "Could not save recommendation settings.", kind: "error" });
         return;
       }
       setRecommendationCap(Number(data.recommendationCap) || recommendationCap);
       setRecommendationPrompt(
         typeof data.recommendationPrompt === "string" ? data.recommendationPrompt : recommendationPrompt
       );
-      setNotice("Saved.");
+      setNotice({ text: "Settings saved.", kind: "success" });
     } finally {
       setIsSaving(false);
     }
   };
 
+  const charCount = recommendationPrompt.length;
+  const charNearLimit = charCount > RSS_RECOMMENDATION_PROMPT_MAX_CHARS * 0.85;
+
   return (
-    <main style={{ maxWidth: 720, margin: "44px auto", padding: "0 24px 20px" }}>
-      <header style={{ borderBottom: "1px solid var(--faint)", paddingBottom: 12, marginBottom: 18 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+    <main style={{ maxWidth: 600, margin: "44px auto", padding: "0 24px 40px" }}>
+      <header style={{ borderBottom: "1px solid var(--faint)", paddingBottom: 14, marginBottom: 28 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
           <div>
-            <h1 className="app-page-title settings-title">Manage Recommendations</h1>
+            <h1 className="app-page-title settings-title">Recommendations</h1>
             <p className="app-page-subtitle settings-subtitle">
-              Tune how many recommended RSS articles you see and what interests the AI should prioritize.
+              Tune how many articles the AI recommends and what it should prioritize.
             </p>
           </div>
-          <Link href="/rss/settings" className="back-link-muted">
-            Back to RSS settings
+          <Link href="/inbox/rss" className="back-link-muted" style={{ marginTop: 4 }}>
+            Back to RSS inbox
           </Link>
         </div>
       </header>
 
-      <div style={{ display: "grid", gap: 10 }}>
-        <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
-          <span style={{ color: "var(--muted)" }}>Recommended article count</span>
-          <input
-            type="number"
-            min={RSS_RECOMMENDATION_CAP_MIN}
-            max={RSS_RECOMMENDATION_CAP_MAX}
-            value={recommendationCap}
-            onChange={(e) => setRecommendationCap(Number(e.target.value) || RSS_RECOMMENDATION_CAP_MIN)}
-            className="settings-input"
-          />
-        </label>
+      <div style={{ display: "grid", gap: 24 }}>
+        <div style={{ display: "grid", gap: 8 }}>
+          <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+            Recommended article count
+          </label>
+          <p style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>
+            How many articles the AI selects for your recommended feed each day.
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
+            <input
+              type="number"
+              min={RSS_RECOMMENDATION_CAP_MIN}
+              max={RSS_RECOMMENDATION_CAP_MAX}
+              value={recommendationCap}
+              onChange={(e) => setRecommendationCap(Number(e.target.value) || RSS_RECOMMENDATION_CAP_MIN)}
+              className="settings-input"
+              style={{ width: 90 }}
+            />
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>
+              {RSS_RECOMMENDATION_CAP_MIN}–{RSS_RECOMMENDATION_CAP_MAX} articles
+            </span>
+          </div>
+        </div>
 
-        <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
-          <span style={{ color: "var(--muted)" }}>Interest prompt for AI (optional)</span>
+        <div style={{ display: "grid", gap: 8 }}>
+          <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+            Interest prompt <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span>
+          </label>
+          <p style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>
+            Guide the AI toward topics you care about. Leave blank to use default ranking.
+          </p>
           <textarea
             value={recommendationPrompt}
             onChange={(e) => setRecommendationPrompt(e.target.value.slice(0, RSS_RECOMMENDATION_PROMPT_MAX_CHARS))}
-            placeholder="Example: prioritize startup strategy, AI tools, and deep technical explainers."
+            placeholder="e.g. Prioritize startup strategy, AI tools, and deep technical explainers. Skip sports and celebrity news."
             className="settings-input"
-            rows={6}
+            rows={5}
+            style={{ height: "auto", padding: "10px", resize: "vertical", lineHeight: 1.5 }}
           />
-          <span style={{ color: "var(--muted)", fontSize: 12 }}>
-            {recommendationPrompt.length}/{RSS_RECOMMENDATION_PROMPT_MAX_CHARS}
-          </span>
-        </label>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <span style={{ fontSize: 12, color: charNearLimit ? "var(--danger-text, #c0392b)" : "var(--muted)" }}>
+              {charCount}/{RSS_RECOMMENDATION_PROMPT_MAX_CHARS}
+            </span>
+          </div>
+        </div>
 
-        <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <button onClick={save} disabled={isSaving} className="filter-action-btn">
-            {isSaving ? "Saving..." : "Save recommendation settings"}
+            {isSaving ? "Saving…" : "Save settings"}
           </button>
+          {notice && (
+            <span style={{ fontSize: 13, color: notice.kind === "error" ? "var(--danger-text, #c0392b)" : "var(--muted)" }}>
+              {notice.text}
+            </span>
+          )}
         </div>
       </div>
-
-      {notice && <div style={{ marginTop: 14, color: "var(--muted)", fontSize: 13 }}>{notice}</div>}
     </main>
   );
 }

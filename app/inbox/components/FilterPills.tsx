@@ -131,73 +131,77 @@ export function InboxFilters({
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {rightAction}
-          <div ref={sourceMenuRef} style={{ position: "relative" }}>
-            <button
-              type="button"
-              className="filter-select"
-              aria-label="Filter by source"
-              onClick={() => setShowSourceMenu((prev) => !prev)}
-              style={{ minWidth: 190, justifyContent: "space-between" }}
-            >
-              <span>{selectedPubLabel ? `Source: ${selectedPubLabel}` : "Source"}</span>
-              <span style={{ marginLeft: 10 }}>{showSourceMenu ? "▴" : "▾"}</span>
-            </button>
-            {showSourceMenu && (
-              <div className="filter-menu">
+          {viewMode !== "recommended" && (
+            <>
+              <div ref={sourceMenuRef} style={{ position: "relative" }}>
                 <button
                   type="button"
-                  className="filter-menu-item"
-                  onClick={() => {
-                    onPublicationChange(null);
-                    setShowSourceMenu(false);
-                  }}
+                  className="filter-select"
+                  aria-label="Filter by source"
+                  onClick={() => setShowSourceMenu((prev) => !prev)}
+                  style={{ minWidth: 190, justifyContent: "space-between" }}
                 >
-                  All sources
+                  <span>{selectedPubLabel ? `Source: ${selectedPubLabel}` : "Source"}</span>
+                  <span style={{ marginLeft: 10 }}>{showSourceMenu ? "▴" : "▾"}</span>
                 </button>
-                {publicationOptions.map((item) => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    className={selectedPub === item.key ? "filter-menu-item active" : "filter-menu-item"}
-                    onClick={() => {
-                      onPublicationChange(item.key);
-                      setShowSourceMenu(false);
-                    }}
-                  >
-                    {item.label}
-                  </button>
-                ))}
+                {showSourceMenu && (
+                  <div className="filter-menu">
+                    <button
+                      type="button"
+                      className="filter-menu-item"
+                      onClick={() => {
+                        onPublicationChange(null);
+                        setShowSourceMenu(false);
+                      }}
+                    >
+                      All sources
+                    </button>
+                    {publicationOptions.map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        className={selectedPub === item.key ? "filter-menu-item active" : "filter-menu-item"}
+                        onClick={() => {
+                          onPublicationChange(item.key);
+                          setShowSourceMenu(false);
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          {categoryOptions && onCategoryChange && (
-            <select
-              value={selectedCategory ?? ""}
-              onChange={(event) => onCategoryChange(event.target.value || null)}
-              className="filter-select"
-              aria-label="Filter by category"
-            >
-              <option value="">Category</option>
-              {categoryOptions.map((item) => (
-                <option key={item.key} value={item.key}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
+              {categoryOptions && onCategoryChange && (
+                <select
+                  value={selectedCategory ?? ""}
+                  onChange={(event) => onCategoryChange(event.target.value || null)}
+                  className="filter-select"
+                  aria-label="Filter by category"
+                >
+                  <option value="">Category</option>
+                  {categoryOptions.map((item) => (
+                    <option key={item.key} value={item.key}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <select
+                value={selectedDay ?? ""}
+                onChange={(event) => onDayChange(event.target.value || null)}
+                className="filter-select"
+                aria-label="Filter by date"
+              >
+                <option value="">Date</option>
+                {dayOptions.map((item) => (
+                  <option key={item.key} value={item.key}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </>
           )}
-          <select
-            value={selectedDay ?? ""}
-            onChange={(event) => onDayChange(event.target.value || null)}
-            className="filter-select"
-            aria-label="Filter by date"
-          >
-            <option value="">Date</option>
-            {dayOptions.map((item) => (
-              <option key={item.key} value={item.key}>
-                {item.label}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 

@@ -24,6 +24,15 @@ import { buildContextById, postReadState } from "../lib/read-state";
 import { useFeedKeyboardNavigation } from "../hooks/useFeedKeyboardNavigation";
 import type { FeedReadStatus, InboxItem } from "../types";
 
+function formatRankedAgo(rankedAt: string): string {
+  const ms = Date.now() - new Date(rankedAt).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  return `${hrs}h ${mins % 60}m ago`;
+}
+
 function mapSearchRows(rows: unknown[]): InboxItem[] {
   return rows
     .filter((row): row is Record<string, unknown> => typeof row === "object" && row !== null)
@@ -70,6 +79,8 @@ export default function RssInboxPage() {
     { sourceId: string; sourceName: string; count: number }[]
   >([]);
   const [recommendedIds, setRecommendedIds] = useState<string[]>([]);
+  const [rankingPending, setRankingPending] = useState(false);
+  const [rankedAt, setRankedAt] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isSyncingRss, setIsSyncingRss] = useState(false);
   const [rssSyncNotice, setRssSyncNotice] = useState<string | null>(null);
@@ -107,6 +118,8 @@ export default function RssInboxPage() {
         ? data.rssMeta.recommendedIds.filter((id: unknown): id is string => typeof id === "string")
         : []
     );
+    setRankingPending(data?.rssMeta?.rankingPending === true);
+    setRankedAt(typeof data?.rssMeta?.rankedAt === "string" ? data.rssMeta.rankedAt : null);
     return nextItems as InboxItem[];
   }, [selectedSourceId, viewMode]);
 
@@ -190,6 +203,12 @@ export default function RssInboxPage() {
   useEffect(() => {
     saveMapToStorage("nr_saved_items_map", savedById);
   }, [savedById]);
+
+  useEffect(() => {
+    if (!rankingPending) return;
+    const timer = setTimeout(() => { loadRssInbox().catch(() => null); }, 3000);
+    return () => clearTimeout(timer);
+  }, [rankingPending, loadRssInbox]);
 
   const activeItems = useMemo(() => (isServerSearchActive ? searchItems : items), [isServerSearchActive, items, searchItems]);
   const publications = useMemo(() => getPublications(activeItems), [activeItems]);
@@ -383,13 +402,23 @@ export default function RssInboxPage() {
         userEmail={session.user?.email}
         q={q}
         onQueryChange={setQ}
-        profileLinks={[{ label: "Manage feeds", href: "/rss/settings" }]}
+        profileLinks={[
+          { label: "Manage feeds", href: "/rss/settings" },
+          { label: "Manage recommendations", href: "/rss/settings/recommendations" },
+        ]}
       />
 
       <InboxFilters
         viewMode={viewMode}
         modeOrder={modeOrder}
-        onViewModeChange={setViewMode}
+        onViewModeChange={(mode) => {
+          setViewMode(mode);
+          if (mode === "recommended") {
+            setSelectedPub(null);
+            setSelectedCategory(null);
+            setSelectedDay(null);
+          }
+        }}
         selectedPub={selectedPub}
         selectedCategory={selectedCategory}
         selectedDay={selectedDay}
@@ -423,6 +452,11 @@ export default function RssInboxPage() {
       />
 
       {rssSyncNotice && <div style={{ margin: "-8px 0 14px", color: "var(--muted)", fontSize: 12 }}>{rssSyncNotice}</div>}
+      {viewMode === "recommended" && (rankingPending || rankedAt) && (
+        <div style={{ margin: "-8px 0 14px", color: "var(--muted)", fontSize: 12 }}>
+          {rankingPending ? "Ranking recommendations…" : rankedAt ? `Last ranked ${formatRankedAgo(rankedAt)}.` : null}
+        </div>
+      )}
       {isServerSearchActive && (
         <div style={{ margin: "-6px 0 14px", color: "var(--muted)", fontSize: 12 }}>
           {isSearching
