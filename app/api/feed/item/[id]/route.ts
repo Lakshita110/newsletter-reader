@@ -183,3 +183,62 @@ export async function GET(req: Request) {
   return NextResponse.json(data);
 }
 
+export async function DELETE(req: Request) {
+  const session = await getServerSession(authOptions);
+  const email = session?.user?.email;
+  if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const user = await prisma.user.upsert({
+    where: { email },
+    update: {},
+    create: { email },
+    select: { id: true },
+  });
+
+  const url = new URL(req.url);
+  const rawId = url.pathname.split("/").filter(Boolean).pop();
+  if (!rawId) return NextResponse.json({ error: "Missing id in path" }, { status: 400 });
+
+  let id = rawId;
+  for (let i = 0; i < 2; i++) {
+    try {
+      const decoded = decodeURIComponent(id);
+      if (decoded === id) break;
+      id = decoded;
+    } catch {
+      break;
+    }
+  }
+
+  if (!id.startsWith("rss:")) {
+    return NextResponse.json(
+      { error: "Only RSS items can be deleted from the local database" },
+      { status: 400 }
+    );
+  }
+
+  const rssItemId = id.replace(/^rss:/, "");
+  const item = await prisma.rssItem.findUnique({
+    where: { id: rssItemId },
+    select: { id: true, rssSourceId: true },
+  });
+  if (!item) return NextResponse.json({ ok: true, deleted: false });
+
+  const sub = await prisma.userRssSubscription.findUnique({
+    where: { userId_rssSourceId: { userId: user.id, rssSourceId: item.rssSourceId } },
+    select: { id: true, isActive: true },
+  });
+  if (!sub?.isActive) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  await prisma.$transaction([
+    prisma.messageReadStat.deleteMany({
+      where: {
+        userId: user.id,
+        messageExternalId: id,
+      },
+    }),
+    prisma.rssItem.delete({ where: { id: rssItemId } }),
+  ]);
+
+  return NextResponse.json({ ok: true, deleted: true });
+}

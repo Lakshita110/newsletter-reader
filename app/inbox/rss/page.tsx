@@ -300,6 +300,34 @@ export default function RssInboxPage() {
     [contextById, savedById]
   );
 
+  const deleteItem = useCallback(async (id: string) => {
+    const shouldDelete = window.confirm("Delete this article from your RSS database?");
+    if (!shouldDelete) return;
+
+    try {
+      const res = await fetch(`/api/feed/item/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok) return;
+
+      setItems((prev) => prev.filter((item) => item.id !== id));
+      setSearchItems((prev) => prev.filter((item) => item.id !== id));
+      setManualSyncedIds((prev) => prev.filter((itemId) => itemId !== id));
+      setRecommendedIds((prev) => prev.filter((itemId) => itemId !== id));
+      setStatusById((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setSavedById((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    } catch {
+      // Ignore temporary network failures; item will remain visible.
+    }
+  }, []);
+
+
   useFeedKeyboardNavigation({
     ordered,
     activeSelectedIndex,
@@ -307,6 +335,7 @@ export default function RssInboxPage() {
     onOpen: markInProgress,
     onToggleRead: toggleRead,
     onToggleSaved: toggleSaved,
+    onDelete: deleteItem,
   });
 
   const catchUpOlder = useCallback(() => {
@@ -425,6 +454,7 @@ export default function RssInboxPage() {
         onOpen={markInProgress}
         onMarkRead={markRead}
         onToggleSaved={toggleSaved}
+        onDelete={deleteItem}
       />
 
       {viewMode === "all" && <CatchUpOlderButton count={olderUnreadIds.length} onClick={catchUpOlder} />}

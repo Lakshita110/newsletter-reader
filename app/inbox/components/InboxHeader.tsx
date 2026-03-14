@@ -194,10 +194,13 @@ export function InboxHeader({
                 <code>f</code> - Open full article when available
               </li>
               <li>
+                <code>d</code> - Delete selected RSS item
+              </li>
+              <li>
                 <code>Ctrl+W</code> / <code>Cmd+W</code> - Close full article tab/window
               </li>
               <li>
-                <code>u</code> - Back to inbox from reader
+                <code>b</code> - Back to inbox
               </li>
               <li>
                 <code>Esc</code> - Close this modal
