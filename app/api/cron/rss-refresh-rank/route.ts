@@ -1,15 +1,23 @@
-import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncRssSource } from "@/lib/rss";
-import { rankItemsForDailyCap } from "@/lib/rss-daily-cap-ranker";
-import { dayKeyUtc, getRssDailyTargetCap, getUserRssReadProfile } from "@/lib/rss-helpers";
+import { computeDailyRankedSelection } from "@/lib/rss-ranking";
+import {
+  buildRssArticleDedupKey,
+  dedupeByArticleKey,
+  dayKeyUtc,
+  getRssDailyTargetCap,
+  rssPriorityScore,
+  sortByPriorityAndRecency,
+} from "@/lib/rss-helpers";
 import { normalizeRecommendationPrompt } from "@/lib/rss-recommendation-settings";
 
 type RssPriority = "HIGH" | "NORMAL" | "LOW";
 
 type Candidate = {
   id: string;
+  sourceName: string;
+  dedupKey: string;
   priority: RssPriority;
   sortTimeMs: number;
   title: string;
@@ -29,21 +37,10 @@ function isAuthorized(req: Request): boolean {
   return bearer === configured || header === configured;
 }
 
-function priorityScore(priority: RssPriority): number {
-  if (priority === "HIGH") return 3;
-  if (priority === "NORMAL") return 2;
-  return 1;
-}
-
 function rankSnapshotExpiryUtc(dayKey: string): Date {
   const nextDay = new Date(`${dayKey}T00:00:00.000Z`);
   nextDay.setUTCDate(nextDay.getUTCDate() + 1);
   return nextDay;
-}
-
-function buildRankInputFingerprint(dayKey: string, cap: number, prompt: string, items: Array<{ id: string }>): string {
-  const payload = `${dayKey}|${cap}|${prompt}|${items.map((item) => item.id).join(",")}`;
-  return createHash("sha256").update(payload).digest("hex");
 }
 
 async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
@@ -79,6 +76,12 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     for (const item of sub.source.items) {
       candidates.push({
         id: `rss:${item.id}`,
+        sourceName: sub.source.name,
+        dedupKey: buildRssArticleDedupKey({
+          externalUrl: item.link,
+          title: item.title,
+          snippet: item.snippet ?? "",
+        }),
         priority: sub.priority,
         sortTimeMs: item.publishedAt?.getTime() ?? item.createdAt.getTime(),
         title: item.title,
@@ -103,58 +106,39 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
         });
   const readIdSet = new Set(readRows.map((row) => row.messageExternalId));
   const unreadCandidates = candidates.filter((candidate) => !readIdSet.has(candidate.id));
+  const dedupedCandidates = dedupeByArticleKey(
+    unreadCandidates,
+    (candidate) => rssPriorityScore(candidate.priority),
+    (candidate) => candidate.sortTimeMs
+  );
 
-  const sortedFallback = unreadCandidates.sort((a, b) => {
-    const pa = priorityScore(a.priority);
-    const pb = priorityScore(b.priority);
-    if (pa !== pb) return pb - pa;
-    return b.sortTimeMs - a.sortTimeMs;
-  });
+  const sortedFallback = sortByPriorityAndRecency(
+    dedupedCandidates,
+    (candidate) => candidate.priority,
+    (candidate) => candidate.sortTimeMs
+  );
   const totalCap = getRssDailyTargetCap(sortedFallback.length);
 
-  const deterministicIds =
-    totalCap <= 0
-      ? []
-      : sortedFallback.slice(0, totalCap).map((candidate) => candidate.id);
   const aiItems = sortedFallback.map((candidate) => ({
     id: candidate.id,
     title: candidate.title,
     snippet: candidate.snippet,
     author: candidate.author,
+    sourceName: candidate.sourceName,
     publishedAtIso: candidate.publishedAtIso,
   }));
-  const inputFingerprint = buildRankInputFingerprint(dayKey, totalCap, customPrompt, aiItems);
-
-  let rankedIds = deterministicIds;
-  let status: "AI_SUCCESS" | "FALLBACK_DETERMINISTIC" = "FALLBACK_DETERMINISTIC";
+  const ranking = await computeDailyRankedSelection({
+    userId,
+    dayKey,
+    cap: totalCap,
+    rankedItems: aiItems,
+    customPrompt,
+  });
+  const rankedIds = ranking.selectedIds;
+  const status: "AI_SUCCESS" | "FALLBACK_DETERMINISTIC" = ranking.status;
   let expiresAt = rankSnapshotExpiryUtc(dayKey);
-
-  const shouldAttemptAi = totalCap > 0 && aiItems.length > 0;
-  if (shouldAttemptAi) {
-    const readProfile = await getUserRssReadProfile(userId);
-    const aiRanked = await rankItemsForDailyCap({
-      sourceName: "All RSS Sources",
-      dayKey,
-      category: "mixed",
-      cap: totalCap,
-      userProfile: { ...readProfile, customPrompt: customPrompt || null },
-      items: aiItems,
-    }).catch(() => null);
-
-    if (aiRanked && aiRanked.length > 0) {
-      const allowed = new Set(sortedFallback.map((candidate) => candidate.id));
-      const ordered: string[] = [];
-      for (const id of aiRanked) {
-        if (!allowed.has(id)) continue;
-        if (ordered.includes(id)) continue;
-        ordered.push(id);
-        if (ordered.length >= totalCap) break;
-      }
-      rankedIds = ordered;
-      status = "AI_SUCCESS";
-    } else {
-      expiresAt = new Date(Date.now() + FALLBACK_SNAPSHOT_TTL_MS);
-    }
+  if (status !== "AI_SUCCESS" && totalCap > 0 && aiItems.length > 0) {
+    expiresAt = new Date(Date.now() + FALLBACK_SNAPSHOT_TTL_MS);
   }
 
   await prisma.userRssDailyRankSnapshot.upsert({
@@ -164,7 +148,7 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
       status,
       source: "CRON",
       model: process.env.OPENROUTER_MODEL ?? null,
-      inputFingerprint,
+      inputFingerprint: ranking.inputFingerprint,
       expiresAt,
     },
     create: {
@@ -174,7 +158,7 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
       status,
       source: "CRON",
       model: process.env.OPENROUTER_MODEL ?? null,
-      inputFingerprint,
+      inputFingerprint: ranking.inputFingerprint,
       expiresAt,
     },
   });

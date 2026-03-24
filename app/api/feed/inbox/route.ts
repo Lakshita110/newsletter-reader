@@ -1,19 +1,23 @@
 import { google, gmail_v1 } from "googleapis";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { createHash, randomUUID } from "crypto";
+import { randomUUID } from "crypto";
 import { authOptions } from "@/lib/auth";
 import { classifyNewsletter, getHeader } from "@/lib/newsletter-classifier";
 import { parseFrom, normalizePublicationKey } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
 import { normalizeRssCategory } from "@/lib/rss-categories";
-import { rankItemsForDailyCap } from "@/lib/rss-daily-cap-ranker";
+import { buildRankInputFingerprint, computeDailyRankedSelection } from "@/lib/rss-ranking";
 import { normalizeRecommendationPrompt } from "@/lib/rss-recommendation-settings";
 import {
+  buildRssArticleDedupKey,
+  dedupeByArticleKey,
   dayKeyUtc,
   extractImageUrlFromHtml,
   getRssDailyTargetCap,
   getUserRssReadProfile,
+  rssPriorityScore,
+  sortByPriorityAndRecency,
   type RssReadProfile,
 } from "@/lib/rss-helpers";
 type RssPriority = "HIGH" | "NORMAL" | "LOW";
@@ -36,7 +40,14 @@ type FeedItem = {
 
 type RankSnapshotStatus = "AI_SUCCESS" | "FALLBACK_DETERMINISTIC";
 type RankSnapshotSource = "CRON" | "ON_DEMAND";
-type AiItem = { id: string; title: string; snippet: string; author: string | null; publishedAtIso: string };
+type AiItem = {
+  id: string;
+  title: string;
+  snippet: string;
+  author: string | null;
+  sourceName: string;
+  publishedAtIso: string;
+};
 type RankedIdsResult = {
   selectedRankIds: string[] | null;
   recommendedRankIds: string[];
@@ -48,6 +59,7 @@ type RankedIdsResult = {
 type DayCandidate = {
   sourceId: string;
   sourceName: string;
+  dedupKey: string;
   priority: RssPriority;
   item: {
     title: string;
@@ -67,19 +79,8 @@ const LOCK_POLL_MS = 350;
 const FALLBACK_SNAPSHOT_TTL_MS = 45 * 60 * 1000;
 const RANKING_STALENESS_TOLERANCE_MS = 4 * 60 * 60 * 1000; // 4 hours — don't re-rank if snapshot is fresher than this
 
-function priorityScore(priority: RssPriority): number {
-  if (priority === "HIGH") return 3;
-  if (priority === "NORMAL") return 2;
-  return 1;
-}
-
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function buildRankInputFingerprint(dayKey: string, cap: number, prompt: string, items: Array<{ id: string }>): string {
-  const payload = `${dayKey}|${cap}|${prompt}|${items.map((item) => item.id).join(",")}`;
-  return createHash("sha256").update(payload).digest("hex");
 }
 
 function rankSnapshotExpiryUtc(dayKey: string): Date {
@@ -328,12 +329,12 @@ async function acquireAndRank(params: {
   dayKey: string;
   cap: number;
   sortedFallback: DayCandidate[];
-  aiItems: AiItem[];
   readProfile: RssReadProfile;
-  inputFingerprint: string;
+  customPrompt: string;
+  aiItems: AiItem[];
   requestTag: string;
 }): Promise<RankedIdsResult> {
-  const { userId, dayKey, cap, sortedFallback, aiItems, readProfile, inputFingerprint, requestTag } = params;
+  const { userId, dayKey, cap, sortedFallback, readProfile, customPrompt, aiItems, requestTag } = params;
   const ownerId = randomUUID();
   const lockAcquired = await tryAcquireRankLock(userId, dayKey, ownerId);
   if (!lockAcquired) {
@@ -366,38 +367,36 @@ async function acquireAndRank(params: {
       };
     }
 
-    const rankedIds = await rankItemsForDailyCap({
-      sourceName: "All RSS Sources",
-      dayKey,
-      category: "mixed",
-      cap,
-      userProfile: readProfile,
-      items: aiItems,
-    }).catch((error) => {
-      console.error(`[rss-inbox][${requestTag}] rankItemsForDailyCap threw for on-demand day="${dayKey}"`, error);
-      return null;
-    });
-
     const now = new Date();
-    if (rankedIds && rankedIds.length > 0) {
-      const normalizedIds = sanitizeRankedIds(rankedIds, sortedFallback, cap);
-      await persistRankSnapshot({
-        userId, dayKey, rankedIds: normalizedIds, status: "AI_SUCCESS",
-        source: "ON_DEMAND", model: process.env.OPENROUTER_MODEL ?? null,
-        inputFingerprint, expiresAt: rankSnapshotExpiryUtc(dayKey),
-      });
-      console.info(`[rss-inbox][${requestTag}] ranking snapshot persisted day="${dayKey}" status="AI_SUCCESS" ids=${normalizedIds.length}`);
-      return { selectedRankIds: normalizedIds, recommendedRankIds: normalizedIds, status: "AI_SUCCESS", rankingPending: false, rankedAt: now.toISOString() };
-    }
-
-    const fallbackIds = deterministicFallbackIds(sortedFallback, cap);
-    await persistRankSnapshot({
-      userId, dayKey, rankedIds: fallbackIds, status: "FALLBACK_DETERMINISTIC",
-      source: "ON_DEMAND", model: process.env.OPENROUTER_MODEL ?? null,
-      inputFingerprint, expiresAt: new Date(Date.now() + FALLBACK_SNAPSHOT_TTL_MS),
+    const ranking = await computeDailyRankedSelection({
+      userId,
+      dayKey,
+      cap,
+      rankedItems: aiItems,
+      customPrompt,
+      readProfile,
     });
-    console.warn(`[rss-inbox][${requestTag}] ranking snapshot persisted day="${dayKey}" status="FALLBACK_DETERMINISTIC" ids=${fallbackIds.length}`);
-    return { selectedRankIds: fallbackIds, recommendedRankIds: [], status: "FALLBACK_DETERMINISTIC", rankingPending: false, rankedAt: now.toISOString() };
+    const isAiSuccess = ranking.status === "AI_SUCCESS";
+    const selectedIds = ranking.selectedIds;
+    await persistRankSnapshot({
+      userId,
+      dayKey,
+      rankedIds: selectedIds,
+      status: ranking.status,
+      source: "ON_DEMAND", model: process.env.OPENROUTER_MODEL ?? null,
+      inputFingerprint: ranking.inputFingerprint,
+      expiresAt: isAiSuccess ? rankSnapshotExpiryUtc(dayKey) : new Date(Date.now() + FALLBACK_SNAPSHOT_TTL_MS),
+    });
+    console.info(
+      `[rss-inbox][${requestTag}] ranking snapshot persisted day="${dayKey}" status="${ranking.status}" ids=${selectedIds.length}`
+    );
+    return {
+      selectedRankIds: selectedIds,
+      recommendedRankIds: ranking.recommendedIds,
+      status: ranking.status,
+      rankingPending: false,
+      rankedAt: now.toISOString(),
+    };
   } finally {
     await releaseRankLock(userId, dayKey, ownerId);
   }
@@ -417,11 +416,21 @@ async function getOrCreateTodayRankedIds(params: {
     title: candidate.item.title,
     snippet: candidate.item.snippet ?? "",
     author: candidate.item.author ?? null,
+    sourceName: candidate.sourceName,
     publishedAtIso: (candidate.item.publishedAt ?? candidate.item.createdAt).toISOString(),
   }));
   const normalizedPrompt = readProfile.customPrompt ?? "";
   const inputFingerprint = buildRankInputFingerprint(dayKey, cap, normalizedPrompt, aiItems);
-  const rankParams = { userId, dayKey, cap, sortedFallback, aiItems, readProfile, inputFingerprint, requestTag };
+  const rankParams = {
+    userId,
+    dayKey,
+    cap,
+    sortedFallback,
+    aiItems,
+    readProfile,
+    customPrompt: normalizedPrompt,
+    requestTag,
+  };
 
   const snapshot = await readValidRankSnapshot(userId, dayKey, new Date());
   if (snapshot) {
@@ -541,6 +550,11 @@ async function getRssFeed(
       allCandidates.push({
         sourceId: sub.source.id,
         sourceName: sub.source.name,
+        dedupKey: buildRssArticleDedupKey({
+          externalUrl: item.link,
+          title: item.title,
+          snippet: item.snippet ?? "",
+        }),
         priority: sub.priority,
         item: {
           title: item.title,
@@ -569,13 +583,17 @@ async function getRssFeed(
         });
   const readIdSet = new Set(readRows.map((row) => row.messageExternalId));
   const unreadCandidates = allCandidates.filter((candidate) => !readIdSet.has(candidate.feedItem.id));
+  const dedupedCandidates = dedupeByArticleKey(
+    unreadCandidates,
+    (candidate) => rssPriorityScore(candidate.priority),
+    (candidate) => candidate.sortTimeMs
+  );
 
-  const sortedFallback = unreadCandidates.sort((a, b) => {
-    const pa = priorityScore(a.priority);
-    const pb = priorityScore(b.priority);
-    if (pa !== pb) return pb - pa;
-    return b.sortTimeMs - a.sortTimeMs;
-  });
+  const sortedFallback = sortByPriorityAndRecency(
+    dedupedCandidates,
+    (candidate) => candidate.priority,
+    (candidate) => candidate.sortTimeMs
+  );
 
   const totalCap = getRssDailyTargetCap(sortedFallback.length, recommendationCap);
   let selectedIds = new Set<string>();
@@ -718,6 +736,3 @@ export async function GET(req: Request) {
     },
   });
 }
-
-
-

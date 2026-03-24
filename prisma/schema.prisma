@@ -34,6 +34,7 @@ model User {
   rssSubscriptions         UserRssSubscription[]
   rssRankSnapshots         UserRssDailyRankSnapshot[]
   rssRankLocks             UserRssRankJobLock[]
+  rssReadProfileSnapshot   UserRssReadProfileSnapshot?
 }
 
 model MessageReadStat {
@@ -144,4 +145,19 @@ model UserRssRankJobLock {
 
   @@unique([userId, dayKey])
   @@index([dayKey, expiresAt])
+}
+
+model UserRssReadProfileSnapshot {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  weekKey           String
+  topPublications   Json
+  avgCompletionPct  Float
+  recentReadCount7d Int
+  preferenceSummary Json
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([weekKey, updatedAt])
 }
