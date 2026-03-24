@@ -3,6 +3,7 @@ type RankItemInput = {
   title: string;
   snippet?: string | null;
   author?: string | null;
+  sourceName?: string | null;
   publishedAtIso: string;
 };
 
@@ -240,7 +241,7 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
     .map(
       (item, index) =>
         `${index + 1}. id=${item.id}\n` +
-        `source=${req.sourceName}\n` +
+        `source=${item.sourceName?.trim() || req.sourceName}\n` +
         `title=${item.title}\n` +
         `author=${item.author ?? "unknown"}`
     )
@@ -262,6 +263,10 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
   const defaultInterestPrompt =
     "Prioritize personal relevance, quality, diversity, novelty, and recency. Avoid near-duplicates and politics-only lists. Include culture coverage, at least 1 strong tech item, and 1-2 deeper pieces when available.";
   const customInterestPrompt = req.userProfile?.customPrompt?.trim();
+  const uniqueSourceCount = new Set(
+    req.items.map((item) => item.sourceName?.trim().toLowerCase()).filter((value): value is string => Boolean(value))
+  ).size;
+  const targetUniqueSources = Math.min(uniqueSourceCount, Math.max(1, Math.min(req.cap, 8)));
 
   const prompt =
     `Pick the best ${Math.min(req.cap, req.items.length)} RSS items for this user and order them best-to-worst.
@@ -290,6 +295,11 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
     `Interest guidance:
 ` +
     `${customInterestPrompt ? `User-stated interests: ${customInterestPrompt}` : defaultInterestPrompt}
+
+` +
+    `Source diversity guidance:
+` +
+    `Use a mix of publishers. Target at least ${targetUniqueSources} unique sources when available, and avoid over-concentrating picks from one source unless candidate quality clearly requires it.
 
 ` +
     `Return exactly one line of JSON only: {"ids":["rss:...", "..."]}
