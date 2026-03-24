@@ -8,12 +8,30 @@ export type RssReadProfile = {
   customPrompt?: string | null;
 };
 
+type ReadProfileSnapshotRow = {
+  topPublications: unknown;
+  avgCompletionPct: number;
+  recentReadCount7d: number;
+  preferenceSummary: unknown;
+  weekKey: string;
+};
+
 export function dayKeyUtc(value: Date | null): string {
   if (!value) return "unknown";
   const y = value.getUTCFullYear();
   const m = `${value.getUTCMonth() + 1}`.padStart(2, "0");
   const d = `${value.getUTCDate()}`.padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+export function weekKeyUtc(value: Date | null): string {
+  if (!value) return "unknown";
+  const date = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
 }
 
 export function getRssLookbackDays(): number {
@@ -54,7 +72,100 @@ export function extractImageUrlFromHtml(html?: string | null): string | undefine
   return undefined;
 }
 
-export async function getUserRssReadProfile(userId: string): Promise<RssReadProfile> {
+function normalizeUrlForDedup(rawUrl?: string | null): string | null {
+  if (!rawUrl) return null;
+  try {
+    const parsed = new URL(rawUrl);
+    const dropParams = [
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "utm_term",
+      "utm_content",
+      "utm_id",
+      "gclid",
+      "fbclid",
+      "mc_cid",
+      "mc_eid",
+    ];
+    for (const key of dropParams) parsed.searchParams.delete(key);
+    parsed.hash = "";
+    const path = parsed.pathname.replace(/\/+$/, "") || "/";
+    const query = parsed.searchParams.toString();
+    return `${parsed.hostname.toLowerCase()}${path}${query ? `?${query}` : ""}`;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeTextForDedup(input?: string | null): string {
+  return (input ?? "")
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function buildRssArticleDedupKey(args: {
+  externalUrl?: string | null;
+  title?: string | null;
+  snippet?: string | null;
+}): string {
+  const canonicalUrl = normalizeUrlForDedup(args.externalUrl);
+  if (canonicalUrl) return `url:${canonicalUrl}`;
+  const title = normalizeTextForDedup(args.title);
+  const snippet = normalizeTextForDedup(args.snippet).slice(0, 140);
+  return `text:${title}|${snippet}`;
+}
+
+export function dedupeByArticleKey<T extends { dedupKey: string }>(
+  items: T[],
+  scoreItem: (item: T) => number,
+  sortTimeMs: (item: T) => number
+): T[] {
+  const dedupedByKey = new Map<string, T>();
+  for (const item of items) {
+    const prev = dedupedByKey.get(item.dedupKey);
+    if (!prev) {
+      dedupedByKey.set(item.dedupKey, item);
+      continue;
+    }
+    const prevScore = scoreItem(prev);
+    const nextScore = scoreItem(item);
+    if (nextScore > prevScore || (nextScore === prevScore && sortTimeMs(item) > sortTimeMs(prev))) {
+      dedupedByKey.set(item.dedupKey, item);
+    }
+  }
+  return [...dedupedByKey.values()];
+}
+
+function normalizeTopPublications(value: unknown): Array<{ name: string; score: number }> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((row) => {
+      const parsed = row as { name?: unknown; score?: unknown };
+      if (typeof parsed?.name !== "string" || typeof parsed?.score !== "number") return null;
+      return { name: parsed.name, score: parsed.score };
+    })
+    .filter((row): row is { name: string; score: number } => Boolean(row));
+}
+
+function normalizePreferenceSummary(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((row): row is string => typeof row === "string");
+}
+
+function parseSnapshotToProfile(snapshot: ReadProfileSnapshotRow): RssReadProfile {
+  return {
+    topPublications: normalizeTopPublications(snapshot.topPublications),
+    avgCompletionPct: snapshot.avgCompletionPct,
+    recentReadCount7d: snapshot.recentReadCount7d,
+    preferenceSummary: normalizePreferenceSummary(snapshot.preferenceSummary),
+  };
+}
+
+async function computeUserRssReadProfile(userId: string): Promise<RssReadProfile> {
   const rows = await prisma.messageReadStat.findMany({
     where: {
       userId,
@@ -122,4 +233,44 @@ export async function getUserRssReadProfile(userId: string): Promise<RssReadProf
     recentReadCount7d,
     preferenceSummary,
   };
+}
+
+export async function getUserRssReadProfile(userId: string): Promise<RssReadProfile> {
+  const now = new Date();
+  const currentWeekKey = weekKeyUtc(now);
+  const snapshot = await prisma.userRssReadProfileSnapshot.findUnique({
+    where: { userId },
+    select: {
+      topPublications: true,
+      avgCompletionPct: true,
+      recentReadCount7d: true,
+      preferenceSummary: true,
+      weekKey: true,
+      updatedAt: true,
+    },
+  });
+  if (snapshot && snapshot.weekKey === currentWeekKey && now.getTime() - snapshot.updatedAt.getTime() < 7 * 86400000) {
+    return parseSnapshotToProfile(snapshot);
+  }
+
+  const computed = await computeUserRssReadProfile(userId);
+  await prisma.userRssReadProfileSnapshot.upsert({
+    where: { userId },
+    update: {
+      weekKey: currentWeekKey,
+      topPublications: computed.topPublications,
+      avgCompletionPct: computed.avgCompletionPct,
+      recentReadCount7d: computed.recentReadCount7d,
+      preferenceSummary: computed.preferenceSummary,
+    },
+    create: {
+      userId,
+      weekKey: currentWeekKey,
+      topPublications: computed.topPublications,
+      avgCompletionPct: computed.avgCompletionPct,
+      recentReadCount7d: computed.recentReadCount7d,
+      preferenceSummary: computed.preferenceSummary,
+    },
+  });
+  return computed;
 }

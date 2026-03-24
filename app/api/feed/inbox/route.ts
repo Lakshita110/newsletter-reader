@@ -10,6 +10,8 @@ import { normalizeRssCategory } from "@/lib/rss-categories";
 import { rankItemsForDailyCap } from "@/lib/rss-daily-cap-ranker";
 import { normalizeRecommendationPrompt } from "@/lib/rss-recommendation-settings";
 import {
+  buildRssArticleDedupKey,
+  dedupeByArticleKey,
   dayKeyUtc,
   extractImageUrlFromHtml,
   getRssDailyTargetCap,
@@ -36,7 +38,14 @@ type FeedItem = {
 
 type RankSnapshotStatus = "AI_SUCCESS" | "FALLBACK_DETERMINISTIC";
 type RankSnapshotSource = "CRON" | "ON_DEMAND";
-type AiItem = { id: string; title: string; snippet: string; author: string | null; publishedAtIso: string };
+type AiItem = {
+  id: string;
+  title: string;
+  snippet: string;
+  author: string | null;
+  sourceName: string;
+  publishedAtIso: string;
+};
 type RankedIdsResult = {
   selectedRankIds: string[] | null;
   recommendedRankIds: string[];
@@ -48,6 +57,7 @@ type RankedIdsResult = {
 type DayCandidate = {
   sourceId: string;
   sourceName: string;
+  dedupKey: string;
   priority: RssPriority;
   item: {
     title: string;
@@ -417,6 +427,7 @@ async function getOrCreateTodayRankedIds(params: {
     title: candidate.item.title,
     snippet: candidate.item.snippet ?? "",
     author: candidate.item.author ?? null,
+    sourceName: candidate.sourceName,
     publishedAtIso: (candidate.item.publishedAt ?? candidate.item.createdAt).toISOString(),
   }));
   const normalizedPrompt = readProfile.customPrompt ?? "";
@@ -541,6 +552,11 @@ async function getRssFeed(
       allCandidates.push({
         sourceId: sub.source.id,
         sourceName: sub.source.name,
+        dedupKey: buildRssArticleDedupKey({
+          externalUrl: item.link,
+          title: item.title,
+          snippet: item.snippet ?? "",
+        }),
         priority: sub.priority,
         item: {
           title: item.title,
@@ -569,8 +585,13 @@ async function getRssFeed(
         });
   const readIdSet = new Set(readRows.map((row) => row.messageExternalId));
   const unreadCandidates = allCandidates.filter((candidate) => !readIdSet.has(candidate.feedItem.id));
+  const dedupedCandidates = dedupeByArticleKey(
+    unreadCandidates,
+    (candidate) => priorityScore(candidate.priority),
+    (candidate) => candidate.sortTimeMs
+  );
 
-  const sortedFallback = unreadCandidates.sort((a, b) => {
+  const sortedFallback = dedupedCandidates.sort((a, b) => {
     const pa = priorityScore(a.priority);
     const pb = priorityScore(b.priority);
     if (pa !== pb) return pb - pa;
@@ -718,6 +739,3 @@ export async function GET(req: Request) {
     },
   });
 }
-
-
-

@@ -3,13 +3,21 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncRssSource } from "@/lib/rss";
 import { rankItemsForDailyCap } from "@/lib/rss-daily-cap-ranker";
-import { dayKeyUtc, getRssDailyTargetCap, getUserRssReadProfile } from "@/lib/rss-helpers";
+import {
+  buildRssArticleDedupKey,
+  dedupeByArticleKey,
+  dayKeyUtc,
+  getRssDailyTargetCap,
+  getUserRssReadProfile,
+} from "@/lib/rss-helpers";
 import { normalizeRecommendationPrompt } from "@/lib/rss-recommendation-settings";
 
 type RssPriority = "HIGH" | "NORMAL" | "LOW";
 
 type Candidate = {
   id: string;
+  sourceName: string;
+  dedupKey: string;
   priority: RssPriority;
   sortTimeMs: number;
   title: string;
@@ -79,6 +87,12 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     for (const item of sub.source.items) {
       candidates.push({
         id: `rss:${item.id}`,
+        sourceName: sub.source.name,
+        dedupKey: buildRssArticleDedupKey({
+          externalUrl: item.link,
+          title: item.title,
+          snippet: item.snippet ?? "",
+        }),
         priority: sub.priority,
         sortTimeMs: item.publishedAt?.getTime() ?? item.createdAt.getTime(),
         title: item.title,
@@ -103,8 +117,13 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
         });
   const readIdSet = new Set(readRows.map((row) => row.messageExternalId));
   const unreadCandidates = candidates.filter((candidate) => !readIdSet.has(candidate.id));
+  const dedupedCandidates = dedupeByArticleKey(
+    unreadCandidates,
+    (candidate) => priorityScore(candidate.priority),
+    (candidate) => candidate.sortTimeMs
+  );
 
-  const sortedFallback = unreadCandidates.sort((a, b) => {
+  const sortedFallback = dedupedCandidates.sort((a, b) => {
     const pa = priorityScore(a.priority);
     const pb = priorityScore(b.priority);
     if (pa !== pb) return pb - pa;
@@ -121,6 +140,7 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     title: candidate.title,
     snippet: candidate.snippet,
     author: candidate.author,
+    sourceName: candidate.sourceName,
     publishedAtIso: candidate.publishedAtIso,
   }));
   const inputFingerprint = buildRankInputFingerprint(dayKey, totalCap, customPrompt, aiItems);
