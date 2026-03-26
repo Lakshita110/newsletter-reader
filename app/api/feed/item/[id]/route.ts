@@ -88,6 +88,77 @@ async function getGmailItem(id: string, accessToken: string) {
   };
 }
 
+const PAYWALLED_DOMAINS = new Set([
+  "wsj.com",
+  "www.wsj.com",
+  "nytimes.com",
+  "www.nytimes.com",
+  "theatlantic.com",
+  "www.theatlantic.com",
+  "foreignaffairs.com",
+  "www.foreignaffairs.com",
+  "ft.com",
+  "www.ft.com",
+  "bloomberg.com",
+  "www.bloomberg.com",
+  "economist.com",
+  "www.economist.com",
+]);
+
+// Minimum extracted text length to consider a proxy fetch successful.
+const MIN_TEXT_LENGTH = 500;
+
+function isPaywalled(url: string): boolean {
+  try {
+    return PAYWALLED_DOMAINS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+// Returns proxy URLs to attempt in order before falling back to the direct URL.
+// archive.ph and archive.fo are the same underlying service (archive.today);
+// removepaywalls.com/3/ and /5/ are their own proxy endpoints that sometimes
+// succeed when the archive misses a recent article.
+function paywallProxyUrls(articleUrl: string): string[] {
+  const enc = encodeURIComponent(articleUrl);
+  return [
+    `https://archive.ph/newest/${articleUrl}`,
+    `https://archive.fo/newest/${articleUrl}`,
+    `https://removepaywalls.com/3/${enc}`,
+    `https://removepaywalls.com/5/${enc}`,
+  ];
+}
+
+async function fetchArticleHtml(
+  articleUrl: string,
+  paywalled: boolean
+): Promise<{ html: string; text: string } | null> {
+  const candidates = paywalled
+    ? [...paywallProxyUrls(articleUrl), articleUrl]
+    : [articleUrl];
+
+  for (const fetchUrl of candidates) {
+    try {
+      const res = await fetch(fetchUrl, {
+        headers: { "User-Agent": "newsletter-reader/1.0" },
+        redirect: "follow",
+      });
+      if (!res.ok) continue;
+
+      const fetchedHtml = await res.text();
+      // Pass the original article URL to Readability so relative links resolve correctly
+      const extracted = await extractArticleContent(fetchedHtml, articleUrl);
+      if (extracted.text.length >= MIN_TEXT_LENGTH) {
+        return { html: extracted.html || fetchedHtml, text: extracted.text };
+      }
+    } catch {
+      // proxy unavailable or timed out — try next
+    }
+  }
+  return null;
+}
+
 async function getRssItem(userId: string, rawId: string) {
   const rssItemId = rawId.replace(/^rss:/, "");
   const item = await prisma.rssItem.findUnique({
@@ -106,20 +177,14 @@ async function getRssItem(userId: string, rawId: string) {
   let text = item.textExtracted ?? "";
 
   if (!html && !text && item.link) {
-    try {
-      const res = await fetch(item.link, { headers: { "User-Agent": "newsletter-reader/1.0" } });
-      if (res.ok) {
-        const fetchedHtml = await res.text();
-        const extracted = await extractArticleContent(fetchedHtml, item.link);
-        html = extracted.html || fetchedHtml;
-        text = extracted.text;
-        await prisma.rssItem.update({
-          where: { id: item.id },
-          data: { htmlRaw: html, textExtracted: text || null },
-        });
-      }
-    } catch {
-      // fall through to external link fallback
+    const fetched = await fetchArticleHtml(item.link, isPaywalled(item.link));
+    if (fetched) {
+      html = fetched.html;
+      text = fetched.text;
+      await prisma.rssItem.update({
+        where: { id: item.id },
+        data: { htmlRaw: html, textExtracted: text },
+      });
     }
   }
 
