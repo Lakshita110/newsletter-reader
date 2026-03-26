@@ -102,8 +102,9 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  await prisma.userRssSubscription.delete({
+  await prisma.userRssSubscription.update({
     where: { id: subscriptionId },
+    data: { isActive: false },
   });
 
   return NextResponse.json({ ok: true });

@@ -23,7 +23,7 @@ export async function GET() {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const subscriptions = await prisma.userRssSubscription.findMany({
-    where: { userId },
+    where: { userId, isActive: true },
     include: { source: true },
     orderBy: [{ updatedAt: "desc" }],
   });

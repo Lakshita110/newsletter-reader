@@ -47,7 +47,7 @@ export async function GET(req: Request) {
     },
   });
 
-  if (!sub) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!sub?.isActive) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   return NextResponse.json({
     source: {
