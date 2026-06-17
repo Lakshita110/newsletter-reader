@@ -79,7 +79,21 @@ export async function syncRssSource(rssSourceId: string) {
   const source = await prisma.rssSource.findUnique({ where: { id: rssSourceId } });
   if (!source || !source.isActive) return { inserted: 0, updated: 0, insertedItemIds: [] as string[] };
 
-  const feed = await parser.parseURL(source.rssUrl);
+  let feed: Awaited<ReturnType<typeof parser.parseURL>>;
+  try {
+    feed = await parser.parseURL(source.rssUrl);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message.slice(0, 500) : "Unknown fetch error";
+    await prisma.rssSource.update({
+      where: { id: source.id },
+      data: {
+        consecutiveFailures: { increment: 1 },
+        lastErrorAt: new Date(),
+        lastErrorMessage: msg,
+      },
+    });
+    throw err;
+  }
   const allItems = feed.items ?? [];
   const storageCutoff = getRssLookbackCutoff(getRssLookbackDays());
   const items = allItems.filter((item) => {
@@ -105,7 +119,12 @@ export async function syncRssSource(rssSourceId: string) {
     });
     await prisma.rssSource.update({
       where: { id: source.id },
-      data: { lastSyncedAt: new Date() },
+      data: {
+        lastSyncedAt: new Date(),
+        consecutiveFailures: 0,
+        lastErrorAt: null,
+        lastErrorMessage: null,
+      },
     });
     return { inserted: 0, updated: 0, insertedItemIds: [] as string[] };
   }
@@ -218,7 +237,12 @@ export async function syncRssSource(rssSourceId: string) {
 
   await prisma.rssSource.update({
     where: { id: source.id },
-    data: { lastSyncedAt: new Date() },
+    data: {
+      lastSyncedAt: new Date(),
+      consecutiveFailures: 0,
+      lastErrorAt: null,
+      lastErrorMessage: null,
+    },
   });
 
   return { inserted, updated, insertedItemIds: insertedRows.map((row) => row.id) };

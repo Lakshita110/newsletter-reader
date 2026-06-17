@@ -79,12 +79,14 @@ export default function RssInboxPage() {
     { sourceId: string; sourceName: string; count: number }[]
   >([]);
   const [recommendedIds, setRecommendedIds] = useState<string[]>([]);
+  const [rankReasons, setRankReasons] = useState<Record<string, string>>({});
   const [rankingPending, setRankingPending] = useState(false);
   const [rankedAt, setRankedAt] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isSyncingRss, setIsSyncingRss] = useState(false);
   const [rssSyncNotice, setRssSyncNotice] = useState<string | null>(null);
   const [manualSyncedIds, setManualSyncedIds] = useState<string[]>([]);
+  const [readStreak, setReadStreak] = useState<{ streak: number; weeklyCount: number; weeklyGoal: number } | null>(null);
   const [statusById, setStatusById] = useState<Record<string, FeedReadStatus>>(() =>
     readMapFromStorage<FeedReadStatus>("nr_read_status_map")
   );
@@ -117,6 +119,11 @@ export default function RssInboxPage() {
       Array.isArray(data?.rssMeta?.recommendedIds)
         ? data.rssMeta.recommendedIds.filter((id: unknown): id is string => typeof id === "string")
         : []
+    );
+    setRankReasons(
+      data?.rssMeta?.rankReasons && typeof data.rssMeta.rankReasons === "object" && !Array.isArray(data.rssMeta.rankReasons)
+        ? (data.rssMeta.rankReasons as Record<string, string>)
+        : {}
     );
     setRankingPending(data?.rssMeta?.rankingPending === true);
     setRankedAt(typeof data?.rssMeta?.rankedAt === "string" ? data.rssMeta.rankedAt : null);
@@ -194,6 +201,16 @@ export default function RssInboxPage() {
       setStatusById(toReadStatusMap(payload));
       setSavedById(toSavedMap(payload));
     })();
+  }, [session?.user?.email]);
+
+  useEffect(() => {
+    if (!session?.user?.email) return;
+    fetch("/api/read-stats")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.weeklyGoal !== undefined) setReadStreak({ streak: d.streak, weeklyCount: d.weeklyCount, weeklyGoal: d.weeklyGoal });
+      })
+      .catch(() => null);
   }, [session?.user?.email]);
 
   useEffect(() => {
@@ -457,6 +474,18 @@ export default function RssInboxPage() {
           {rankingPending ? "Ranking recommendations…" : rankedAt ? `Last ranked ${formatRankedAgo(rankedAt)}.` : null}
         </div>
       )}
+      {readStreak && (readStreak.streak > 0 || readStreak.weeklyCount > 0) && (
+        <div style={{ margin: "-8px 0 14px", fontSize: 12, color: "var(--muted)", display: "flex", gap: 12, flexWrap: "wrap" }}>
+          {readStreak.streak > 0 && (
+            <span title={`${readStreak.streak}-day reading streak`}>
+              {readStreak.streak >= 7 ? "🔥" : "📖"} {readStreak.streak}d streak
+            </span>
+          )}
+          <span style={{ color: readStreak.weeklyCount >= readStreak.weeklyGoal ? "var(--accent-blue, #2563eb)" : "var(--muted)" }}>
+            {readStreak.weeklyCount}/{readStreak.weeklyGoal} days this week
+          </span>
+        </div>
+      )}
       {isServerSearchActive && (
         <div style={{ margin: "-6px 0 14px", color: "var(--muted)", fontSize: 12 }}>
           {isSearching
@@ -485,6 +514,8 @@ export default function RssInboxPage() {
         selectedIndex={activeSelectedIndex}
         statusById={statusById}
         savedById={savedById}
+        recommendedIds={recommendedIdSet}
+        rankReasons={rankReasons}
         onOpen={markInProgress}
         onMarkRead={markRead}
         onToggleSaved={toggleSaved}

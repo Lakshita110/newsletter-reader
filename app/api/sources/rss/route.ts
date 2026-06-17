@@ -39,6 +39,9 @@ export async function GET() {
       priority: sub.priority,
       category: parseRssCategoryInput(sub.category).value ?? "other",
       lastSyncedAt: sub.source.lastSyncedAt,
+      consecutiveFailures: sub.source.consecutiveFailures,
+      lastErrorAt: sub.source.lastErrorAt,
+      lastErrorMessage: sub.source.lastErrorMessage,
     }))
   );
 }

@@ -11,11 +11,23 @@ import {
   RSS_RECOMMENDATION_PROMPT_MAX_CHARS,
 } from "@/lib/rss-recommendation-settings";
 
+const COMMON_TIMEZONES = [
+  "UTC", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+  "America/Toronto", "America/Vancouver", "America/Sao_Paulo", "America/Argentina/Buenos_Aires",
+  "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Amsterdam", "Europe/Madrid",
+  "Europe/Rome", "Europe/Warsaw", "Europe/Istanbul", "Asia/Dubai", "Asia/Kolkata",
+  "Asia/Singapore", "Asia/Tokyo", "Asia/Shanghai", "Asia/Seoul", "Australia/Sydney",
+  "Pacific/Auckland",
+];
+
 export default function RecommendationSettingsPage() {
   const { data: session } = useSession();
   const router = useRouter();
   const [recommendationCap, setRecommendationCap] = useState<number>(RSS_RECOMMENDATION_CAP_DEFAULT);
   const [recommendationPrompt, setRecommendationPrompt] = useState<string>("");
+  const [digestEnabled, setDigestEnabled] = useState(false);
+  const [digestTimezone, setDigestTimezone] = useState("UTC");
+  const [weeklyReadingGoal, setWeeklyReadingGoal] = useState(5);
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState<{ text: string; kind: "success" | "error" } | null>(null);
 
@@ -32,6 +44,9 @@ export default function RecommendationSettingsPage() {
       if (!data) return;
       setRecommendationCap(Number(data.recommendationCap) || RSS_RECOMMENDATION_CAP_DEFAULT);
       setRecommendationPrompt(typeof data.recommendationPrompt === "string" ? data.recommendationPrompt : "");
+      setDigestEnabled(Boolean(data.digestEnabled));
+      setDigestTimezone(typeof data.digestTimezone === "string" ? data.digestTimezone : "UTC");
+      setWeeklyReadingGoal(Number(data.weeklyReadingGoal) || 5);
     };
     load().catch(() => null);
   }, [session?.user?.email]);
@@ -51,7 +66,7 @@ export default function RecommendationSettingsPage() {
       const res = await fetch("/api/rss/recommendations-settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recommendationCap, recommendationPrompt }),
+        body: JSON.stringify({ recommendationCap, recommendationPrompt, digestEnabled, digestTimezone, weeklyReadingGoal }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -62,6 +77,9 @@ export default function RecommendationSettingsPage() {
       setRecommendationPrompt(
         typeof data.recommendationPrompt === "string" ? data.recommendationPrompt : recommendationPrompt
       );
+      setDigestEnabled(Boolean(data.digestEnabled));
+      setDigestTimezone(typeof data.digestTimezone === "string" ? data.digestTimezone : digestTimezone);
+      setWeeklyReadingGoal(Number(data.weeklyReadingGoal) || weeklyReadingGoal);
       setNotice({ text: "Settings saved.", kind: "success" });
     } finally {
       setIsSaving(false);
@@ -133,8 +151,64 @@ export default function RecommendationSettingsPage() {
           </div>
         </div>
 
+        <div style={{ display: "grid", gap: 8 }}>
+          <label htmlFor="weekly-reading-goal" style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+            Weekly reading goal
+          </label>
+          <p style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>
+            Number of days per week you want to read at least one article.
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
+            <input
+              id="weekly-reading-goal"
+              type="number"
+              min={1}
+              max={7}
+              value={weeklyReadingGoal}
+              onChange={(e) => setWeeklyReadingGoal(Math.max(1, Math.min(7, Number(e.target.value) || 1)))}
+              className="settings-input"
+              style={{ width: 90 }}
+            />
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>days / week (1–7)</span>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 12 }}>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Morning email digest</label>
+            <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}>
+              Receive your daily reading list by email each morning (sent around 7 AM in your timezone).
+            </p>
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={digestEnabled}
+              onChange={(e) => setDigestEnabled(e.target.checked)}
+              style={{ width: 16, height: 16, cursor: "pointer" }}
+            />
+            <span style={{ fontSize: 13, color: "var(--text)" }}>Enable daily digest email</span>
+          </label>
+          {digestEnabled && (
+            <div style={{ display: "grid", gap: 6 }}>
+              <label htmlFor="digest-timezone" style={{ fontSize: 13, color: "var(--muted)" }}>Your timezone</label>
+              <select
+                id="digest-timezone"
+                value={digestTimezone}
+                onChange={(e) => setDigestTimezone(e.target.value)}
+                className="settings-input"
+                style={{ maxWidth: 280 }}
+              >
+                {COMMON_TIMEZONES.map((tz) => (
+                  <option key={tz} value={tz}>{tz}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button onClick={save} disabled={isSaving} className="filter-action-btn">
+          <button type="button" onClick={save} disabled={isSaving} className="filter-action-btn">
             {isSaving ? "Saving…" : "Save settings"}
           </button>
           {notice && (

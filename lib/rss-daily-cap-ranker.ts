@@ -30,14 +30,16 @@ type OpenRouterResponse = {
   }>;
 };
 
+type RankResult = { ids: string[]; reasons: Record<string, string> };
+
 type RankCacheEntry = {
   expiresAt: number;
-  value: string[] | null;
+  value: RankResult | null;
   reason: string;
 };
 
 const rankCache = new Map<string, RankCacheEntry>();
-const inFlightRankings = new Map<string, Promise<string[] | null>>();
+const inFlightRankings = new Map<string, Promise<RankResult | null>>();
 let providerCooldownUntilMs = 0;
 
 function contentToString(
@@ -194,15 +196,15 @@ function withMaxTokens(cap: number): number {
   return Math.floor(raw);
 }
 
-export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] | null> {
-  if (req.cap <= 0) return [];
-  if (req.items.length === 0) return [];
+export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult | null> {
+  if (req.cap <= 0) return { ids: [], reasons: {} };
+  if (req.items.length === 0) return { ids: [], reasons: {} };
   if (req.items.length <= req.cap) {
     const passthrough = req.items.map((item) => item.id);
     console.info(
       `[rss-ranker] skip ai call source="${req.sourceName}" day="${req.dayKey}" reason="candidates_within_cap" selected=${passthrough.length}`
     );
-    return passthrough;
+    return { ids: passthrough, reasons: {} };
   }
 
   const apiKey = process.env.OPENROUTER_API_KEY;
@@ -224,9 +226,9 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
   const cached = rankCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     console.info(
-      `[rss-ranker] cache hit source="${req.sourceName}" day="${req.dayKey}" reason="${cached.reason}" cachedResult=${cached.value ? cached.value.length : 0}`
+      `[rss-ranker] cache hit source="${req.sourceName}" day="${req.dayKey}" reason="${cached.reason}" cachedResult=${cached.value ? cached.value.ids.length : 0}`
     );
-    return cached.value ? [...cached.value] : null;
+    return cached.value ? { ...cached.value } : null;
   }
   const inFlight = inFlightRankings.get(cacheKey);
   if (inFlight) {
@@ -234,7 +236,7 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
       `[rss-ranker] join in-flight request source="${req.sourceName}" day="${req.dayKey}" cap=${req.cap}`
     );
     const shared = await inFlight;
-    return shared ? [...shared] : null;
+    return shared ? { ...shared } : null;
   }
 
   const candidates = req.items
@@ -318,15 +320,15 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
     `Aim for at least ${targetUniqueSources} distinct sources when possible, while still prioritizing overall relevance.
 
 ` +
-    `Return exactly one line of JSON only: {"ids":["rss:...", "..."]}
+    `Return exactly one line of JSON only: {"ids":["rss:...", ...],"reasons":{"rss:xxx":"<=8 words why"}}
 ` +
-    `Rules: ids only, no indexes, no prose, unique ids, exactly ${Math.min(req.cap, req.items.length)} ids, and every id must be from: ${validIds}
+    `Rules: ids only, no indexes, no prose, unique ids, exactly ${Math.min(req.cap, req.items.length)} ids, every id must be from: ${validIds}. reasons is optional but encouraged.
 
 ` +
     `Candidates:
 ${candidates}`;
 
-  const rankingPromise = (async (): Promise<string[] | null> => {
+  const rankingPromise = (async (): Promise<RankResult | null> => {
     console.info(
       `[rss-ranker] ranking start source="${req.sourceName}" day="${req.dayKey}" cap=${req.cap} candidates=${req.items.length} models="${modelsToTry.join(",")}"`
     );
@@ -451,19 +453,35 @@ ${candidates}`;
       return null;
     }
     const limited = deduped.slice(0, req.cap);
+
+    // Extract per-item reasons if the LLM included them
+    let parsedReasons: Record<string, string> = {};
+    try {
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]) as { reasons?: unknown };
+        if (parsed.reasons && typeof parsed.reasons === "object" && !Array.isArray(parsed.reasons)) {
+          for (const [k, v] of Object.entries(parsed.reasons as Record<string, unknown>)) {
+            if (typeof k === "string" && typeof v === "string") parsedReasons[k] = v;
+          }
+        }
+      }
+    } catch { /* reasons are best-effort; ignore parse errors */ }
+
     console.info(`[rss-ranker] ranking success selected=${limited.length}`);
+    const rankResult: RankResult = { ids: limited, reasons: parsedReasons };
     rankCache.set(cacheKey, {
       expiresAt: Date.now() + getCacheTtlMs(),
-      value: [...limited],
+      value: rankResult,
       reason: "success",
     });
-    return limited;
+    return rankResult;
   })();
 
   inFlightRankings.set(cacheKey, rankingPromise);
   try {
     const result = await rankingPromise;
-    return result ? [...result] : null;
+    return result ? { ...result } : null;
   } finally {
     inFlightRankings.delete(cacheKey);
   }

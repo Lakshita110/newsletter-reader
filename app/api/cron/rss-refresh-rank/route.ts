@@ -149,6 +149,7 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     where: { userId_dayKey: { userId, dayKey } },
     update: {
       rankedItemIds: rankedIds,
+      rankReasons: ranking.rankReasons,
       status,
       source: "CRON",
       model: process.env.OPENROUTER_MODEL ?? null,
@@ -159,6 +160,7 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
       userId,
       dayKey,
       rankedItemIds: rankedIds,
+      rankReasons: ranking.rankReasons,
       status,
       source: "CRON",
       model: process.env.OPENROUTER_MODEL ?? null,

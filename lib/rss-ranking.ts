@@ -137,6 +137,7 @@ export async function computeDailyRankedSelection(params: {
 }): Promise<{
   selectedIds: string[];
   recommendedIds: string[];
+  rankReasons: Record<string, string>;
   status: "AI_SUCCESS" | "FALLBACK_DETERMINISTIC";
   inputFingerprint: string;
 }> {
@@ -149,6 +150,7 @@ export async function computeDailyRankedSelection(params: {
     return {
       selectedIds: [],
       recommendedIds: [],
+      rankReasons: {},
       status: "FALLBACK_DETERMINISTIC",
       inputFingerprint,
     };
@@ -159,7 +161,7 @@ export async function computeDailyRankedSelection(params: {
       ...(await getUserRssReadProfile(params.userId)),
       customPrompt: normalizedPrompt || null,
     };
-  const rankedIds = await rankItemsForDailyCap({
+  const rankResult = await rankItemsForDailyCap({
     sourceName: "All RSS Sources",
     dayKey: params.dayKey,
     category: "mixed",
@@ -168,6 +170,7 @@ export async function computeDailyRankedSelection(params: {
     items: params.rankedItems,
   }).catch(() => null);
 
+  const rankedIds = rankResult?.ids ?? null;
   if (rankedIds && rankedIds.length > 0) {
     const maxPerSource = computeMaxPerSource(params.cap, params.rankedItems);
     const sanitized = sanitizeAndBackfillRankedIds(rankedIds, params.rankedItems, params.cap, maxPerSource);
@@ -175,6 +178,7 @@ export async function computeDailyRankedSelection(params: {
     return {
       selectedIds: diversified,
       recommendedIds: sanitizeRecommendedIds(rankedIds, params.rankedItems, params.cap),
+      rankReasons: rankResult?.reasons ?? {},
       status: "AI_SUCCESS",
       inputFingerprint,
     };
@@ -183,6 +187,7 @@ export async function computeDailyRankedSelection(params: {
   return {
     selectedIds: deterministicIds,
     recommendedIds: [],
+    rankReasons: {},
     status: "FALLBACK_DETERMINISTIC",
     inputFingerprint,
   };

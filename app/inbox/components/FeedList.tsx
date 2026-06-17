@@ -24,6 +24,8 @@ export function FeedList({
   selectedIndex,
   statusById,
   savedById,
+  recommendedIds,
+  rankReasons,
   onOpen,
   onMarkRead,
   onOpenExternal,
@@ -35,6 +37,8 @@ export function FeedList({
   selectedIndex: number;
   statusById: Record<string, FeedReadStatus>;
   savedById?: Record<string, boolean>;
+  recommendedIds?: Set<string>;
+  rankReasons?: Record<string, string>;
   onOpen: (id: string) => void;
   onMarkRead: (id: string) => void;
   onOpenExternal?: (url: string) => void;
@@ -65,6 +69,7 @@ export function FeedList({
             const hasThumb = it.sourceKind === "rss" && Boolean(it.imageUrl);
             const isSaved = savedById?.[it.id] === true;
             const dotToneClass = it.sourceKind === "rss" ? categoryToneClass(it.category) : "category-tone-news";
+            const rankReason = recommendedIds?.has(it.id) ? rankReasons?.[it.id] : undefined;
 
             return (
               <Link
@@ -127,6 +132,24 @@ export function FeedList({
                         />
                         {it.publicationName} - {formatDateTime(it.date)}
                       </span>
+                      {rankReason && (
+                        <span
+                          title={rankReason}
+                          style={{
+                            fontSize: 11,
+                            color: "var(--accent-blue, #2563eb)",
+                            background: "color-mix(in oklab, var(--accent-blue, #2563eb) 10%, transparent)",
+                            border: "1px solid color-mix(in oklab, var(--accent-blue, #2563eb) 25%, transparent)",
+                            borderRadius: 999,
+                            padding: "1px 7px",
+                            cursor: "help",
+                            whiteSpace: "nowrap",
+                            flexShrink: 0,
+                          }}
+                        >
+                          why?
+                        </span>
+                      )}
 
                       <div className="feed-item-actions" style={{ display: "flex", gap: 8 }}>
                         {it.externalUrl && (

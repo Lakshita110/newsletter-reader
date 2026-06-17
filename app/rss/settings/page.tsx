@@ -14,12 +14,48 @@ type Feed = {
   category?: string | null;
   isActive: boolean;
   lastSyncedAt?: string | null;
+  consecutiveFailures?: number;
+  lastErrorAt?: string | null;
+  lastErrorMessage?: string | null;
 };
+
+function FeedHealthBadge({ failures, lastErrorMessage }: { failures: number; lastErrorMessage?: string | null }) {
+  if (failures === 0) return null;
+  const color = failures >= 3 ? "#c0392b" : "#e67e22";
+  const label = failures >= 3 ? `${failures} failures` : `${failures} failure${failures > 1 ? "s" : ""}`;
+  return (
+    <span
+      title={lastErrorMessage ?? "Sync error"}
+      style={{
+        display: "inline-block",
+        fontSize: 11,
+        fontWeight: 600,
+        color,
+        background: `color-mix(in oklab, ${color} 12%, transparent)`,
+        border: `1px solid color-mix(in oklab, ${color} 30%, transparent)`,
+        borderRadius: 999,
+        padding: "1px 7px",
+        marginLeft: 6,
+        cursor: "help",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
 
 type FeedDraft = {
   name: string;
   rssUrl: string;
   category: string;
+};
+
+type SuggestedFeed = {
+  name: string;
+  rssUrl: string;
+  siteUrl: string;
+  category: string;
+  reason: string;
 };
 
 function categoryToneClass(value: string | null | undefined): string {
@@ -31,6 +67,9 @@ export default function RssSettingsPage() {
   const { data: session } = useSession();
   const router = useRouter();
   const [feeds, setFeeds] = useState<Feed[]>([]);
+  const [suggestions, setSuggestions] = useState<SuggestedFeed[]>([]);
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [addingUrl, setAddingUrl] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [rssUrl, setRssUrl] = useState("");
   const [category, setCategory] = useState("");
@@ -46,6 +85,38 @@ export default function RssSettingsPage() {
     if (!res.ok) return;
     const data = await res.json();
     setFeeds(Array.isArray(data) ? data : []);
+  };
+
+  const loadSuggestions = async () => {
+    setIsSuggesting(true);
+    setSuggestions([]);
+    try {
+      const res = await fetch("/api/rss/suggest-feeds", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data?.suggestions)) setSuggestions(data.suggestions);
+      else setNotice(data?.error || "Could not load suggestions.");
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
+
+  const addSuggestedFeed = async (s: SuggestedFeed) => {
+    setAddingUrl(s.rssUrl);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/sources/rss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: s.name, rssUrl: s.rssUrl, siteUrl: s.siteUrl, category: s.category }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setNotice(data?.error || "Could not add feed."); return; }
+      setSuggestions((prev) => prev.filter((f) => f.rssUrl !== s.rssUrl));
+      setNotice(`Added "${s.name}".`);
+      await loadFeeds();
+    } finally {
+      setAddingUrl(null);
+    }
   };
 
   useEffect(() => {
@@ -323,6 +394,10 @@ export default function RssSettingsPage() {
                           <Link href={`/source/${feed.sourceId}`} style={{ color: "inherit" }}>
                             {feed.name}
                           </Link>
+                          <FeedHealthBadge
+                            failures={feed.consecutiveFailures ?? 0}
+                            lastErrorMessage={feed.lastErrorMessage}
+                          />
                         </div>
                         <div className="settings-feed-url">{feed.rssUrl}</div>
                         <div style={{ marginTop: 4 }}>
@@ -391,6 +466,56 @@ export default function RssSettingsPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+      </section>
+
+      <section style={{ marginTop: 28, borderTop: "1px solid var(--faint)", paddingTop: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 13, color: "var(--muted)" }}>Suggested for you</div>
+          <button
+            type="button"
+            onClick={loadSuggestions}
+            disabled={isSuggesting}
+            className="filter-action-btn"
+          >
+            {isSuggesting ? "Finding feeds…" : suggestions.length > 0 ? "Refresh" : "Find feeds"}
+          </button>
+        </div>
+        {suggestions.length > 0 && (
+          <div style={{ display: "grid", gap: 10 }}>
+            {suggestions.map((s) => (
+              <div
+                key={s.rssUrl}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 12,
+                  padding: "10px 0",
+                  borderBottom: "1px solid var(--faint)",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text)" }}>{s.name}</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{s.reason}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 3, opacity: 0.7 }}>{s.rssUrl}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => addSuggestedFeed(s)}
+                  disabled={addingUrl === s.rssUrl}
+                  className="filter-action-btn"
+                  style={{ flexShrink: 0 }}
+                >
+                  {addingUrl === s.rssUrl ? "Adding…" : "Add"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {!isSuggesting && suggestions.length === 0 && (
+          <div style={{ color: "var(--muted)", fontSize: 13 }}>
+            Click &ldquo;Find feeds&rdquo; to get personalized RSS suggestions based on your reading history.
           </div>
         )}
       </section>

@@ -28,6 +28,10 @@ model User {
   email                    String                    @unique
   rssRecommendationCap     Int                       @default(35)
   rssRecommendationPrompt  String?                   @db.VarChar(500)
+  digestEnabled            Boolean                   @default(false)
+  digestTimezone           String                    @default("UTC")
+  weeklyReadingGoal        Int                       @default(5)
+  digestLastSentAt         DateTime?
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   messageReadStats         MessageReadStat[]
@@ -63,17 +67,20 @@ model MessageReadStat {
 }
 
 model RssSource {
-  id            String                @id @default(cuid())
-  name          String
-  rssUrl        String                @unique
-  normalizedUrl String                @unique
-  siteUrl       String?
-  isActive      Boolean               @default(true)
-  lastSyncedAt  DateTime?
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
-  items         RssItem[]
-  subscriptions UserRssSubscription[]
+  id                   String                @id @default(cuid())
+  name                 String
+  rssUrl               String                @unique
+  normalizedUrl        String                @unique
+  siteUrl              String?
+  isActive             Boolean               @default(true)
+  lastSyncedAt         DateTime?
+  consecutiveFailures  Int                   @default(0)
+  lastErrorAt          DateTime?
+  lastErrorMessage     String?               @db.VarChar(500)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  items                RssItem[]
+  subscriptions        UserRssSubscription[]
 
   @@index([normalizedUrl])
 }
@@ -120,6 +127,7 @@ model UserRssDailyRankSnapshot {
   userId           String
   dayKey           String
   rankedItemIds    Json
+  rankReasons      Json?
   status           RssRankSnapshotStatus
   source           RssRankSnapshotSource
   model            String?
