@@ -7,10 +7,12 @@ import {
   dedupeByArticleKey,
   dayKeyUtc,
   getRssDailyTargetCap,
+  getUserRssReadProfile,
   rssPriorityScore,
   sortByPriorityAndRecency,
 } from "@/lib/rss-helpers";
 import { normalizeRecommendationPrompt } from "@/lib/rss-recommendation-settings";
+import { runAndPersistRankEval } from "@/lib/rss-rank-eval";
 
 type RssPriority = "HIGH" | "NORMAL" | "LOW";
 
@@ -127,12 +129,14 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     sourceName: candidate.sourceName,
     publishedAtIso: candidate.publishedAtIso,
   }));
+  const readProfile = await getUserRssReadProfile(userId);
   const ranking = await computeDailyRankedSelection({
     userId,
     dayKey,
     cap: totalCap,
     rankedItems: aiItems,
     customPrompt,
+    readProfile,
   });
   const rankedIds = ranking.selectedIds;
   const status: "AI_SUCCESS" | "FALLBACK_DETERMINISTIC" = ranking.status;
@@ -168,6 +172,9 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     selected: rankedIds.length,
     status,
     totalCap,
+    aiItems,
+    selectedIds: rankedIds,
+    userProfileSummary: readProfile.preferenceSummary.join("; "),
   };
 }
 
@@ -192,21 +199,27 @@ export async function GET(req: Request) {
       `[rss-refresh-rank][${requestId}] starting sync day="${dayKey}" activeSources=${activeSources.length}`
     );
 
+    const syncResults = await Promise.allSettled(
+      activeSources.map((row) => syncRssSource(row.rssSourceId))
+    );
+
     let syncedSources = 0;
     let syncInserted = 0;
     let syncUpdated = 0;
     const syncErrors: string[] = [];
-    for (const row of activeSources) {
-      try {
-        const result = await syncRssSource(row.rssSourceId);
-        syncInserted += result.inserted;
-        syncUpdated += result.updated;
+
+    for (let i = 0; i < activeSources.length; i++) {
+      const row = activeSources[i];
+      const result = syncResults[i];
+      if (result.status === "fulfilled") {
+        syncInserted += result.value.inserted;
+        syncUpdated += result.value.updated;
         syncedSources += 1;
         console.info(
-          `[rss-refresh-rank][${requestId}] synced sourceId="${row.rssSourceId}" inserted=${result.inserted} updated=${result.updated}`
+          `[rss-refresh-rank][${requestId}] synced sourceId="${row.rssSourceId}" inserted=${result.value.inserted} updated=${result.value.updated}`
         );
-      } catch (error) {
-        const message = `${row.rssSourceId}: ${error instanceof Error ? error.message : "Unknown error"}`;
+      } else {
+        const message = `${row.rssSourceId}: ${result.reason instanceof Error ? result.reason.message : "Unknown error"}`;
         syncErrors.push(message);
         console.error(`[rss-refresh-rank][${requestId}] sync failed ${message}`);
       }
@@ -245,6 +258,24 @@ export async function GET(req: Request) {
         console.info(
           `[rss-refresh-rank][${requestId}] ranked userId="${row.userId}" candidates=${result.candidates} selected=${result.selected} totalCap=${result.totalCap} status="${result.status}"`
         );
+        if (result.status === "AI_SUCCESS" && result.aiItems.length > 0) {
+          const byId = new Map(result.aiItems.map((item) => [item.id, item]));
+          const selectedEvalItems = result.selectedIds
+            .map((id) => byId.get(id))
+            .filter((item): item is NonNullable<typeof item> => Boolean(item))
+            .map((item) => ({ id: item.id, title: item.title, sourceName: item.sourceName, snippet: item.snippet }));
+          void runAndPersistRankEval({
+            userId: row.userId,
+            dayKey,
+            selectedItems: selectedEvalItems,
+            candidateItems: result.aiItems.map((item) => ({ id: item.id, title: item.title, sourceName: item.sourceName, snippet: item.snippet })),
+            userProfileSummary: result.userProfileSummary,
+            cap: result.totalCap,
+            source: "CRON",
+          }).catch((err) =>
+            console.warn(`[rss-refresh-rank][${requestId}] eval failed userId="${row.userId}"`, err)
+          );
+        }
       } catch (error) {
         const message = `${row.userId}: ${error instanceof Error ? error.message : "Unknown error"}`;
         rankErrors.push(message);

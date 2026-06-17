@@ -218,7 +218,7 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
     return null;
   }
 
-  const model = process.env.OPENROUTER_MODEL ?? "openrouter/free";
+  const model = process.env.OPENROUTER_MODEL ?? "gpt-40-mini";
   const modelsToTry = getConfiguredModels(model);
   const cacheKey = getCacheKey(req, modelsToTry.join("|"));
   const cached = rankCache.get(cacheKey);
@@ -238,13 +238,24 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
   }
 
   const candidates = req.items
-    .map(
-      (item, index) =>
-        `${index + 1}. id=${item.id}\n` +
-        `source=${item.sourceName?.trim() || req.sourceName}\n` +
-        `title=${item.title}\n` +
-        `author=${item.author ?? "unknown"}`
-    )
+    .map((item, index) => {
+      const snippetLine = item.snippet?.trim()
+        ? `snippet=${item.snippet.trim().slice(0, 150)}`
+        : null;
+      const dateLine = item.publishedAtIso
+        ? `published=${item.publishedAtIso.slice(0, 10)}`
+        : null;
+      return [
+        `${index + 1}. id=${item.id}`,
+        `source=${item.sourceName?.trim() || req.sourceName}`,
+        `title=${item.title}`,
+        `author=${item.author ?? "unknown"}`,
+        snippetLine,
+        dateLine,
+      ]
+        .filter(Boolean)
+        .join("\n");
+    })
     .join("\n\n");
   const validIds = req.items.map((item) => item.id).join(", ");
 
@@ -297,9 +308,14 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<string[] |
     `${customInterestPrompt ? `User-stated interests: ${customInterestPrompt}` : defaultInterestPrompt}
 
 ` +
-    `Source diversity guidance:
+    `Diversity guidance:
 ` +
-    `Use a mix of publishers. Target at least ${targetUniqueSources} unique sources when available, and avoid over-concentrating picks from one source unless candidate quality clearly requires it.
+    `Favor a varied set of publishers. Do not choose more than 1 article from the same source unless that source has a clearly stronger candidate than all others. Avoid selecting 3 or more items from the same publisher, and avoid publisher-heavy blocks such as multiple New Yorker stories in a row.
+
+` +
+    `Source coverage:
+` +
+    `Aim for at least ${targetUniqueSources} distinct sources when possible, while still prioritizing overall relevance.
 
 ` +
     `Return exactly one line of JSON only: {"ids":["rss:...", "..."]}
@@ -331,7 +347,7 @@ ${candidates}`;
             ...(process.env.OPENROUTER_APP_NAME ? { "X-Title": process.env.OPENROUTER_APP_NAME } : {}),
           },
           body: JSON.stringify({
-            model: selectedModel,
+          model: selectedModel,
             temperature: 0.1,
             max_tokens: withMaxTokens(req.cap),
             messages: [

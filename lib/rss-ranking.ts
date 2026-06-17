@@ -21,7 +21,62 @@ export function buildRankInputFingerprint(
   return createHash("sha256").update(payload).digest("hex");
 }
 
-function sanitizeAndBackfillRankedIds(rankedIds: string[], rankedItems: RankingItem[], cap: number): string[] {
+function computeMaxPerSource(cap: number, items: RankingItem[]): number {
+  const raw = Number(process.env.RSS_MAX_PER_SOURCE ?? 0);
+  if (Number.isFinite(raw) && raw >= 1) return Math.floor(raw);
+  const uniqueSourceCount = new Set(
+    items.map((i) => i.sourceName.trim().toLowerCase())
+  ).size;
+  if (uniqueSourceCount === 0) return cap;
+  return Math.min(4, Math.ceil(cap / uniqueSourceCount));
+}
+
+function enforceSourceDiversity(
+  selectedIds: string[],
+  allItems: RankingItem[],
+  cap: number,
+  maxPerSource: number
+): string[] {
+  const byId = new Map<string, RankingItem>(allItems.map((item) => [item.id, item]));
+  const sourceCounts = new Map<string, number>();
+  const kept: string[] = [];
+  const demoted: string[] = [];
+
+  for (const id of selectedIds) {
+    const item = byId.get(id);
+    if (!item) continue;
+    const key = item.sourceName.trim().toLowerCase();
+    const count = sourceCounts.get(key) ?? 0;
+    if (count < maxPerSource) {
+      kept.push(id);
+      sourceCounts.set(key, count + 1);
+    } else {
+      demoted.push(id);
+    }
+  }
+
+  const selectedSet = new Set(selectedIds);
+  const unselected = allItems.filter((item) => !selectedSet.has(item.id));
+
+  for (const item of unselected) {
+    if (kept.length >= cap) break;
+    const key = item.sourceName.trim().toLowerCase();
+    const count = sourceCounts.get(key) ?? 0;
+    if (count < maxPerSource) {
+      kept.push(item.id);
+      sourceCounts.set(key, count + 1);
+    }
+  }
+
+  for (const id of demoted) {
+    if (kept.length >= cap) break;
+    kept.push(id);
+  }
+
+  return kept.slice(0, cap);
+}
+
+function sanitizeAndBackfillRankedIds(rankedIds: string[], rankedItems: RankingItem[], cap: number, maxPerSource: number): string[] {
   const allowed = new Set(rankedItems.map((item) => item.id));
   const selected: string[] = [];
   for (const id of rankedIds) {
@@ -31,10 +86,30 @@ function sanitizeAndBackfillRankedIds(rankedIds: string[], rankedItems: RankingI
     if (selected.length >= cap) break;
   }
   if (selected.length < cap) {
+    const selectedSet = new Set(selected);
+    const sourceCounts = new Map<string, number>();
+    for (const id of selected) {
+      const item = rankedItems.find((i) => i.id === id);
+      if (!item) continue;
+      const key = item.sourceName.trim().toLowerCase();
+      sourceCounts.set(key, (sourceCounts.get(key) ?? 0) + 1);
+    }
     for (const item of rankedItems) {
-      if (selected.includes(item.id)) continue;
-      selected.push(item.id);
       if (selected.length >= cap) break;
+      if (selectedSet.has(item.id)) continue;
+      const key = item.sourceName.trim().toLowerCase();
+      const count = sourceCounts.get(key) ?? 0;
+      if (count < maxPerSource) {
+        selected.push(item.id);
+        selectedSet.add(item.id);
+        sourceCounts.set(key, count + 1);
+      }
+    }
+    for (const item of rankedItems) {
+      if (selected.length >= cap) break;
+      if (selectedSet.has(item.id)) continue;
+      selected.push(item.id);
+      selectedSet.add(item.id);
     }
   }
   return selected;
@@ -94,8 +169,11 @@ export async function computeDailyRankedSelection(params: {
   }).catch(() => null);
 
   if (rankedIds && rankedIds.length > 0) {
+    const maxPerSource = computeMaxPerSource(params.cap, params.rankedItems);
+    const sanitized = sanitizeAndBackfillRankedIds(rankedIds, params.rankedItems, params.cap, maxPerSource);
+    const diversified = enforceSourceDiversity(sanitized, params.rankedItems, params.cap, maxPerSource);
     return {
-      selectedIds: sanitizeAndBackfillRankedIds(rankedIds, params.rankedItems, params.cap),
+      selectedIds: diversified,
       recommendedIds: sanitizeRecommendedIds(rankedIds, params.rankedItems, params.cap),
       status: "AI_SUCCESS",
       inputFingerprint,
