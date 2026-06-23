@@ -7,6 +7,7 @@ import { ThemeToggle } from "@/app/components/ThemeToggle";
 
 type Props = {
   todayCount: number;
+  isLoading?: boolean;
   mode: "newsletters" | "rss";
   userEmail?: string | null;
   q: string;
@@ -16,6 +17,7 @@ type Props = {
 
 export function InboxHeader({
   todayCount,
+  isLoading = false,
   mode,
   userEmail,
   q,
@@ -64,7 +66,11 @@ export function InboxHeader({
         <div>
           <h1 className="app-page-title masthead-title">Cluck&apos;s Feed</h1>
           <div className="app-page-subtitle" style={{ marginTop: 4 }}>
-            {mode === "rss" ? `${todayCount} RSS articles today` : `${todayCount} newsletters today`}
+            {isLoading ? (
+              <span className="skeleton-inline" style={{ width: 140, height: 14 }} aria-label="Loading…" />
+            ) : (
+              mode === "rss" ? `${todayCount} RSS articles today` : `${todayCount} newsletters today`
+            )}
           </div>
         </div>
         <div

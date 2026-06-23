@@ -759,3 +759,35 @@ button.filter-select {
     padding: 5px 10px;
   }
 }
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.skeleton-inline {
+  display: inline-block;
+  background: var(--faint);
+  border-radius: 4px;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+  vertical-align: middle;
+}
+
+.feed-loading-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.feed-loading-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--faint);
+}
+
+.feed-loading-row .skeleton-inline {
+  border-radius: 4px;
+}

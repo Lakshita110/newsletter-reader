@@ -66,6 +66,7 @@ export default function RssInboxPage() {
   const syncingRef = useRef(false);
 
   const [items, setItems] = useState<InboxItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchItems, setSearchItems] = useState<InboxItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -155,7 +156,7 @@ export default function RssInboxPage() {
   }, [loadRssInbox]);
 
   useEffect(() => {
-    loadRssInbox().catch(() => null);
+    loadRssInbox().catch(() => null).finally(() => setIsLoading(false));
   }, [loadRssInbox]);
 
   useEffect(() => {
@@ -415,6 +416,7 @@ export default function RssInboxPage() {
       <InboxModeTabs mode="rss" />
       <InboxHeader
         todayCount={todayStats.totalToday}
+        isLoading={isLoading}
         mode="rss"
         userEmail={session.user?.email}
         q={q}
@@ -508,19 +510,32 @@ export default function RssInboxPage() {
         <OverflowSources entries={overflowBySource} />
       )}
 
-      <FeedList
-        grouped={grouped}
-        ordered={ordered}
-        selectedIndex={activeSelectedIndex}
-        statusById={statusById}
-        savedById={savedById}
-        recommendedIds={recommendedIdSet}
-        rankReasons={rankReasons}
-        onOpen={markInProgress}
-        onMarkRead={markRead}
-        onToggleSaved={toggleSaved}
-        onDelete={deleteItem}
-      />
+      {isLoading && !isServerSearchActive && (
+        <div className="feed-loading-rows" aria-label="Loading RSS articles…">
+          {[150, 190, 130, 170, 110].map((w, i) => (
+            <div key={i} className="feed-loading-row">
+              <span className="skeleton-inline" style={{ width: w, height: 13 }} />
+              <span className="skeleton-inline" style={{ width: "55%", height: 11 }} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!isLoading && (
+        <FeedList
+          grouped={grouped}
+          ordered={ordered}
+          selectedIndex={activeSelectedIndex}
+          statusById={statusById}
+          savedById={savedById}
+          recommendedIds={recommendedIdSet}
+          rankReasons={rankReasons}
+          onOpen={markInProgress}
+          onMarkRead={markRead}
+          onToggleSaved={toggleSaved}
+          onDelete={deleteItem}
+        />
+      )}
 
       {viewMode === "all" && <CatchUpOlderButton count={olderUnreadIds.length} onClick={catchUpOlder} />}
     </main>
