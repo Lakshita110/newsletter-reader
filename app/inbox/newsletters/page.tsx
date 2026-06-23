@@ -26,6 +26,7 @@ import type { FeedReadStatus, InboxItem } from "../types";
 export default function NewslettersInboxPage() {
   const { data: session } = useSession();
   const [items, setItems] = useState<InboxItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [q, setQ] = useState("");
   const [viewMode, setViewMode] = useState<InboxViewMode>("today");
   const [selectedPub, setSelectedPub] = useState<string | null>(null);
@@ -42,9 +43,13 @@ export default function NewslettersInboxPage() {
 
   useEffect(() => {
     (async () => {
-      const res = await fetch("/api/feed/inbox?kind=newsletters");
-      const data = await res.json();
-      setItems(Array.isArray(data?.items) ? data.items : []);
+      try {
+        const res = await fetch("/api/feed/inbox?kind=newsletters");
+        const data = await res.json();
+        setItems(Array.isArray(data?.items) ? data.items : []);
+      } finally {
+        setIsLoading(false);
+      }
     })();
   }, []);
 
@@ -201,6 +206,7 @@ export default function NewslettersInboxPage() {
       <InboxModeTabs mode="newsletters" />
       <InboxHeader
         todayCount={todayStats.totalToday}
+        isLoading={isLoading}
         mode="newsletters"
         userEmail={session.user?.email}
         q={q}
@@ -231,16 +237,29 @@ export default function NewslettersInboxPage() {
         />
       )}
 
-      <FeedList
-        grouped={grouped}
-        ordered={ordered}
-        selectedIndex={activeSelectedIndex}
-        statusById={statusById}
-        savedById={savedById}
-        onOpen={markInProgress}
-        onMarkRead={markRead}
-        onToggleSaved={toggleSaved}
-      />
+      {isLoading && (
+        <div className="feed-loading-rows" aria-label="Loading newsletters…">
+          {[140, 180, 120, 160, 100].map((w, i) => (
+            <div key={i} className="feed-loading-row">
+              <span className="skeleton-inline" style={{ width: w, height: 13 }} />
+              <span className="skeleton-inline" style={{ width: "60%", height: 11 }} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!isLoading && (
+        <FeedList
+          grouped={grouped}
+          ordered={ordered}
+          selectedIndex={activeSelectedIndex}
+          statusById={statusById}
+          savedById={savedById}
+          onOpen={markInProgress}
+          onMarkRead={markRead}
+          onToggleSaved={toggleSaved}
+        />
+      )}
 
       {viewMode === "all" && <CatchUpOlderButton count={olderUnreadIds.length} onClick={catchUpOlder} />}
     </main>
