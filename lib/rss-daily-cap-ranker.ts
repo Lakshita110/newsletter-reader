@@ -24,6 +24,7 @@ type RankRequest = {
 
 type OpenRouterResponse = {
   choices?: Array<{
+    finish_reason?: string;
     message?: {
       content?: string | Array<{ type?: string; text?: string }>;
     };
@@ -193,11 +194,16 @@ function withTimeoutMs(): number {
   return ms;
 }
 
-function withMaxTokens(cap: number): number {
-  const fallback = Math.min(1200, Math.max(400, cap * 12));
-  const raw = Number(process.env.OPENROUTER_MAX_TOKENS ?? fallback);
-  if (!Number.isFinite(raw) || raw < 128) return fallback;
-  return Math.floor(raw);
+export function withMaxTokens(cap: number): number {
+  // The model must emit BOTH an id (~10 tokens) and a short reason
+  // (<=8 words, ~20 tokens incl. JSON quoting/keys) per selected item, plus
+  // the JSON envelope. The old budget of cap*12 only covered the ids, so the
+  // response hit max_tokens (finish_reason="length") and got truncated before
+  // the "reasons" object closed — leaving reasons empty. Budget ~32 tokens per
+  // item plus headroom. Computed in code (env OPENROUTER_MAX_TOKENS ignored)
+  // because production env is currently unreachable; revert to the env read
+  // once access is restored.
+  return Math.min(4096, Math.max(512, 256 + cap * 32));
 }
 
 export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult | null> {
@@ -414,6 +420,12 @@ ${candidates}`;
     if (!content) {
       console.warn(
         `[rss-ranker] empty content returned modelResponsePreview="${JSON.stringify(data).slice(0, 400)}"`
+      );
+    }
+    const finishReason = data.choices?.[0]?.finish_reason;
+    if (finishReason === "length") {
+      console.warn(
+        `[rss-ranker] output truncated (finish_reason=length, cap=${req.cap}) — raise withMaxTokens; reasons may be missing`
       );
     }
     const parsedTokens = parseRankedTokens(content);
