@@ -42,6 +42,14 @@ const rankCache = new Map<string, RankCacheEntry>();
 const inFlightRankings = new Map<string, Promise<RankResult | null>>();
 let providerCooldownUntilMs = 0;
 
+// Model chain is hard-pinned in code (not read from env) because the production
+// Vercel env is temporarily unreachable and we need to force these models. The
+// chain is tried in order: gpt-4o-mini first, then gemini-flash if it fails.
+// Revert to the env-based reads (OPENROUTER_MODEL / OPENROUTER_FALLBACK_MODELS)
+// once env access is restored.
+const RANKING_MODEL = "openai/gpt-4o-mini";
+const RANKING_FALLBACK_MODELS = ["google/gemini-2.0-flash-001"];
+
 function contentToString(
   content: string | Array<{ type?: string; text?: string }> | undefined
 ): string {
@@ -127,22 +135,18 @@ function normalizeRankToken(
 }
 
 function getConfiguredModels(primaryModel: string): string[] {
-  const fallbacks = (process.env.OPENROUTER_FALLBACK_MODELS ?? "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
+  // Fallbacks are pinned in code (RANKING_FALLBACK_MODELS); we intentionally
+  // ignore OPENROUTER_FALLBACK_MODELS / OPENROUTER_MAX_MODEL_ATTEMPTS so the env
+  // can neither override the chain nor truncate it. Every model in the pinned
+  // chain is tried in order.
   const unique: string[] = [];
   const seen = new Set<string>();
-  for (const model of [primaryModel, ...fallbacks]) {
+  for (const model of [primaryModel, ...RANKING_FALLBACK_MODELS]) {
     if (seen.has(model)) continue;
     seen.add(model);
     unique.push(model);
   }
-  const maxAttempts = Math.max(
-    1,
-    Math.min(5, Number(process.env.OPENROUTER_MAX_MODEL_ATTEMPTS ?? 2) || 2)
-  );
-  return unique.slice(0, maxAttempts);
+  return unique;
 }
 
 function getCacheKey(req: RankRequest, model: string): string {
@@ -220,8 +224,8 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
     return null;
   }
 
-  const model = process.env.OPENROUTER_MODEL ?? "gpt-40-mini";
-  const modelsToTry = getConfiguredModels(model);
+  // Primary + fallbacks are hard-pinned (see RANKING_MODEL / RANKING_FALLBACK_MODELS).
+  const modelsToTry = getConfiguredModels(RANKING_MODEL);
   const cacheKey = getCacheKey(req, modelsToTry.join("|"));
   const cached = rankCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
@@ -455,7 +459,7 @@ ${candidates}`;
     const limited = deduped.slice(0, req.cap);
 
     // Extract per-item reasons if the LLM included them
-    let parsedReasons: Record<string, string> = {};
+    const parsedReasons: Record<string, string> = {};
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
