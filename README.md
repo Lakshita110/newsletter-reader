@@ -1,4 +1,4 @@
-# Newsletter Reader
+# Cluck's Feed
 
 A focused reading app that turns your Gmail newsletters and subscribed RSS feeds into one calm, keyboard-friendly inbox.
 

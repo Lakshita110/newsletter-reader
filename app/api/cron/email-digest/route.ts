@@ -172,7 +172,7 @@ export async function GET(req: Request) {
       if (emailItems.length === 0) { skipped += 1; continue; }
 
       await transporter.sendMail({
-        from: `Newsletter Reader <${fromEmail}>`,
+        from: `Cluck's Feed <${fromEmail}>`,
         to: user.email,
         subject: `Your daily reading list — ${emailItems.length} articles`,
         html: buildEmailHtml(emailItems),

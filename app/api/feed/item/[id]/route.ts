@@ -107,7 +107,7 @@ async function getRssItem(userId: string, rawId: string) {
 
   if (!html && !text && item.link) {
     try {
-      const res = await fetch(item.link, { headers: { "User-Agent": "newsletter-reader/1.0" } });
+      const res = await fetch(item.link, { headers: { "User-Agent": "clucks-feed/1.0" } });
       if (res.ok) {
         const fetchedHtml = await res.text();
         const extracted = await extractArticleContent(fetchedHtml, item.link);
