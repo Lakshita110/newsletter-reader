@@ -6,21 +6,6 @@ export type DigestItem = {
 };
 
 /**
- * Current hour (0-23) in the given IANA timezone, or -1 if the timezone is
- * invalid. Used to decide whether it's a given user's configured digest hour.
- */
-export function getCurrentHourInTimezone(tz: string, now: Date = new Date()): number {
-  try {
-    const formatter = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false });
-    const parts = formatter.formatToParts(now);
-    const hourStr = parts.find((p) => p.type === "hour")?.value;
-    return hourStr ? parseInt(hourStr, 10) % 24 : -1;
-  } catch {
-    return -1;
-  }
-}
-
-/**
  * Local date key (YYYY-MM-DD) in the given timezone. Falls back to the UTC day
  * key if the timezone is invalid, so we never lose the de-dupe guard.
  */

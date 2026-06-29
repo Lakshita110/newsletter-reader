@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildEmailHtml,
-  getCurrentHourInTimezone,
   getDigestSubject,
   getLocalDateKey,
   type DigestItem,
@@ -33,29 +32,6 @@ describe("getDigestSubject", () => {
 
   it("uses the plural for zero articles", () => {
     expect(getDigestSubject(0)).toBe("Your daily reading list — 0 articles");
-  });
-});
-
-describe("getCurrentHourInTimezone", () => {
-  // A fixed instant: 2026-06-25T12:00:00Z
-  const noonUtc = new Date("2026-06-25T12:00:00Z");
-
-  it("returns the UTC hour for UTC", () => {
-    expect(getCurrentHourInTimezone("UTC", noonUtc)).toBe(12);
-  });
-
-  it("shifts for a positive-offset timezone", () => {
-    // Tokyo is UTC+9 year-round -> 21:00
-    expect(getCurrentHourInTimezone("Asia/Tokyo", noonUtc)).toBe(21);
-  });
-
-  it("shifts for a negative-offset timezone", () => {
-    // New York in June is UTC-4 (DST) -> 08:00
-    expect(getCurrentHourInTimezone("America/New_York", noonUtc)).toBe(8);
-  });
-
-  it("returns -1 for an invalid timezone", () => {
-    expect(getCurrentHourInTimezone("Not/AZone", noonUtc)).toBe(-1);
   });
 });
 

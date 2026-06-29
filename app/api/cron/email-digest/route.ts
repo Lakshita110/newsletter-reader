@@ -3,7 +3,6 @@ import nodemailer from "nodemailer";
 import { prisma } from "@/lib/prisma";
 import {
   buildEmailHtml,
-  getCurrentHourInTimezone,
   getDigestSubject,
   getLocalDateKey,
 } from "@/lib/email-digest";
@@ -37,11 +36,10 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url);
-  // ?force=true skips the hour check and duplicate-send guard — for testing only
+  // ?force=true skips the duplicate-send guard — for testing only
   const force = url.searchParams.get("force") === "true";
 
   const fromEmail = process.env.GMAIL_USER!;
-  const digestHour = Number(process.env.DIGEST_HOUR ?? 7);
 
   const eligibleUsers = await prisma.user.findMany({
     where: { digestEnabled: true },
@@ -62,9 +60,6 @@ export async function GET(req: Request) {
       const tz = user.digestTimezone || "UTC";
 
       if (!force) {
-        const localHour = getCurrentHourInTimezone(tz);
-        if (localHour !== digestHour) { skipped += 1; continue; }
-
         const localDateKey = getLocalDateKey(tz);
         if (user.digestLastSentAt) {
           const lastSentLocalKey = new Intl.DateTimeFormat("en-CA", { timeZone: tz })
