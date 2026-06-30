@@ -113,6 +113,45 @@ function parseRankedTokens(raw: string): Array<string | number> | null {
   }
 }
 
+export function parseReasons(content: string): Record<string, string> {
+  const reasons: Record<string, string> = {};
+  if (!content) return reasons;
+
+  // Preferred path: the whole envelope parses cleanly, so read reasons off it.
+  try {
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]) as { reasons?: unknown };
+      if (parsed.reasons && typeof parsed.reasons === "object" && !Array.isArray(parsed.reasons)) {
+        for (const [k, v] of Object.entries(parsed.reasons as Record<string, unknown>)) {
+          if (typeof k === "string" && typeof v === "string") reasons[k] = v;
+        }
+      }
+    }
+  } catch {
+    /* fall through to regex recovery below */
+  }
+  if (Object.keys(reasons).length > 0) return reasons;
+
+  // Fallback: the response was truncated (finish_reason="length") or otherwise
+  // malformed, so the whole-blob JSON.parse above failed. The ids-only regex
+  // fallback in parseRankedTokens keeps the selection alive in that case, but
+  // reasons used to be lost entirely because they had no equivalent recovery —
+  // that produced "ids work, reasons empty". Salvage every complete
+  // "rss:<id>":"reason" pair we can still see; a truncated tail then loses only
+  // its final partial entry instead of all reasons. Ids inside the "ids" array
+  // are bare ("rss:x" with no following colon+string), so this matches reason
+  // entries only.
+  const pairRe = /"(rss:[A-Za-z0-9_-]+)"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = pairRe.exec(content)) !== null) {
+    const key = match[1];
+    const value = match[2].replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
+    if (key && value) reasons[key] = value;
+  }
+  return reasons;
+}
+
 function normalizeRankToken(
   token: string | number,
   byIndex: Map<number, string>
@@ -332,7 +371,7 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
 ` +
     `Return exactly one line of JSON only: {"ids":["rss:...", ...],"reasons":{"rss:xxx":"<=8 words why"}}
 ` +
-    `Rules: ids only, no indexes, no prose, unique ids, exactly ${Math.min(req.cap, req.items.length)} ids, every id must be from: ${validIds}. reasons is optional but encouraged.
+    `Rules: ids only, no indexes, no prose, unique ids, exactly ${Math.min(req.cap, req.items.length)} ids, every id must be from: ${validIds}. Always include reasons: one short (<=8 words) entry per selected id, keyed by that exact id.
 
 ` +
     `Candidates:
@@ -470,21 +509,17 @@ ${candidates}`;
     }
     const limited = deduped.slice(0, req.cap);
 
-    // Extract per-item reasons if the LLM included them
-    const parsedReasons: Record<string, string> = {};
-    try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]) as { reasons?: unknown };
-        if (parsed.reasons && typeof parsed.reasons === "object" && !Array.isArray(parsed.reasons)) {
-          for (const [k, v] of Object.entries(parsed.reasons as Record<string, unknown>)) {
-            if (typeof k === "string" && typeof v === "string") parsedReasons[k] = v;
-          }
-        }
-      }
-    } catch { /* reasons are best-effort; ignore parse errors */ }
+    // Extract per-item reasons. parseReasons recovers them even from truncated
+    // or malformed output (see its comments) so a cut-off "reasons" tail no
+    // longer wipes out every reason the way a whole-blob JSON.parse did.
+    const parsedReasons = parseReasons(content);
+    if (Object.keys(parsedReasons).length === 0) {
+      console.warn(
+        `[rss-ranker] no reasons recovered finishReason="${finishReason ?? "unknown"}" contentPreview="${content.slice(0, 200)}"`
+      );
+    }
 
-    console.info(`[rss-ranker] ranking success selected=${limited.length}`);
+    console.info(`[rss-ranker] ranking success selected=${limited.length} reasons=${Object.keys(parsedReasons).length}`);
     const rankResult: RankResult = { ids: limited, reasons: parsedReasons };
     rankCache.set(cacheKey, {
       expiresAt: Date.now() + getCacheTtlMs(),
