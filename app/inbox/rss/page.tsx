@@ -528,7 +528,6 @@ export default function RssInboxPage() {
           selectedIndex={activeSelectedIndex}
           statusById={statusById}
           savedById={savedById}
-          recommendedIds={recommendedIdSet}
           rankReasons={rankReasons}
           onOpen={markInProgress}
           onMarkRead={markRead}

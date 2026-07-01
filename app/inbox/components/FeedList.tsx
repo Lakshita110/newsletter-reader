@@ -24,7 +24,6 @@ export function FeedList({
   selectedIndex,
   statusById,
   savedById,
-  recommendedIds,
   rankReasons,
   onOpen,
   onMarkRead,
@@ -37,7 +36,6 @@ export function FeedList({
   selectedIndex: number;
   statusById: Record<string, FeedReadStatus>;
   savedById?: Record<string, boolean>;
-  recommendedIds?: Set<string>;
   rankReasons?: Record<string, string>;
   onOpen: (id: string) => void;
   onMarkRead: (id: string) => void;
@@ -69,7 +67,13 @@ export function FeedList({
             const hasThumb = it.sourceKind === "rss" && Boolean(it.imageUrl);
             const isSaved = savedById?.[it.id] === true;
             const dotToneClass = it.sourceKind === "rss" ? categoryToneClass(it.category) : "category-tone-news";
-            const rankReason = recommendedIds?.has(it.id) ? rankReasons?.[it.id] : undefined;
+            // Show the reason whenever we have one. Reasons are only ever
+            // produced for AI-recommended items, so gating on the page-level
+            // recommendedIds set as well is redundant — and on the
+            // snapshot-read path that set is derived from the post-diversity
+            // *selected* list while reasons stay keyed to the LLM's original
+            // picks, so intersecting them silently drops most of the pills.
+            const rankReason = rankReasons?.[it.id];
 
             return (
               <Link
@@ -135,19 +139,26 @@ export function FeedList({
                       {rankReason && (
                         <span
                           title={rankReason}
+                          aria-label={`Why recommended: ${rankReason}`}
                           style={{
-                            fontSize: 11,
-                            color: "var(--accent-blue, #2563eb)",
-                            background: "color-mix(in oklab, var(--accent-blue, #2563eb) 10%, transparent)",
-                            border: "1px solid color-mix(in oklab, var(--accent-blue, #2563eb) 25%, transparent)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 14,
+                            height: 14,
                             borderRadius: 999,
-                            padding: "1px 7px",
+                            fontSize: 9,
+                            fontWeight: 700,
+                            fontStyle: "italic",
+                            fontFamily: "Georgia, 'Times New Roman', serif",
+                            lineHeight: 1,
+                            color: "var(--accent-blue, #2563eb)",
+                            border: "1px solid color-mix(in oklab, var(--accent-blue, #2563eb) 40%, transparent)",
                             cursor: "help",
-                            whiteSpace: "nowrap",
                             flexShrink: 0,
                           }}
                         >
-                          why?
+                          i
                         </span>
                       )}
 

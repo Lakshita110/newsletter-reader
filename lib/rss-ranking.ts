@@ -21,110 +21,58 @@ export function buildRankInputFingerprint(
   return createHash("sha256").update(payload).digest("hex");
 }
 
-function computeMaxPerSource(cap: number, items: RankingItem[]): number {
-  const raw = Number(process.env.RSS_MAX_PER_SOURCE ?? 0);
-  if (Number.isFinite(raw) && raw >= 1) return Math.floor(raw);
-  const uniqueSourceCount = new Set(
-    items.map((i) => i.sourceName.trim().toLowerCase())
-  ).size;
-  if (uniqueSourceCount === 0) return cap;
-  return Math.min(4, Math.ceil(cap / uniqueSourceCount));
-}
+// How many extra items beyond the final cap we ask the AI to rank, so that
+// after trimming over-represented publishers there are still enough reasoned
+// picks left to fill the cap.
+const DIVERSITY_OVERFETCH = 20;
 
-function enforceSourceDiversity(
-  selectedIds: string[],
-  allItems: RankingItem[],
-  cap: number,
-  maxPerSource: number
-): string[] {
-  const byId = new Map<string, RankingItem>(allItems.map((item) => [item.id, item]));
-  const sourceCounts = new Map<string, number>();
+// Trim the AI's over-fetched ranked list down to `cap` while spreading picks
+// across publishers, keeping every kept id one the AI actually ranked (so it
+// still has a reason) instead of backfilling with un-reasoned filler. Round-
+// robins by rank: hand each source its best pick first, then its 2nd-best,
+// etc., raising the per-source allowance only when the feed still isn't full.
+// This converges on the smallest max-per-source that fills the cap. An
+// optional RSS_MAX_PER_SOURCE hard-caps the allowance (feed may end up
+// shorter than cap if the AI's pool can't support it).
+export function diversityTrim(rankedIds: string[], rankedItems: RankingItem[], cap: number): string[] {
+  const byId = new Map<string, RankingItem>(rankedItems.map((item) => [item.id, item]));
+  const sourceOf = (id: string) => byId.get(id)?.sourceName.trim().toLowerCase() ?? "";
+
+  const valid: string[] = [];
+  const seen = new Set<string>();
+  for (const id of rankedIds) {
+    if (!byId.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    valid.push(id);
+  }
+  if (valid.length <= cap) return valid;
+
+  const envCapRaw = Number(process.env.RSS_MAX_PER_SOURCE ?? 0);
+  const maxAllowance = Number.isFinite(envCapRaw) && envCapRaw >= 1 ? Math.floor(envCapRaw) : Infinity;
+
   const kept: string[] = [];
-  const demoted: string[] = [];
-
-  for (const id of selectedIds) {
-    const item = byId.get(id);
-    if (!item) continue;
-    const key = item.sourceName.trim().toLowerCase();
-    const count = sourceCounts.get(key) ?? 0;
-    if (count < maxPerSource) {
-      kept.push(id);
-      sourceCounts.set(key, count + 1);
-    } else {
-      demoted.push(id);
+  const keptSet = new Set<string>();
+  const counts = new Map<string, number>();
+  for (let allowance = 1; allowance <= maxAllowance && kept.length < cap; allowance++) {
+    let progressed = false;
+    for (const id of valid) {
+      if (kept.length >= cap) break;
+      if (keptSet.has(id)) continue;
+      const src = sourceOf(id);
+      if ((counts.get(src) ?? 0) < allowance) {
+        kept.push(id);
+        keptSet.add(id);
+        counts.set(src, (counts.get(src) ?? 0) + 1);
+        progressed = true;
+      }
     }
-  }
-
-  const selectedSet = new Set(selectedIds);
-  const unselected = allItems.filter((item) => !selectedSet.has(item.id));
-
-  for (const item of unselected) {
-    if (kept.length >= cap) break;
-    const key = item.sourceName.trim().toLowerCase();
-    const count = sourceCounts.get(key) ?? 0;
-    if (count < maxPerSource) {
-      kept.push(item.id);
-      sourceCounts.set(key, count + 1);
-    }
-  }
-
-  for (const id of demoted) {
-    if (kept.length >= cap) break;
-    kept.push(id);
+    // No id added at this allowance: every remaining source is saturated, so
+    // only a higher allowance helps. Bail once everything has been kept
+    // (can't happen given valid.length > cap, but guards an infinite loop).
+    if (!progressed && keptSet.size >= valid.length) break;
   }
 
   return kept.slice(0, cap);
-}
-
-function sanitizeAndBackfillRankedIds(rankedIds: string[], rankedItems: RankingItem[], cap: number, maxPerSource: number): string[] {
-  const allowed = new Set(rankedItems.map((item) => item.id));
-  const selected: string[] = [];
-  for (const id of rankedIds) {
-    if (!allowed.has(id)) continue;
-    if (selected.includes(id)) continue;
-    selected.push(id);
-    if (selected.length >= cap) break;
-  }
-  if (selected.length < cap) {
-    const selectedSet = new Set(selected);
-    const sourceCounts = new Map<string, number>();
-    for (const id of selected) {
-      const item = rankedItems.find((i) => i.id === id);
-      if (!item) continue;
-      const key = item.sourceName.trim().toLowerCase();
-      sourceCounts.set(key, (sourceCounts.get(key) ?? 0) + 1);
-    }
-    for (const item of rankedItems) {
-      if (selected.length >= cap) break;
-      if (selectedSet.has(item.id)) continue;
-      const key = item.sourceName.trim().toLowerCase();
-      const count = sourceCounts.get(key) ?? 0;
-      if (count < maxPerSource) {
-        selected.push(item.id);
-        selectedSet.add(item.id);
-        sourceCounts.set(key, count + 1);
-      }
-    }
-    for (const item of rankedItems) {
-      if (selected.length >= cap) break;
-      if (selectedSet.has(item.id)) continue;
-      selected.push(item.id);
-      selectedSet.add(item.id);
-    }
-  }
-  return selected;
-}
-
-function sanitizeRecommendedIds(rankedIds: string[], rankedItems: RankingItem[], cap: number): string[] {
-  const allowed = new Set(rankedItems.map((item) => item.id));
-  const selected: string[] = [];
-  for (const id of rankedIds) {
-    if (!allowed.has(id)) continue;
-    if (selected.includes(id)) continue;
-    selected.push(id);
-    if (selected.length >= cap) break;
-  }
-  return selected;
 }
 
 export async function computeDailyRankedSelection(params: {
@@ -161,23 +109,27 @@ export async function computeDailyRankedSelection(params: {
       ...(await getUserRssReadProfile(params.userId)),
       customPrompt: normalizedPrompt || null,
     };
+  // Over-fetch beyond the final cap so the diversity trim below still has
+  // enough reasoned picks left to fill the cap after dropping over-
+  // represented publishers.
+  const rankCap = Math.min(params.rankedItems.length, params.cap + DIVERSITY_OVERFETCH);
   const rankResult = await rankItemsForDailyCap({
     sourceName: "All RSS Sources",
     dayKey: params.dayKey,
     category: "mixed",
-    cap: params.cap,
+    cap: rankCap,
     userProfile: { ...readProfile, customPrompt: normalizedPrompt || null },
     items: params.rankedItems,
   }).catch(() => null);
 
   const rankedIds = rankResult?.ids ?? null;
   if (rankedIds && rankedIds.length > 0) {
-    const maxPerSource = computeMaxPerSource(params.cap, params.rankedItems);
-    const sanitized = sanitizeAndBackfillRankedIds(rankedIds, params.rankedItems, params.cap, maxPerSource);
-    const diversified = enforceSourceDiversity(sanitized, params.rankedItems, params.cap, maxPerSource);
+    // selectedIds === recommendedIds: the AI's own picks, trimmed for
+    // publisher diversity but never backfilled with un-reasoned filler.
+    const aiPicks = diversityTrim(rankedIds, params.rankedItems, params.cap);
     return {
-      selectedIds: diversified,
-      recommendedIds: sanitizeRecommendedIds(rankedIds, params.rankedItems, params.cap),
+      selectedIds: aiPicks,
+      recommendedIds: aiPicks,
       rankReasons: rankResult?.reasons ?? {},
       status: "AI_SUCCESS",
       inputFingerprint,
