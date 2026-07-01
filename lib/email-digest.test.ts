@@ -56,10 +56,39 @@ describe("buildEmailHtml", () => {
   const html = buildEmailHtml(sampleItems, new Date("2026-06-25T12:00:00Z"));
 
   it("renders every item's title and source", () => {
+    // Titles/sources are HTML-escaped, so compare against the escaped form.
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/'/g, "&#39;");
     for (const item of sampleItems) {
-      expect(html).toContain(item.title);
-      expect(html).toContain(item.sourceName);
+      expect(html).toContain(esc(item.title));
+      expect(html).toContain(esc(item.sourceName));
     }
+  });
+
+  it("escapes HTML-significant characters in untrusted fields", () => {
+    const out = buildEmailHtml(
+      [{ title: "A <b>bold</b> & \"quoted\" title", sourceName: "News & Co", snippet: "1 < 2 & 3", externalUrl: null }],
+      new Date(),
+    );
+    // The raw tag must not survive into the markup.
+    expect(out).not.toContain("<b>bold</b>");
+    expect(out).toContain("A &lt;b&gt;bold&lt;/b&gt; &amp; &quot;quoted&quot; title");
+    expect(out).toContain("News &amp; Co");
+    expect(out).toContain("1 &lt; 2 &amp; 3");
+  });
+
+  it("does not link non-http(s) urls", () => {
+    const out = buildEmailHtml(
+      [{ title: "sneaky", sourceName: "src", snippet: "", externalUrl: "javascript:alert(1)" }],
+      new Date(),
+    );
+    expect(out).not.toContain("javascript:");
+    // Title renders as plain text, not wrapped in an anchor.
+    expect(out).not.toContain("sneaky</a>");
+  });
+
+  it("renders the branded header", () => {
+    expect(html).toContain("Cluck&#39;s Feed");
+    expect(html).toContain("Your daily reading list");
   });
 
   it("links items that have an external url", () => {
