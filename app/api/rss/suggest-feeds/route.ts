@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getUserRssReadProfile } from "@/lib/rss-helpers";
+import { normalizeRssCategory, RSS_CATEGORY_OPTIONS } from "@/lib/rss-categories";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,9 @@ Currently subscribed feeds (DO NOT suggest these):
 ${currentFeeds || "none yet"}
 
 Return a JSON array of exactly 5 objects with this shape:
-[{"name":"Feed Name","rssUrl":"https://example.com/feed.xml","siteUrl":"https://example.com","category":"tech|science|business|culture|news|other","reason":"1 sentence why this matches their interests"}]
+[{"name":"Feed Name","rssUrl":"https://example.com/feed.xml","siteUrl":"https://example.com","category":"${RSS_CATEGORY_OPTIONS.join("|")}","reason":"1 sentence why this matches their interests"}]
+
+category must be exactly one of: ${RSS_CATEGORY_OPTIONS.join(", ")}. No other values.
 
 Rules:
 - Only suggest feeds with real, working RSS URLs you are confident exist
@@ -115,7 +118,11 @@ Rules:
         name: String(item.name ?? ""),
         rssUrl: String(item.rssUrl ?? ""),
         siteUrl: String(item.siteUrl ?? ""),
-        category: String(item.category ?? "other"),
+        // The model doesn't always follow the requested category enum (typos,
+        // synonyms like "technology", casing) — normalize here so a suggestion
+        // never carries a category the add-feed endpoint would reject with
+        // "Invalid category option".
+        category: normalizeRssCategory(String(item.category ?? "")) ?? "other",
         reason: String(item.reason ?? ""),
       }))
       .filter((s) => s.name && s.rssUrl.startsWith("http"));
