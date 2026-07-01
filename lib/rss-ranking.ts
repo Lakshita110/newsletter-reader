@@ -34,7 +34,7 @@ const DIVERSITY_OVERFETCH = 20;
 // This converges on the smallest max-per-source that fills the cap. An
 // optional RSS_MAX_PER_SOURCE hard-caps the allowance (feed may end up
 // shorter than cap if the AI's pool can't support it).
-function diversityTrim(rankedIds: string[], rankedItems: RankingItem[], cap: number): string[] {
+export function diversityTrim(rankedIds: string[], rankedItems: RankingItem[], cap: number): string[] {
   const byId = new Map<string, RankingItem>(rankedItems.map((item) => [item.id, item]));
   const sourceOf = (id: string) => byId.get(id)?.sourceName.trim().toLowerCase() ?? "";
 

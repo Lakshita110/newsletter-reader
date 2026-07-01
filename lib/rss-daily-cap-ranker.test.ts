@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { parseReasons, withMaxTokens } from "./rss-daily-cap-ranker";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { parseReasons, rankItemsForDailyCap, withMaxTokens } from "./rss-daily-cap-ranker";
 
 // The ranker prompt asks the model to emit, per selected item, both an id
 // (~10 tokens) and a short "<=8 words" reason (~20 tokens incl. JSON quoting).
@@ -64,5 +64,54 @@ describe("parseReasons", () => {
 
   it("returns an empty map for empty content", () => {
     expect(parseReasons("")).toEqual({});
+  });
+});
+
+describe("rankItemsForDailyCap", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("still calls the AI (and gets reasons) when candidates already fit within the cap", async () => {
+    // Previously this case skipped the AI call entirely and returned every id
+    // with an empty reasons map, so "why?" pills never showed at all on a day
+    // with few candidates. It must now go through the same ranking call as
+    // any other day.
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            finish_reason: "stop",
+            message: {
+              content: '{"ids":["rss:within-cap-a"],"reasons":{"rss:within-cap-a":"only candidate, still reasoned"}}',
+            },
+          },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await rankItemsForDailyCap({
+      sourceName: "Test Source",
+      dayKey: "2026-07-01-within-cap-test",
+      category: "mixed",
+      cap: 5,
+      items: [
+        {
+          id: "rss:within-cap-a",
+          title: "Only candidate",
+          publishedAtIso: "2026-07-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      ids: ["rss:within-cap-a"],
+      reasons: { "rss:within-cap-a": "only candidate, still reasoned" },
+    });
   });
 });
