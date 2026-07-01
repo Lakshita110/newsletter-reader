@@ -153,6 +153,73 @@ a:hover {
   grid-row: 1 / span 4;
 }
 
+.rank-reason-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  font-style: italic;
+  font-family: Georgia, "Times New Roman", serif;
+  line-height: 1;
+  color: var(--accent-blue, #2563eb);
+  border: 1px solid color-mix(in oklab, var(--accent-blue, #2563eb) 40%, transparent);
+  cursor: help;
+}
+
+.rank-reason-icon::before,
+.rank-reason-icon::after {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.rank-reason-icon::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: 240px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--text);
+  color: var(--surface);
+  font-family: var(--font-sans, system-ui), sans-serif;
+  font-style: normal;
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: normal;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  transform: translateY(4px);
+}
+
+.rank-reason-icon::before {
+  content: "";
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 5px;
+  z-index: 20;
+  border: 5px solid transparent;
+  border-top-color: var(--text);
+}
+
+.rank-reason-icon:hover::before,
+.rank-reason-icon:hover::after,
+.rank-reason-icon:focus-visible::before,
+.rank-reason-icon:focus-visible::after {
+  opacity: 1;
+  transform: none;
+}
+
 .feed-item .feed-item-actions {
   opacity: 0;
   pointer-events: none;

@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
-import nodemailer from "nodemailer";
 import { prisma } from "@/lib/prisma";
-import {
-  buildEmailHtml,
-  getDigestSubject,
-  getLocalDateKey,
-} from "@/lib/email-digest";
+import { createDigestTransporter, sendDigestForUser } from "@/lib/send-daily-digest";
 
 export const dynamic = "force-dynamic";
 
@@ -17,20 +12,10 @@ function isAuthorized(req: Request): boolean {
   return bearer === configured || (req.headers.get("x-cron-secret") ?? "") === configured;
 }
 
-function createTransporter() {
-  const user = process.env.GMAIL_USER;
-  const pass = process.env.GMAIL_APP_PASSWORD;
-  if (!user || !pass) return null;
-  return nodemailer.createTransport({
-    service: "gmail",
-    auth: { user, pass },
-  });
-}
-
 export async function GET(req: Request) {
   if (!isAuthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const transporter = createTransporter();
+  const transporter = createDigestTransporter();
   if (!transporter) {
     return NextResponse.json({ error: "GMAIL_USER and GMAIL_APP_PASSWORD must be set" }, { status: 503 });
   }
@@ -56,76 +41,14 @@ export async function GET(req: Request) {
   const errors: string[] = [];
 
   for (const user of eligibleUsers) {
-    try {
-      const tz = user.digestTimezone || "UTC";
-
-      if (!force) {
-        const localDateKey = getLocalDateKey(tz);
-        if (user.digestLastSentAt) {
-          const lastSentLocalKey = new Intl.DateTimeFormat("en-CA", { timeZone: tz })
-            .format(user.digestLastSentAt);
-          if (lastSentLocalKey === localDateKey) { skipped += 1; continue; }
-        }
-      }
-
-      const localDateKey = getLocalDateKey(tz);
-      const snapshot = await prisma.userRssDailyRankSnapshot.findFirst({
-        where: { userId: user.id, dayKey: localDateKey },
-        select: { rankedItemIds: true },
-      });
-
-      const rankedIds = Array.isArray(snapshot?.rankedItemIds)
-        ? (snapshot.rankedItemIds as string[]).filter((id): id is string => typeof id === "string").slice(0, 10)
-        : [];
-
-      if (rankedIds.length === 0) { skipped += 1; continue; }
-
-      const rssItemIds = rankedIds
-        .filter((id) => id.startsWith("rss:"))
-        .map((id) => id.slice(4));
-
-      const dbItems = await prisma.rssItem.findMany({
-        where: { id: { in: rssItemIds } },
-        select: {
-          id: true,
-          title: true,
-          snippet: true,
-          link: true,
-          source: { select: { name: true } },
-        },
-      });
-
-      const byId = new Map(dbItems.map((item) => [item.id, item]));
-      const emailItems = rankedIds
-        .filter((id) => id.startsWith("rss:"))
-        .map((id) => byId.get(id.slice(4)))
-        .filter((item): item is NonNullable<typeof item> => Boolean(item))
-        .map((item) => ({
-          title: item.title,
-          sourceName: item.source.name,
-          snippet: item.snippet ?? "",
-          externalUrl: item.link ?? null,
-        }));
-
-      if (emailItems.length === 0) { skipped += 1; continue; }
-
-      await transporter.sendMail({
-        from: `Cluck's Feed <${fromEmail}>`,
-        to: user.email,
-        subject: getDigestSubject(emailItems.length),
-        html: buildEmailHtml(emailItems),
-      });
-
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { digestLastSentAt: new Date() },
-      });
-
+    const result = await sendDigestForUser({ transporter, fromEmail, user, force });
+    if (result.status === "sent") {
       sent += 1;
-    } catch (err) {
-      const msg = `${user.email}: ${err instanceof Error ? err.message : "unknown"}`;
-      errors.push(msg);
-      console.error("[email-digest] failed", msg);
+    } else if (result.status === "skipped") {
+      skipped += 1;
+    } else {
+      errors.push(`${user.email}: ${result.message}`);
+      console.error("[email-digest] failed", `${user.email}: ${result.message}`);
     }
   }
 

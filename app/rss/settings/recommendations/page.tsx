@@ -11,6 +11,27 @@ import {
   RSS_RECOMMENDATION_PROMPT_MAX_CHARS,
 } from "@/lib/rss-recommendation-settings";
 
+// The digest cron fires once a day at a fixed UTC time (Vercel Hobby plans
+// only allow one invocation/day per cron entry, so it can't be scheduled
+// per-user). digestTimezone only controls the send de-dupe date boundary,
+// not the send time — so we show users what that fixed UTC time actually
+// looks like in their own zone instead of implying it's locally scheduled.
+const DIGEST_SEND_UTC_HOUR = 7;
+
+function describeDigestLocalTime(tz: string): string {
+  try {
+    const utcInstant = new Date();
+    utcInstant.setUTCHours(DIGEST_SEND_UTC_HOUR, 0, 0, 0);
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(utcInstant);
+  } catch {
+    return `${DIGEST_SEND_UTC_HOUR}:00 UTC`;
+  }
+}
+
 const COMMON_TIMEZONES = [
   "UTC", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
   "America/Toronto", "America/Vancouver", "America/Sao_Paulo", "America/Argentina/Buenos_Aires",
@@ -30,6 +51,8 @@ export default function RecommendationSettingsPage() {
   const [weeklyReadingGoal, setWeeklyReadingGoal] = useState(5);
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState<{ text: string; kind: "success" | "error" } | null>(null);
+  const [isSendingTest, setIsSendingTest] = useState(false);
+  const [testNotice, setTestNotice] = useState<{ text: string; kind: "success" | "error" } | null>(null);
 
   useEffect(() => {
     if (session === null) router.replace("/sign-in");
@@ -83,6 +106,24 @@ export default function RecommendationSettingsPage() {
       setNotice({ text: "Settings saved.", kind: "success" });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const sendTestDigest = async () => {
+    setIsSendingTest(true);
+    setTestNotice(null);
+    try {
+      const res = await fetch("/api/rss/send-test-digest", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (data?.ok) {
+        setTestNotice({ text: `Sent — ${data.itemCount} article${data.itemCount === 1 ? "" : "s"}.`, kind: "success" });
+      } else {
+        setTestNotice({ text: data?.error || "Could not send a test digest.", kind: "error" });
+      }
+    } catch {
+      setTestNotice({ text: "Could not reach the server.", kind: "error" });
+    } finally {
+      setIsSendingTest(false);
     }
   };
 
@@ -175,9 +216,9 @@ export default function RecommendationSettingsPage() {
 
         <div style={{ display: "grid", gap: 12 }}>
           <div>
-            <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Morning email digest</label>
+            <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Daily email digest</label>
             <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}>
-              Receive your daily reading list by email each morning (sent around 7 AM in your timezone).
+              Receive your recommended reading list by email once a day, at a fixed 7:00 AM UTC send time.
             </p>
           </div>
           <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
@@ -203,8 +244,28 @@ export default function RecommendationSettingsPage() {
                   <option key={tz} value={tz}>{tz}</option>
                 ))}
               </select>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>
+                That&apos;s around {describeDigestLocalTime(digestTimezone)} in {digestTimezone.replace(/_/g, " ")}.
+                Used to figure out your &quot;today&quot; for de-duping — not to move the send time.
+              </p>
             </div>
           )}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              type="button"
+              onClick={sendTestDigest}
+              disabled={isSendingTest}
+              className="filter-action-btn"
+              style={{ width: "fit-content" }}
+            >
+              {isSendingTest ? "Sending…" : "Send test email now"}
+            </button>
+            {testNotice && (
+              <span style={{ fontSize: 13, color: testNotice.kind === "error" ? "var(--danger-text, #c0392b)" : "var(--muted)" }}>
+                {testNotice.text}
+              </span>
+            )}
+          </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

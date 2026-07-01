@@ -136,31 +136,6 @@ export function FeedList({
                         />
                         {it.publicationName} - {formatDateTime(it.date)}
                       </span>
-                      {rankReason && (
-                        <span
-                          title={rankReason}
-                          aria-label={`Why recommended: ${rankReason}`}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            width: 14,
-                            height: 14,
-                            borderRadius: 999,
-                            fontSize: 9,
-                            fontWeight: 700,
-                            fontStyle: "italic",
-                            fontFamily: "Georgia, 'Times New Roman', serif",
-                            lineHeight: 1,
-                            color: "var(--accent-blue, #2563eb)",
-                            border: "1px solid color-mix(in oklab, var(--accent-blue, #2563eb) 40%, transparent)",
-                            cursor: "help",
-                            flexShrink: 0,
-                          }}
-                        >
-                          i
-                        </span>
-                      )}
 
                       <div className="feed-item-actions" style={{ display: "flex", gap: 8 }}>
                         {it.externalUrl && (
@@ -242,6 +217,16 @@ export function FeedList({
                         minWidth: 0,
                       }}
                     >
+                      {rankReason && (
+                        <span
+                          className="rank-reason-icon"
+                          data-tooltip={rankReason}
+                          aria-label={`Why recommended: ${rankReason}`}
+                          tabIndex={0}
+                        >
+                          i
+                        </span>
+                      )}
                       {it.subject || "(No subject)"}
                     </div>
                   </div>
