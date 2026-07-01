@@ -128,7 +128,7 @@ model UserRssDailyRankSnapshot {
   userId           String
   dayKey           String
   rankedItemIds    Json
-  rankReasons      Json?
+  rankReasons      Json                  @default("{}")
   status           RssRankSnapshotStatus
   source           RssRankSnapshotSource
   model            String?
