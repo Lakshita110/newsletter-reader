@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DigestUser } from "./send-daily-digest";
+import { normalizeDigestEmail, resolveDigestRecipient } from "./send-daily-digest";
 
 const findFirstMock = vi.fn();
 const findManyMock = vi.fn();
@@ -19,6 +20,7 @@ function makeUser(overrides: Partial<DigestUser> = {}): DigestUser {
   return {
     id: "user-1",
     email: "reader@example.com",
+    digestEmail: null,
     digestTimezone: "UTC",
     digestLastSentAt: null,
     ...overrides,
@@ -71,12 +73,35 @@ describe("sendDigestForUser", () => {
       force: true,
     });
 
-    expect(result).toEqual({ status: "sent", itemCount: 1 });
+    expect(result).toEqual({ status: "sent", itemCount: 1, sentTo: "reader@example.com" });
     expect(transporter.sendMail).toHaveBeenCalledTimes(1);
+    expect(transporter.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "reader@example.com" })
+    );
     expect(updateMock).toHaveBeenCalledWith({
       where: { id: "user-1" },
       data: { digestLastSentAt: expect.any(Date) },
     });
+  });
+
+  it("sends to the configured digestEmail override instead of the account email", async () => {
+    findFirstMock.mockResolvedValue({ rankedItemIds: ["rss:abc123"] });
+    findManyMock.mockResolvedValue([
+      { id: "abc123", title: "A test article", snippet: "s", link: "https://example.com/a", source: { name: "Test Source" } },
+    ]);
+    const transporter = makeTransporter();
+
+    const result = await sendDigestForUser({
+      transporter,
+      fromEmail: "cluck@example.com",
+      user: makeUser({ digestEmail: "elsewhere@example.com" }),
+      force: true,
+    });
+
+    expect(result).toEqual({ status: "sent", itemCount: 1, sentTo: "elsewhere@example.com" });
+    expect(transporter.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "elsewhere@example.com" })
+    );
   });
 
   it("skips when there's no rank snapshot for today, even when forced", async () => {
@@ -128,5 +153,33 @@ describe("sendDigestForUser", () => {
 
     expect(result).toEqual({ status: "error", message: "SMTP rejected" });
     expect(updateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("normalizeDigestEmail", () => {
+  it("trims and keeps a valid address", () => {
+    expect(normalizeDigestEmail("  me@example.com  ")).toBe("me@example.com");
+  });
+
+  it("returns null for blank, missing, or malformed input", () => {
+    expect(normalizeDigestEmail("")).toBeNull();
+    expect(normalizeDigestEmail("   ")).toBeNull();
+    expect(normalizeDigestEmail(null)).toBeNull();
+    expect(normalizeDigestEmail(undefined)).toBeNull();
+    expect(normalizeDigestEmail("not-an-email")).toBeNull();
+    expect(normalizeDigestEmail("a@b")).toBeNull();
+  });
+});
+
+describe("resolveDigestRecipient", () => {
+  it("prefers a valid override over the account email", () => {
+    expect(resolveDigestRecipient({ email: "acct@example.com", digestEmail: "override@example.com" })).toBe(
+      "override@example.com"
+    );
+  });
+
+  it("falls back to the account email when the override is unset or invalid", () => {
+    expect(resolveDigestRecipient({ email: "acct@example.com", digestEmail: null })).toBe("acct@example.com");
+    expect(resolveDigestRecipient({ email: "acct@example.com", digestEmail: "garbage" })).toBe("acct@example.com");
   });
 });

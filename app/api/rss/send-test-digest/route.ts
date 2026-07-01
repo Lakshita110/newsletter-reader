@@ -19,7 +19,7 @@ export async function POST() {
 
   const user = await prisma.user.findUnique({
     where: { email },
-    select: { id: true, email: true, digestTimezone: true, digestLastSentAt: true },
+    select: { id: true, email: true, digestEmail: true, digestTimezone: true, digestLastSentAt: true },
   });
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -31,7 +31,7 @@ export async function POST() {
   });
 
   if (result.status === "sent") {
-    return NextResponse.json({ ok: true, itemCount: result.itemCount });
+    return NextResponse.json({ ok: true, itemCount: result.itemCount, sentTo: result.sentTo });
   }
   if (result.status === "skipped") {
     return NextResponse.json(

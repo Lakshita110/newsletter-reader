@@ -31,6 +31,7 @@ export async function GET(req: Request) {
     select: {
       id: true,
       email: true,
+      digestEmail: true,
       digestTimezone: true,
       digestLastSentAt: true,
     },

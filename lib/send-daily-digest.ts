@@ -5,14 +5,32 @@ import { buildEmailHtml, getDigestSubject, getLocalDateKey } from "@/lib/email-d
 export type DigestUser = {
   id: string;
   email: string;
+  digestEmail: string | null;
   digestTimezone: string;
   digestLastSentAt: Date | null;
 };
 
 export type DigestSendResult =
-  | { status: "sent"; itemCount: number }
+  | { status: "sent"; itemCount: number; sentTo: string }
   | { status: "skipped"; reason: "already_sent_today" | "no_ranked_items" }
   | { status: "error"; message: string };
+
+// Deliberately permissive: enough to reject obvious junk ("foo", "a@b") without
+// trying to fully validate RFC 5322. Returns the trimmed address, or null for
+// empty/invalid input — null means "fall back to the account email".
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function normalizeDigestEmail(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  return EMAIL_RE.test(trimmed) ? trimmed : null;
+}
+
+/** The address a given user's digest will actually be delivered to. */
+export function resolveDigestRecipient(user: Pick<DigestUser, "email" | "digestEmail">): string {
+  return normalizeDigestEmail(user.digestEmail) ?? user.email;
+}
 
 export function createDigestTransporter(): nodemailer.Transporter | null {
   const user = process.env.GMAIL_USER;
@@ -91,9 +109,10 @@ export async function sendDigestForUser(params: {
       return { status: "skipped", reason: "no_ranked_items" };
     }
 
+    const recipient = resolveDigestRecipient(user);
     await transporter.sendMail({
       from: `Cluck's Feed <${fromEmail}>`,
-      to: user.email,
+      to: recipient,
       subject: getDigestSubject(emailItems.length),
       html: buildEmailHtml(emailItems),
     });
@@ -103,7 +122,7 @@ export async function sendDigestForUser(params: {
       data: { digestLastSentAt: new Date() },
     });
 
-    return { status: "sent", itemCount: emailItems.length };
+    return { status: "sent", itemCount: emailItems.length, sentTo: recipient };
   } catch (err) {
     return { status: "error", message: err instanceof Error ? err.message : "unknown error" };
   }

@@ -29,6 +29,7 @@ model User {
   rssRecommendationCap     Int                       @default(35)
   rssRecommendationPrompt  String?                   @db.VarChar(500)
   digestEnabled            Boolean                   @default(false)
+  digestEmail              String?
   digestTimezone           String                    @default("UTC")
   weeklyReadingGoal        Int                       @default(5)
   digestLastSentAt         DateTime?

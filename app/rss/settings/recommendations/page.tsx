@@ -47,6 +47,8 @@ export default function RecommendationSettingsPage() {
   const [recommendationCap, setRecommendationCap] = useState<number>(RSS_RECOMMENDATION_CAP_DEFAULT);
   const [recommendationPrompt, setRecommendationPrompt] = useState<string>("");
   const [digestEnabled, setDigestEnabled] = useState(false);
+  const [digestEmail, setDigestEmail] = useState("");
+  const [accountEmail, setAccountEmail] = useState("");
   const [digestTimezone, setDigestTimezone] = useState("UTC");
   const [weeklyReadingGoal, setWeeklyReadingGoal] = useState(5);
   const [isSaving, setIsSaving] = useState(false);
@@ -68,6 +70,8 @@ export default function RecommendationSettingsPage() {
       setRecommendationCap(Number(data.recommendationCap) || RSS_RECOMMENDATION_CAP_DEFAULT);
       setRecommendationPrompt(typeof data.recommendationPrompt === "string" ? data.recommendationPrompt : "");
       setDigestEnabled(Boolean(data.digestEnabled));
+      setDigestEmail(typeof data.digestEmail === "string" ? data.digestEmail : "");
+      setAccountEmail(typeof data.accountEmail === "string" ? data.accountEmail : "");
       setDigestTimezone(typeof data.digestTimezone === "string" ? data.digestTimezone : "UTC");
       setWeeklyReadingGoal(Number(data.weeklyReadingGoal) || 5);
     };
@@ -89,7 +93,7 @@ export default function RecommendationSettingsPage() {
       const res = await fetch("/api/rss/recommendations-settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recommendationCap, recommendationPrompt, digestEnabled, digestTimezone, weeklyReadingGoal }),
+        body: JSON.stringify({ recommendationCap, recommendationPrompt, digestEnabled, digestEmail, digestTimezone, weeklyReadingGoal }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -101,6 +105,8 @@ export default function RecommendationSettingsPage() {
         typeof data.recommendationPrompt === "string" ? data.recommendationPrompt : recommendationPrompt
       );
       setDigestEnabled(Boolean(data.digestEnabled));
+      setDigestEmail(typeof data.digestEmail === "string" ? data.digestEmail : digestEmail);
+      setAccountEmail(typeof data.accountEmail === "string" ? data.accountEmail : accountEmail);
       setDigestTimezone(typeof data.digestTimezone === "string" ? data.digestTimezone : digestTimezone);
       setWeeklyReadingGoal(Number(data.weeklyReadingGoal) || weeklyReadingGoal);
       setNotice({ text: "Settings saved.", kind: "success" });
@@ -116,7 +122,11 @@ export default function RecommendationSettingsPage() {
       const res = await fetch("/api/rss/send-test-digest", { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (data?.ok) {
-        setTestNotice({ text: `Sent — ${data.itemCount} article${data.itemCount === 1 ? "" : "s"}.`, kind: "success" });
+        const where = typeof data.sentTo === "string" && data.sentTo ? ` to ${data.sentTo}` : "";
+        setTestNotice({
+          text: `Sent${where} — ${data.itemCount} article${data.itemCount === 1 ? "" : "s"}.`,
+          kind: "success",
+        });
       } else {
         setTestNotice({ text: data?.error || "Could not send a test digest.", kind: "error" });
       }
@@ -230,6 +240,23 @@ export default function RecommendationSettingsPage() {
             />
             <span style={{ fontSize: 13, color: "var(--text)" }}>Enable daily digest email</span>
           </label>
+          {digestEnabled && (
+            <div style={{ display: "grid", gap: 6 }}>
+              <label htmlFor="digest-email" style={{ fontSize: 13, color: "var(--muted)" }}>Send digests to</label>
+              <input
+                id="digest-email"
+                type="email"
+                value={digestEmail}
+                onChange={(e) => setDigestEmail(e.target.value)}
+                placeholder={accountEmail || "your account email"}
+                className="settings-input"
+                style={{ maxWidth: 320 }}
+              />
+              <p style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>
+                Leave blank to use your account email{accountEmail ? ` (${accountEmail})` : ""}.
+              </p>
+            </div>
+          )}
           {digestEnabled && (
             <div style={{ display: "grid", gap: 6 }}>
               <label htmlFor="digest-timezone" style={{ fontSize: 13, color: "var(--muted)" }}>Your timezone</label>
