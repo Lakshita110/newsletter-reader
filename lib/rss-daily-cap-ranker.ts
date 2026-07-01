@@ -248,13 +248,11 @@ export function withMaxTokens(cap: number): number {
 export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult | null> {
   if (req.cap <= 0) return { ids: [], reasons: {} };
   if (req.items.length === 0) return { ids: [], reasons: {} };
-  if (req.items.length <= req.cap) {
-    const passthrough = req.items.map((item) => item.id);
-    console.info(
-      `[rss-ranker] skip ai call source="${req.sourceName}" day="${req.dayKey}" reason="candidates_within_cap" selected=${passthrough.length}`
-    );
-    return { ids: passthrough, reasons: {} };
-  }
+
+  // Previously skipped the AI call entirely when candidates already fit
+  // within the cap, returning every id with an empty reasons map. That meant
+  // "why?" pills never showed at all on any day the candidate pool was small
+  // — always call the ranker so every selected item gets a real reason.
 
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
