@@ -2,31 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncRssSource } from "@/lib/rss";
 import { computeDailyRankedSelection } from "@/lib/rss-ranking";
-import {
-  buildRssArticleDedupKey,
-  dedupeByArticleKey,
-  dayKeyUtc,
-  getRssDailyTargetCap,
-  getUserRssReadProfile,
-  rssPriorityScore,
-  sortByPriorityAndRecency,
-} from "@/lib/rss-helpers";
+import { dayKeyUtc, getUserRssReadProfile } from "@/lib/rss-helpers";
 import { normalizeRecommendationPrompt } from "@/lib/rss-recommendation-settings";
 import { runAndPersistRankEval } from "@/lib/rss-rank-eval";
-
-type RssPriority = "HIGH" | "NORMAL" | "LOW";
-
-type Candidate = {
-  id: string;
-  sourceName: string;
-  dedupKey: string;
-  priority: RssPriority;
-  sortTimeMs: number;
-  title: string;
-  snippet: string;
-  author: string | null;
-  publishedAtIso: string;
-};
+import { buildRankingCandidates } from "@/lib/rss-candidates";
 
 const FALLBACK_SNAPSHOT_TTL_MS = 45 * 60 * 1000;
 
@@ -52,83 +31,8 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
   });
   const customPrompt = normalizeRecommendationPrompt(userSettings?.rssRecommendationPrompt) ?? "";
 
-  const rollingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const subscriptions = await prisma.userRssSubscription.findMany({
-    where: { userId, isActive: true },
-    include: {
-      source: {
-        include: {
-          items: {
-            where: {
-              OR: [
-                { publishedAt: { gte: rollingCutoff } },
-                { AND: [{ publishedAt: null }, { createdAt: { gte: rollingCutoff } }] },
-              ],
-            },
-            orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
-            take: 300,
-          },
-        },
-      },
-    },
-  });
+  const { aiItems, totalCap } = await buildRankingCandidates({ userId });
 
-  const candidates: Candidate[] = [];
-  for (const sub of subscriptions) {
-    for (const item of sub.source.items) {
-      candidates.push({
-        id: `rss:${item.id}`,
-        sourceName: sub.source.name,
-        dedupKey: buildRssArticleDedupKey({
-          externalUrl: item.link,
-          title: item.title,
-          snippet: item.snippet ?? "",
-        }),
-        priority: sub.priority,
-        sortTimeMs: item.publishedAt?.getTime() ?? item.createdAt.getTime(),
-        title: item.title,
-        snippet: item.snippet ?? "",
-        author: item.author ?? null,
-        publishedAtIso: (item.publishedAt ?? item.createdAt).toISOString(),
-      });
-    }
-  }
-
-  const candidateIds = candidates.map((candidate) => candidate.id);
-  const readRows =
-    candidateIds.length === 0
-      ? []
-      : await prisma.messageReadStat.findMany({
-          where: {
-            userId,
-            messageExternalId: { in: candidateIds },
-            OR: [{ completedAt: { not: null } }, { completionPct: { gte: 99 } }],
-          },
-          select: { messageExternalId: true },
-        });
-  const readIdSet = new Set(readRows.map((row) => row.messageExternalId));
-  const unreadCandidates = candidates.filter((candidate) => !readIdSet.has(candidate.id));
-  const dedupedCandidates = dedupeByArticleKey(
-    unreadCandidates,
-    (candidate) => rssPriorityScore(candidate.priority),
-    (candidate) => candidate.sortTimeMs
-  );
-
-  const sortedFallback = sortByPriorityAndRecency(
-    dedupedCandidates,
-    (candidate) => candidate.priority,
-    (candidate) => candidate.sortTimeMs
-  );
-  const totalCap = getRssDailyTargetCap(sortedFallback.length);
-
-  const aiItems = sortedFallback.map((candidate) => ({
-    id: candidate.id,
-    title: candidate.title,
-    snippet: candidate.snippet,
-    author: candidate.author,
-    sourceName: candidate.sourceName,
-    publishedAtIso: candidate.publishedAtIso,
-  }));
   const readProfile = await getUserRssReadProfile(userId);
   const ranking = await computeDailyRankedSelection({
     userId,

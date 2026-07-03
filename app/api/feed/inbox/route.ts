@@ -6,48 +6,18 @@ import { authOptions } from "@/lib/auth";
 import { classifyNewsletter, getHeader } from "@/lib/newsletter-classifier";
 import { parseFrom, normalizePublicationKey } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
-import { normalizeRssCategory } from "@/lib/rss-categories";
 import { buildRankInputFingerprint, computeDailyRankedSelection } from "@/lib/rss-ranking";
 import { normalizeRecommendationPrompt } from "@/lib/rss-recommendation-settings";
+import { dayKeyUtc, getUserRssReadProfile, type RssReadProfile } from "@/lib/rss-helpers";
 import {
-  buildRssArticleDedupKey,
-  dedupeByArticleKey,
-  dayKeyUtc,
-  extractImageUrlFromHtml,
-  getRssDailyTargetCap,
-  getUserRssReadProfile,
-  rssPriorityScore,
-  sortByPriorityAndRecency,
-  type RssReadProfile,
-} from "@/lib/rss-helpers";
-type RssPriority = "HIGH" | "NORMAL" | "LOW";
-
-type FeedItem = {
-  id: string;
-  sourceId?: string;
-  sourceKind: "gmail" | "rss";
-  subject: string;
-  from: string;
-  date: string;
-  snippet: string;
-  publicationName: string;
-  publicationKey: string;
-  category?: string;
-  isOverflow?: boolean;
-  externalUrl?: string;
-  imageUrl?: string;
-};
+  buildRankingCandidates,
+  type AiRankItem as AiItem,
+  type FeedItem,
+  type RankingCandidate as DayCandidate,
+} from "@/lib/rss-candidates";
 
 type RankSnapshotStatus = "AI_SUCCESS" | "FALLBACK_DETERMINISTIC";
 type RankSnapshotSource = "CRON" | "ON_DEMAND";
-type AiItem = {
-  id: string;
-  title: string;
-  snippet: string;
-  author: string | null;
-  sourceName: string;
-  publishedAtIso: string;
-};
 type RankedIdsResult = {
   selectedRankIds: string[] | null;
   recommendedRankIds: string[];
@@ -55,22 +25,6 @@ type RankedIdsResult = {
   status: RankSnapshotStatus | null;
   rankingPending: boolean;
   rankedAt: string | null;
-};
-
-type DayCandidate = {
-  sourceId: string;
-  sourceName: string;
-  dedupKey: string;
-  priority: RssPriority;
-  item: {
-    title: string;
-    snippet: string | null;
-    author: string | null;
-    publishedAt: Date | null;
-    createdAt: Date;
-  };
-  feedItem: FeedItem;
-  sortTimeMs: number;
 };
 
 const onDemandRankingInFlight = new Map<string, Promise<RankedIdsResult>>();
@@ -137,6 +91,18 @@ function sanitizeRankedIds(
 async function readValidRankSnapshot(userId: string, dayKey: string, now: Date) {
   return prisma.userRssDailyRankSnapshot.findFirst({
     where: { userId, dayKey, expiresAt: { gt: now } },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+/**
+ * Most recent snapshot for the user regardless of day or expiry — used as the
+ * instant stopgap on a cold start so the morning open shows yesterday's ranking
+ * while today's ranks in the background.
+ */
+async function readMostRecentSnapshot(userId: string) {
+  return prisma.userRssDailyRankSnapshot.findFirst({
+    where: { userId },
     orderBy: { updatedAt: "desc" },
   });
 }
@@ -429,18 +395,11 @@ async function getOrCreateTodayRankedIds(params: {
   dayKey: string;
   cap: number;
   sortedFallback: DayCandidate[];
+  aiItems: AiItem[];
   readProfile: RssReadProfile;
   requestTag: string;
 }): Promise<RankedIdsResult> {
-  const { userId, dayKey, cap, sortedFallback, readProfile, requestTag } = params;
-  const aiItems: AiItem[] = sortedFallback.map((candidate) => ({
-    id: candidate.feedItem.id,
-    title: candidate.item.title,
-    snippet: candidate.item.snippet ?? "",
-    author: candidate.item.author ?? null,
-    sourceName: candidate.sourceName,
-    publishedAtIso: (candidate.item.publishedAt ?? candidate.item.createdAt).toISOString(),
-  }));
+  const { userId, dayKey, cap, sortedFallback, aiItems, readProfile, requestTag } = params;
   const normalizedPrompt = readProfile.customPrompt ?? "";
   const inputFingerprint = buildRankInputFingerprint(dayKey, cap, normalizedPrompt, aiItems);
   const rankParams = {
@@ -492,22 +451,33 @@ async function getOrCreateTodayRankedIds(params: {
     };
   }
 
-  // No snapshot — check in-flight (may be a background task from a prior stale-fingerprint request)
+  // No snapshot for today — serve the most recent prior ranking instantly and
+  // rank today's in the background. The client polls every 3s while
+  // rankingPending is true and swaps in today's ranking once it lands, so the
+  // request never blocks on OpenRouter. This is the morning cold-start path:
+  // before this, the first open of the UTC day awaited a live rank (several
+  // seconds); now it shows yesterday's ranking immediately.
   const inFlightKey = `${userId}:${dayKey}`;
-  const existingInFlight = onDemandRankingInFlight.get(inFlightKey);
-  if (existingInFlight) {
-    console.info(`[rss-inbox][${requestTag}] awaiting in-process ranking day="${dayKey}"`);
-    return await existingInFlight;
+  if (!onDemandRankingInFlight.has(inFlightKey)) {
+    const bgTask = acquireAndRank(rankParams);
+    onDemandRankingInFlight.set(inFlightKey, bgTask);
+    bgTask.finally(() => onDemandRankingInFlight.delete(inFlightKey)).catch(() => null);
   }
 
-  // Cold start — rank synchronously (happens once per day before cron pre-computes)
-  const task = acquireAndRank(rankParams);
-  onDemandRankingInFlight.set(inFlightKey, task);
-  try {
-    return await task;
-  } finally {
-    onDemandRankingInFlight.delete(inFlightKey);
-  }
+  const prior = await readMostRecentSnapshot(userId);
+  const priorIds = prior ? idsFromSnapshotJson(prior.rankedItemIds) : [];
+  const priorIsAi = prior?.status === "AI_SUCCESS";
+  console.info(
+    `[rss-inbox][${requestTag}] cold start day="${dayKey}" — serving ${priorIds.length > 0 ? `prior snapshot day="${prior?.dayKey ?? "?"}"` : "deterministic order"} while background rank runs`
+  );
+  return {
+    selectedRankIds: priorIds.length > 0 ? priorIds : deterministicFallbackIds(sortedFallback, cap),
+    recommendedRankIds: priorIsAi ? sanitizeRankedIds(priorIds, sortedFallback, cap) : [],
+    rankReasons: priorIsAi ? snapshotRankReasons(prior) : {},
+    status: "FALLBACK_DETERMINISTIC",
+    rankingPending: true,
+    rankedAt: prior ? prior.updatedAt.toISOString() : null,
+  };
 }
 
 async function getRssFeed(
@@ -518,7 +488,6 @@ async function getRssFeed(
   recommendationCap?: number | null,
   recommendationPrompt?: string | null
 ) {
-  const rollingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   let readProfilePromise: Promise<RssReadProfile> | null = null;
   const getReadProfile = async () => {
     if (!readProfilePromise) {
@@ -527,99 +496,14 @@ async function getRssFeed(
     return readProfilePromise;
   };
   const todayDayKey = dayKeyUtc(new Date());
-  const subscriptions = await prisma.userRssSubscription.findMany({
-    where: {
-      userId,
-      isActive: true,
-      ...(selectedSourceId ? { rssSourceId: selectedSourceId } : {}),
-    },
-    include: {
-      source: {
-        include: {
-          items: {
-            where: {
-              OR: [
-                { publishedAt: { gte: rollingCutoff } },
-                { AND: [{ publishedAt: null }, { createdAt: { gte: rollingCutoff } }] },
-              ],
-            },
-            orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
-            take: 300,
-          },
-        },
-      },
-    },
-  });
 
   const overflowBySource = new Map<string, { sourceId: string; sourceName: string; count: number }>();
-  const allCandidates: DayCandidate[] = [];
+  const { allCandidates, sortedFallback, aiItems, totalCap } = await buildRankingCandidates({
+    userId,
+    selectedSourceId,
+    recommendationCap,
+  });
 
-  for (const sub of subscriptions) {
-    for (const item of sub.source.items) {
-      const feedItem: FeedItem = {
-        id: `rss:${item.id}`,
-        sourceId: sub.source.id,
-        sourceKind: "rss",
-        subject: item.title,
-        from: item.author ?? sub.source.name,
-        date: (item.publishedAt ?? item.createdAt).toISOString(),
-        snippet: item.snippet ?? "",
-        publicationName: sub.source.name,
-        publicationKey: `rss:${sub.source.id}`,
-        category: normalizeRssCategory(sub.category) ?? "other",
-        isOverflow: false,
-        externalUrl: item.link ?? undefined,
-        imageUrl: item.imageUrl ?? extractImageUrlFromHtml(item.htmlRaw),
-      };
-      allCandidates.push({
-        sourceId: sub.source.id,
-        sourceName: sub.source.name,
-        dedupKey: buildRssArticleDedupKey({
-          externalUrl: item.link,
-          title: item.title,
-          snippet: item.snippet ?? "",
-        }),
-        priority: sub.priority,
-        item: {
-          title: item.title,
-          snippet: item.snippet ?? null,
-          author: item.author ?? null,
-          publishedAt: item.publishedAt ?? null,
-          createdAt: item.createdAt,
-        },
-        feedItem,
-        sortTimeMs: item.publishedAt?.getTime() ?? item.createdAt.getTime(),
-      });
-    }
-  }
-
-  const candidateIds = allCandidates.map((candidate) => candidate.feedItem.id);
-  const readRows =
-    candidateIds.length === 0
-      ? []
-      : await prisma.messageReadStat.findMany({
-          where: {
-            userId,
-            messageExternalId: { in: candidateIds },
-            OR: [{ completedAt: { not: null } }, { completionPct: { gte: 99 } }],
-          },
-          select: { messageExternalId: true },
-        });
-  const readIdSet = new Set(readRows.map((row) => row.messageExternalId));
-  const unreadCandidates = allCandidates.filter((candidate) => !readIdSet.has(candidate.feedItem.id));
-  const dedupedCandidates = dedupeByArticleKey(
-    unreadCandidates,
-    (candidate) => rssPriorityScore(candidate.priority),
-    (candidate) => candidate.sortTimeMs
-  );
-
-  const sortedFallback = sortByPriorityAndRecency(
-    dedupedCandidates,
-    (candidate) => candidate.priority,
-    (candidate) => candidate.sortTimeMs
-  );
-
-  const totalCap = getRssDailyTargetCap(sortedFallback.length, recommendationCap);
   let selectedIds = new Set<string>();
   let recommendedIds = new Set<string>();
   let rankReasons: Record<string, string> = {};
@@ -638,6 +522,7 @@ async function getRssFeed(
       dayKey: todayDayKey,
       cap: totalCap,
       sortedFallback,
+      aiItems,
       readProfile: {
         ...(await getReadProfile()),
         customPrompt: normalizeRecommendationPrompt(recommendationPrompt),
@@ -683,38 +568,6 @@ async function getRssFeed(
   };
 }
 
-async function getRssFreshSyncStatus(userId: string, selectedSourceId?: string | null): Promise<boolean> {
-  const latestCronSnapshot = await prisma.userRssDailyRankSnapshot.findFirst({
-    where: {
-      userId,
-      source: "CRON",
-    },
-    orderBy: { updatedAt: "desc" },
-    select: { updatedAt: true },
-  });
-
-  if (!latestCronSnapshot) return false;
-
-  const newestItem = await prisma.rssItem.findFirst({
-    where: {
-      source: {
-        subscriptions: {
-          some: {
-            userId,
-            isActive: true,
-            ...(selectedSourceId ? { rssSourceId: selectedSourceId } : {}),
-          },
-        },
-      },
-    },
-    orderBy: { createdAt: "desc" },
-    select: { createdAt: true },
-  });
-
-  if (!newestItem) return false;
-  return newestItem.createdAt > latestCronSnapshot.updatedAt;
-}
-
 export async function GET(req: Request) {
   const auth = await getUserAndToken();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -730,7 +583,7 @@ export async function GET(req: Request) {
     );
   }
 
-  const [gmailItems, rss, hasFreshSyncItems] = await Promise.all([
+  const [gmailItems, rss] = await Promise.all([
     getGmailFeed(auth.accessToken),
     getRssFeed(
       auth.userId,
@@ -740,7 +593,6 @@ export async function GET(req: Request) {
       auth.recommendationCap,
       auth.recommendationPrompt
     ),
-    getRssFreshSyncStatus(auth.userId, selectedSourceId),
   ]);
 
   let items = [...gmailItems, ...rss.visible].sort((a, b) => {
@@ -756,7 +608,6 @@ export async function GET(req: Request) {
     items,
     overflowBySource: rss.overflowBySource,
     rssMeta: {
-      hasFreshSyncItems,
       recommendedIds: rss.recommendedIds,
       rankReasons: rss.rankReasons,
       rankingPending: rss.rankingPending,
