@@ -147,7 +147,9 @@ export default function RssInboxPage() {
         ? data.newItemIds.filter((id: unknown): id is string => typeof id === "string")
         : [];
       setManualSyncedIds(newItemIds);
-      await loadRssInbox({ forceRecommendedPool: true });
+      const nextItems = await loadRssInbox({ forceRecommendedPool: true });
+      const nextItemIds = new Set(nextItems.map((it) => it.id));
+      setManualSyncedIds((prev) => prev.filter((id) => nextItemIds.has(id)));
       setRssSyncNotice(`Synced: ${data?.inserted ?? 0} new, ${data?.updated ?? 0} already present.`);
     } finally {
       syncingRef.current = false;
@@ -223,10 +225,10 @@ export default function RssInboxPage() {
   }, [savedById]);
 
   useEffect(() => {
-    if (!rankingPending) return;
+    if (!rankingPending || isSyncingRss) return;
     const timer = setTimeout(() => { loadRssInbox().catch(() => null); }, 3000);
     return () => clearTimeout(timer);
-  }, [rankingPending, loadRssInbox]);
+  }, [rankingPending, isSyncingRss, loadRssInbox]);
 
   const activeItems = useMemo(() => (isServerSearchActive ? searchItems : items), [isServerSearchActive, items, searchItems]);
   const publications = useMemo(() => getPublications(activeItems), [activeItems]);
@@ -254,14 +256,16 @@ export default function RssInboxPage() {
 
   const viewFiltered = useMemo(() => {
     if (viewMode === "recommended") {
-      return enriched.filter((it) => recommendedIdSet.has(it.id) && !manualSyncedIdSet.has(it.id));
+      return enriched.filter(
+        (it) => recommendedIdSet.has(it.id) && Boolean(rankReasons[it.id]) && !manualSyncedIdSet.has(it.id)
+      );
     }
     if (viewMode === "manual-sync") return enriched.filter((it) => manualSyncedIdSet.has(it.id));
     if (viewMode === "today") return enriched.filter((it) => it._dayKey === todayKey);
     if (viewMode === "unread") return enriched.filter((it) => statusById[it.id] !== "read");
     if (viewMode === "saved") return enriched.filter((it) => savedById[it.id] === true);
     return enriched;
-  }, [enriched, manualSyncedIdSet, recommendedIdSet, savedById, statusById, todayKey, viewMode]);
+  }, [enriched, manualSyncedIdSet, rankReasons, recommendedIdSet, savedById, statusById, todayKey, viewMode]);
   const categoryFiltered = useMemo(
     () => (selectedCategory ? viewFiltered.filter((it) => (it.category?.trim() || "uncategorized") === selectedCategory) : viewFiltered),
     [selectedCategory, viewFiltered]

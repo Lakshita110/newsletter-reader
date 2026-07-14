@@ -123,14 +123,18 @@ export async function computeDailyRankedSelection(params: {
   }).catch(() => null);
 
   const rankedIds = rankResult?.ids ?? null;
+  const reasons = rankResult?.reasons ?? {};
   if (rankedIds && rankedIds.length > 0) {
     // selectedIds === recommendedIds: the AI's own picks, trimmed for
-    // publisher diversity but never backfilled with un-reasoned filler.
-    const aiPicks = diversityTrim(rankedIds, params.rankedItems, params.cap);
+    // publisher diversity but never backfilled with un-reasoned filler. Drop
+    // any id the model ranked but didn't explain — a malformed/partial LLM
+    // response should never let an unexplained pick reach "recommended".
+    const reasonedIds = rankedIds.filter((id) => Boolean(reasons[id]));
+    const aiPicks = diversityTrim(reasonedIds, params.rankedItems, params.cap);
     return {
       selectedIds: aiPicks,
       recommendedIds: aiPicks,
-      rankReasons: rankResult?.reasons ?? {},
+      rankReasons: reasons,
       status: "AI_SUCCESS",
       inputFingerprint,
     };

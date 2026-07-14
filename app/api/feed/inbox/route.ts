@@ -185,6 +185,17 @@ function deterministicFallbackIds(sortedFallback: DayCandidate[], cap: number): 
   return sortedFallback.slice(0, cap).map((candidate) => candidate.feedItem.id);
 }
 
+/**
+ * Recommended-tab membership must never outrun the reasons we can show for
+ * it — an id reconstructed from a stored snapshot is only "recommended" if
+ * it still has a matching reason today. Applied at every site that derives
+ * `recommendedRankIds` from persisted data, so the invariant holds
+ * regardless of which read path served the response.
+ */
+function keepReasoned(ids: string[], reasons: Record<string, string>): string[] {
+  return ids.filter((id) => Boolean(reasons[id]));
+}
+
 function reasonsFromSnapshotJson(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const out: Record<string, string> = {};
@@ -325,10 +336,12 @@ async function acquireAndRank(params: {
     const waited = await waitForRankSnapshot(userId, dayKey, LOCK_WAIT_MS);
     if (waited) {
       const ids = idsFromSnapshotJson(waited.rankedItemIds);
+      const waitedReasons = snapshotRankReasons(waited);
       return {
         selectedRankIds: ids,
-        recommendedRankIds: waited.status === "AI_SUCCESS" ? sanitizeRankedIds(ids, sortedFallback, cap) : [],
-        rankReasons: snapshotRankReasons(waited),
+        recommendedRankIds:
+          waited.status === "AI_SUCCESS" ? keepReasoned(sanitizeRankedIds(ids, sortedFallback, cap), waitedReasons) : [],
+        rankReasons: waitedReasons,
         status: waited.status,
         rankingPending: false,
         rankedAt: waited.updatedAt.toISOString(),
@@ -342,10 +355,12 @@ async function acquireAndRank(params: {
     const secondCheck = await readValidRankSnapshot(userId, dayKey, new Date());
     if (secondCheck) {
       const ids = idsFromSnapshotJson(secondCheck.rankedItemIds);
+      const secondCheckReasons = snapshotRankReasons(secondCheck);
       return {
         selectedRankIds: ids,
-        recommendedRankIds: secondCheck.status === "AI_SUCCESS" ? sanitizeRankedIds(ids, sortedFallback, cap) : [],
-        rankReasons: snapshotRankReasons(secondCheck),
+        recommendedRankIds:
+          secondCheck.status === "AI_SUCCESS" ? keepReasoned(sanitizeRankedIds(ids, sortedFallback, cap), secondCheckReasons) : [],
+        rankReasons: secondCheckReasons,
         status: secondCheck.status,
         rankingPending: false,
         rankedAt: secondCheck.updatedAt.toISOString(),
@@ -379,7 +394,7 @@ async function acquireAndRank(params: {
     );
     return {
       selectedRankIds: selectedIds,
-      recommendedRankIds: ranking.recommendedIds,
+      recommendedRankIds: keepReasoned(ranking.recommendedIds, ranking.rankReasons),
       rankReasons: ranking.rankReasons,
       status: ranking.status,
       rankingPending: false,
@@ -416,10 +431,10 @@ async function getOrCreateTodayRankedIds(params: {
   const snapshot = await readValidRankSnapshot(userId, dayKey, new Date());
   if (snapshot) {
     const ids = idsFromSnapshotJson(snapshot.rankedItemIds);
-    const recommendedRankIds = snapshot.status === "AI_SUCCESS" ? sanitizeRankedIds(ids, sortedFallback, cap) : [];
     const rankedAt = snapshot.updatedAt.toISOString();
-
     const snapshotReasons = snapshotRankReasons(snapshot);
+    const recommendedRankIds =
+      snapshot.status === "AI_SUCCESS" ? keepReasoned(sanitizeRankedIds(ids, sortedFallback, cap), snapshotReasons) : [];
     if (snapshot.inputFingerprint === inputFingerprint) {
       console.info(`[rss-inbox][${requestTag}] ranking snapshot hit day="${dayKey}" status="${snapshot.status}" source="${snapshot.source}" ids=${ids.length}`);
       return { selectedRankIds: ids, recommendedRankIds, rankReasons: snapshotReasons, status: snapshot.status, rankingPending: false, rankedAt };
@@ -467,13 +482,14 @@ async function getOrCreateTodayRankedIds(params: {
   const prior = await readMostRecentSnapshot(userId);
   const priorIds = prior ? idsFromSnapshotJson(prior.rankedItemIds) : [];
   const priorIsAi = prior?.status === "AI_SUCCESS";
+  const priorReasons = priorIsAi ? snapshotRankReasons(prior) : {};
   console.info(
     `[rss-inbox][${requestTag}] cold start day="${dayKey}" — serving ${priorIds.length > 0 ? `prior snapshot day="${prior?.dayKey ?? "?"}"` : "deterministic order"} while background rank runs`
   );
   return {
     selectedRankIds: priorIds.length > 0 ? priorIds : deterministicFallbackIds(sortedFallback, cap),
-    recommendedRankIds: priorIsAi ? sanitizeRankedIds(priorIds, sortedFallback, cap) : [],
-    rankReasons: priorIsAi ? snapshotRankReasons(prior) : {},
+    recommendedRankIds: priorIsAi ? keepReasoned(sanitizeRankedIds(priorIds, sortedFallback, cap), priorReasons) : [],
+    rankReasons: priorReasons,
     status: "FALLBACK_DETERMINISTIC",
     rankingPending: true,
     rankedAt: prior ? prior.updatedAt.toISOString() : null,
