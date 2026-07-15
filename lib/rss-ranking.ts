@@ -125,15 +125,19 @@ export async function computeDailyRankedSelection(params: {
   const rankedIds = rankResult?.ids ?? null;
   const reasons = rankResult?.reasons ?? {};
   if (rankedIds && rankedIds.length > 0) {
-    // selectedIds === recommendedIds: the AI's own picks, trimmed for
-    // publisher diversity but never backfilled with un-reasoned filler. Drop
-    // any id the model ranked but didn't explain — a malformed/partial LLM
-    // response should never let an unexplained pick reach "recommended".
-    const reasonedIds = rankedIds.filter((id) => Boolean(reasons[id]));
-    const aiPicks = diversityTrim(reasonedIds, params.rankedItems, params.cap);
+    // selectedIds: the AI's full ranked set, trimmed only for publisher
+    // diversity — this drives general ordering/overflow and must not shrink
+    // just because a reason is missing for some picks.
+    // recommendedIds: the subset of the trimmed set the AI actually
+    // explained. rankItemsForDailyCap now parses id+reason as one atomic
+    // pick, so every id it returns already has a reason by construction —
+    // this filter is a cheap defense-in-depth check, not the mechanism
+    // relied on to keep the two in sync.
+    const aiPicks = diversityTrim(rankedIds, params.rankedItems, params.cap);
+    const reasonedPicks = aiPicks.filter((id) => Boolean(reasons[id]));
     return {
       selectedIds: aiPicks,
-      recommendedIds: aiPicks,
+      recommendedIds: reasonedPicks,
       rankReasons: reasons,
       status: "AI_SUCCESS",
       inputFingerprint,

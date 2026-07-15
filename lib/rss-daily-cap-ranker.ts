@@ -62,94 +62,65 @@ function contentToString(
     .trim();
 }
 
-function parseRankedTokens(raw: string): Array<string | number> | null {
-  if (!raw) return null;
-  const firstJson = raw.match(/\{[\s\S]*\}/);
-  const candidate = firstJson?.[0] ?? raw;
-  try {
-    const parsed = JSON.parse(candidate) as {
-      ids?: unknown;
-      indexes?: unknown;
-      indices?: unknown;
-      selected?: unknown;
-      ranked_ids?: unknown;
-      rankedIds?: unknown;
-    };
-    const pick =
-      parsed.ids ??
-      parsed.ranked_ids ??
-      parsed.rankedIds ??
-      parsed.indexes ??
-      parsed.indices ??
-      parsed.selected;
-    if (!Array.isArray(pick)) return null;
-    return pick.filter(
-      (value): value is string | number =>
-        typeof value === "string" || (typeof value === "number" && Number.isFinite(value))
-    );
-  } catch {
-    const lines = raw
-      .split(/\r?\n/)
-      .map((x) => x.trim())
-      .filter(Boolean);
-    if (lines.length === 0) return null;
-    const tokens: Array<string | number> = [];
-    for (const line of lines) {
-      const embeddedIds = line.match(/\brss:[A-Za-z0-9_-]+\b/g);
-      if (embeddedIds?.length) {
-        tokens.push(...embeddedIds);
-        continue;
-      }
-      const m = line.match(/^[-*\d.)\s]*(.+)$/);
-      const token = (m?.[1] ?? line).trim();
-      if (!token) continue;
-      const numeric = Number(token);
-      if (Number.isFinite(numeric) && token.match(/^\d+$/)) tokens.push(numeric);
-      else tokens.push(token);
-    }
-    if (tokens.length > 0) return tokens;
-    const idMatches = raw.match(/\brss:[A-Za-z0-9_-]+\b/g);
-    return idMatches && idMatches.length > 0 ? idMatches : null;
-  }
-}
+type ParsedPick = { rawId: string | number; reason: string };
 
-export function parseReasons(content: string): Record<string, string> {
-  const reasons: Record<string, string> = {};
-  if (!content) return reasons;
+/**
+ * Parse the model's `{"picks":[{"id":"rss:x","reason":"..."}, ...]}` output.
+ * id and reason are read from the SAME object, so a truncated response
+ * (finish_reason="length") can only ever lose whole trailing picks, never an
+ * id whose reason got cut off separately — the old format asked for a
+ * parallel `ids` array and `reasons` map, recovered by two independent
+ * regexes on truncation, which routinely salvaged different counts from each
+ * and left ids without a matching reason.
+ */
+export function parsePicks(content: string): ParsedPick[] {
+  if (!content) return [];
 
-  // Preferred path: the whole envelope parses cleanly, so read reasons off it.
+  // Preferred path: the whole envelope parses cleanly.
   try {
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]) as { reasons?: unknown };
-      if (parsed.reasons && typeof parsed.reasons === "object" && !Array.isArray(parsed.reasons)) {
-        for (const [k, v] of Object.entries(parsed.reasons as Record<string, unknown>)) {
-          if (typeof k === "string" && typeof v === "string") reasons[k] = v;
+      const parsed = JSON.parse(jsonMatch[0]) as { picks?: unknown };
+      if (Array.isArray(parsed.picks)) {
+        const out: ParsedPick[] = [];
+        for (const entry of parsed.picks) {
+          if (!entry || typeof entry !== "object") continue;
+          const { id, reason } = entry as { id?: unknown; reason?: unknown };
+          if ((typeof id === "string" || typeof id === "number") && typeof reason === "string" && reason.trim()) {
+            out.push({ rawId: id, reason: reason.trim() });
+          }
         }
+        if (out.length > 0) return out;
       }
     }
   } catch {
     /* fall through to regex recovery below */
   }
-  if (Object.keys(reasons).length > 0) return reasons;
 
-  // Fallback: the response was truncated (finish_reason="length") or otherwise
-  // malformed, so the whole-blob JSON.parse above failed. The ids-only regex
-  // fallback in parseRankedTokens keeps the selection alive in that case, but
-  // reasons used to be lost entirely because they had no equivalent recovery —
-  // that produced "ids work, reasons empty". Salvage every complete
-  // "rss:<id>":"reason" pair we can still see; a truncated tail then loses only
-  // its final partial entry instead of all reasons. Ids inside the "ids" array
-  // are bare ("rss:x" with no following colon+string), so this matches reason
-  // entries only.
-  const pairRe = /"(rss:[A-Za-z0-9_-]+)"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+  // Recovery: truncated or otherwise malformed output. Salvage every complete
+  // {"id":...,"reason":"..."} object still present (either key order) — a
+  // cut-off tail then loses only its final partial pick, and every pick that
+  // does survive still has both fields.
+  const out: ParsedPick[] = [];
+  const idFirst =
+    /\{\s*"id"\s*:\s*(?:"(rss:[A-Za-z0-9_-]+)"|(\d+))\s*,\s*"reason"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/g;
+  const reasonFirst =
+    /\{\s*"reason"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"id"\s*:\s*(?:"(rss:[A-Za-z0-9_-]+)"|(\d+))\s*\}/g;
+  const unescape = (s: string) => s.replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
   let match: RegExpExecArray | null;
-  while ((match = pairRe.exec(content)) !== null) {
-    const key = match[1];
-    const value = match[2].replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
-    if (key && value) reasons[key] = value;
+  while ((match = idFirst.exec(content)) !== null) {
+    const rawId = match[1] ?? Number(match[2]);
+    const reason = unescape(match[3]);
+    if (reason) out.push({ rawId, reason });
   }
-  return reasons;
+  if (out.length === 0) {
+    while ((match = reasonFirst.exec(content)) !== null) {
+      const rawId = match[2] ?? Number(match[3]);
+      const reason = unescape(match[1]);
+      if (reason) out.push({ rawId, reason });
+    }
+  }
+  return out;
 }
 
 function normalizeRankToken(
@@ -234,15 +205,15 @@ function withTimeoutMs(): number {
 }
 
 export function withMaxTokens(cap: number): number {
-  // The model must emit BOTH an id (~10 tokens) and a short reason
-  // (<=8 words, ~20 tokens incl. JSON quoting/keys) per selected item, plus
-  // the JSON envelope. The old budget of cap*12 only covered the ids, so the
-  // response hit max_tokens (finish_reason="length") and got truncated before
-  // the "reasons" object closed — leaving reasons empty. Budget ~32 tokens per
-  // item plus headroom. Computed in code (env OPENROUTER_MAX_TOKENS ignored)
-  // because production env is currently unreachable; revert to the env read
-  // once access is restored.
-  return Math.min(4096, Math.max(512, 256 + cap * 32));
+  // Each pick is now one {"id":"rss:x","reason":"..."} object: an id
+  // (~10 tokens), a short reason (<=8 words, ~12 tokens), plus the object's
+  // own braces/keys/quoting (~14 tokens) — call it ~36 tokens/item, plus
+  // envelope headroom. Even if this runs low and truncation still happens,
+  // atomic picks mean a cut tail just drops whole trailing items rather than
+  // splitting an id from its reason. Computed in code (env OPENROUTER_MAX_TOKENS
+  // ignored) because production env is currently unreachable; revert to the
+  // env read once access is restored.
+  return Math.min(4096, Math.max(512, 256 + cap * 36));
 }
 
 export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult | null> {
@@ -367,9 +338,9 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
     `Aim for at least ${targetUniqueSources} distinct sources when possible, while still prioritizing overall relevance.
 
 ` +
-    `Return exactly one line of JSON only: {"ids":["rss:...", ...],"reasons":{"rss:xxx":"<=8 words why"}}
+    `Return exactly one line of JSON only: {"picks":[{"id":"rss:xxx","reason":"<=8 words why"}, ...]}
 ` +
-    `Rules: ids only, no indexes, no prose, unique ids, exactly ${Math.min(req.cap, req.items.length)} ids, every id must be from: ${validIds}. Always include reasons: one short (<=8 words) entry per selected id, keyed by that exact id.
+    `Rules: order best-to-worst, exactly ${Math.min(req.cap, req.items.length)} picks, unique ids, every id must be from: ${validIds}. Every pick object must have both "id" and "reason" — never emit an id without its reason.
 
 ` +
     `Candidates:
@@ -462,13 +433,13 @@ ${candidates}`;
     const finishReason = data.choices?.[0]?.finish_reason;
     if (finishReason === "length") {
       console.warn(
-        `[rss-ranker] output truncated (finish_reason=length, cap=${req.cap}) — raise withMaxTokens; reasons may be missing`
+        `[rss-ranker] output truncated (finish_reason=length, cap=${req.cap}) — raise withMaxTokens; trailing picks may be lost`
       );
     }
-    const parsedTokens = parseRankedTokens(content);
-    if (!parsedTokens || parsedTokens.length === 0) {
+    const picks = parsePicks(content);
+    if (picks.length === 0) {
       console.warn(
-        `[rss-ranker] invalid/empty ranked ids returned contentPreview="${content.slice(0, 200)}"`
+        `[rss-ranker] invalid/empty picks returned contentPreview="${content.slice(0, 200)}"`
       );
       rankCache.set(cacheKey, {
         expiresAt: Date.now() + getFailureCooldownMs(),
@@ -483,19 +454,24 @@ ${candidates}`;
     for (let i = 0; i < req.items.length; i++) {
       byIndex.set(i + 1, req.items[i].id);
     }
-    const deduped: string[] = [];
-    for (const token of parsedTokens) {
-      const id = normalizeRankToken(token, byIndex);
+    // Every entry in `deduped` came from one atomic {id, reason} pick, so ids
+    // and reasons stay paired by construction — no separate recovery pass
+    // that could salvage a different count of each.
+    const deduped: ParsedPick[] = [];
+    const seenIds = new Set<string>();
+    for (const pick of picks) {
+      const id = normalizeRankToken(pick.rawId, byIndex);
       if (!id) continue;
       if (!allowed.has(id)) continue;
-      if (deduped.includes(id)) continue;
-      deduped.push(id);
+      if (seenIds.has(id)) continue;
+      seenIds.add(id);
+      deduped.push({ rawId: id, reason: pick.reason });
     }
     if (deduped.length === 0) {
       console.warn(
-        `[rss-ranker] ranked ids filtered out to empty set tokenPreview="${parsedTokens
+        `[rss-ranker] picks filtered out to empty set idPreview="${picks
           .slice(0, 8)
-          .map((token) => String(token).slice(0, 80))
+          .map((pick) => String(pick.rawId).slice(0, 80))
           .join(" | ")}"`
       );
       rankCache.set(cacheKey, {
@@ -506,19 +482,12 @@ ${candidates}`;
       return null;
     }
     const limited = deduped.slice(0, req.cap);
+    const ids = limited.map((pick) => pick.rawId as string);
+    const reasons: Record<string, string> = {};
+    for (const pick of limited) reasons[pick.rawId as string] = pick.reason;
 
-    // Extract per-item reasons. parseReasons recovers them even from truncated
-    // or malformed output (see its comments) so a cut-off "reasons" tail no
-    // longer wipes out every reason the way a whole-blob JSON.parse did.
-    const parsedReasons = parseReasons(content);
-    if (Object.keys(parsedReasons).length === 0) {
-      console.warn(
-        `[rss-ranker] no reasons recovered finishReason="${finishReason ?? "unknown"}" contentPreview="${content.slice(0, 200)}"`
-      );
-    }
-
-    console.info(`[rss-ranker] ranking success selected=${limited.length} reasons=${Object.keys(parsedReasons).length}`);
-    const rankResult: RankResult = { ids: limited, reasons: parsedReasons };
+    console.info(`[rss-ranker] ranking success selected=${ids.length} reasons=${Object.keys(reasons).length}`);
+    const rankResult: RankResult = { ids, reasons };
     rankCache.set(cacheKey, {
       expiresAt: Date.now() + getCacheTtlMs(),
       value: rankResult,

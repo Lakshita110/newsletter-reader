@@ -7,7 +7,10 @@ import type { RankingItem } from "./rss-ranking";
 // just to load it under test.
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-const { diversityTrim } = await import("./rss-ranking");
+const rankItemsForDailyCap = vi.fn();
+vi.mock("@/lib/rss-daily-cap-ranker", () => ({ rankItemsForDailyCap }));
+
+const { diversityTrim, computeDailyRankedSelection } = await import("./rss-ranking");
 
 function item(id: string, sourceName: string): RankingItem {
   return {
@@ -94,5 +97,75 @@ describe("diversityTrim", () => {
     // the requested cap.
     const result = diversityTrim(["a1", "a2", "b1", "b2"], items, 3);
     expect(result).toEqual(["a1", "b1"]);
+  });
+});
+
+describe("computeDailyRankedSelection", () => {
+  afterEach(() => {
+    rankItemsForDailyCap.mockReset();
+  });
+
+  const readProfile = {
+    topPublications: [],
+    avgCompletionPct: 0,
+    recentReadCount7d: 0,
+    preferenceSummary: [],
+    customPrompt: null,
+  };
+
+  it("keeps selectedIds and recommendedIds identical when every pick has a reason", async () => {
+    const items = [item("a", "Source A"), item("b", "Source B")];
+    rankItemsForDailyCap.mockResolvedValue({
+      ids: ["a", "b"],
+      reasons: { a: "reason a", b: "reason b" },
+    });
+    const result = await computeDailyRankedSelection({
+      userId: "u1",
+      dayKey: "2026-01-01",
+      cap: 5,
+      rankedItems: items,
+      readProfile,
+    });
+    expect(result.status).toBe("AI_SUCCESS");
+    expect(result.selectedIds).toEqual(["a", "b"]);
+    expect(result.recommendedIds).toEqual(["a", "b"]);
+  });
+
+  it("keeps selectedIds full but shrinks only recommendedIds if a pick is missing its reason", async () => {
+    // rankItemsForDailyCap now guarantees id+reason pairing by construction
+    // (see parsePicks), but this is the defense-in-depth path in case that
+    // guarantee is ever violated upstream: selectedIds (drives general
+    // ordering/overflow) must not collapse just because a reason is absent —
+    // only the Recommended-tab-facing recommendedIds should shrink.
+    const items = [item("a", "Source A"), item("b", "Source B"), item("c", "Source C")];
+    rankItemsForDailyCap.mockResolvedValue({
+      ids: ["a", "b", "c"],
+      reasons: { a: "reason a" },
+    });
+    const result = await computeDailyRankedSelection({
+      userId: "u1",
+      dayKey: "2026-01-01",
+      cap: 5,
+      rankedItems: items,
+      readProfile,
+    });
+    expect(result.status).toBe("AI_SUCCESS");
+    expect(result.selectedIds).toEqual(["a", "b", "c"]);
+    expect(result.recommendedIds).toEqual(["a"]);
+  });
+
+  it("falls back to deterministic selection with no recommendations when the ranker returns nothing", async () => {
+    const items = [item("a", "Source A"), item("b", "Source B")];
+    rankItemsForDailyCap.mockResolvedValue(null);
+    const result = await computeDailyRankedSelection({
+      userId: "u1",
+      dayKey: "2026-01-01",
+      cap: 5,
+      rankedItems: items,
+      readProfile,
+    });
+    expect(result.status).toBe("FALLBACK_DETERMINISTIC");
+    expect(result.selectedIds).toEqual(["a", "b"]);
+    expect(result.recommendedIds).toEqual([]);
   });
 });
