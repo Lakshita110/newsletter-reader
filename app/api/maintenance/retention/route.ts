@@ -1,23 +1,13 @@
 import { NextResponse } from "next/server";
 import { runRetentionNow } from "@/lib/retention";
-
-function isAuthorized(req: Request): boolean {
-  const configured = process.env.CRON_SECRET;
-  if (!configured) return false;
-
-  const auth = req.headers.get("authorization") ?? "";
-  const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  const header = req.headers.get("x-cron-secret") ?? "";
-
-  return bearer === configured || header === configured;
-}
+import { isCronAuthorized } from "@/lib/cron-auth";
 
 async function run(req: Request) {
   const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   console.info(
     `[retention][${requestId}] invoked method="${req.method}" userAgent="${req.headers.get("user-agent") ?? ""}" hasAuth="${Boolean(req.headers.get("authorization"))}" hasCronSecret="${Boolean(req.headers.get("x-cron-secret"))}"`
   );
-  if (!isAuthorized(req)) {
+  if (!isCronAuthorized(req)) {
     console.warn(`[retention][${requestId}] unauthorized`);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

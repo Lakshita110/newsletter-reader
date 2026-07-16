@@ -1,8 +1,6 @@
 import { google, gmail_v1 } from "googleapis";
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { authOptions } from "@/lib/auth";
 import { classifyNewsletter, getHeader } from "@/lib/newsletter-classifier";
 import { parseFrom, normalizePublicationKey } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
@@ -15,9 +13,22 @@ import {
   type FeedItem,
   type RankingCandidate as DayCandidate,
 } from "@/lib/rss-candidates";
+import { getSessionUser } from "@/lib/session-user";
+import {
+  FALLBACK_SNAPSHOT_TTL_MS,
+  RANK_LOCK_WAIT_MS,
+  idsFromSnapshotJson,
+  persistRankSnapshot,
+  rankSnapshotExpiryUtc,
+  readMostRecentSnapshot,
+  readValidRankSnapshot,
+  releaseRankLock,
+  snapshotRankReasons,
+  tryAcquireRankLock,
+  waitForRankSnapshot,
+  type RankSnapshotStatus,
+} from "@/lib/rank-snapshot";
 
-type RankSnapshotStatus = "AI_SUCCESS" | "FALLBACK_DETERMINISTIC";
-type RankSnapshotSource = "CRON" | "ON_DEMAND";
 type RankedIdsResult = {
   selectedRankIds: string[] | null;
   recommendedRankIds: string[];
@@ -28,26 +39,7 @@ type RankedIdsResult = {
 };
 
 const onDemandRankingInFlight = new Map<string, Promise<RankedIdsResult>>();
-const LOCK_LEASE_MS = 60_000;
-const LOCK_WAIT_MS = 4_000;
-const LOCK_POLL_MS = 350;
-const FALLBACK_SNAPSHOT_TTL_MS = 45 * 60 * 1000;
 const RANKING_STALENESS_TOLERANCE_MS = 4 * 60 * 60 * 1000; // 4 hours — don't re-rank if snapshot is fresher than this
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function rankSnapshotExpiryUtc(dayKey: string): Date {
-  const nextDay = new Date(`${dayKey}T00:00:00.000Z`);
-  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-  return nextDay;
-}
-
-function idsFromSnapshotJson(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((id): id is string => typeof id === "string");
-}
 
 function selectIdsFromRanked(
   rankedIds: string[],
@@ -88,99 +80,6 @@ function sanitizeRankedIds(
   return selected;
 }
 
-async function readValidRankSnapshot(userId: string, dayKey: string, now: Date) {
-  return prisma.userRssDailyRankSnapshot.findFirst({
-    where: { userId, dayKey, expiresAt: { gt: now } },
-    orderBy: { updatedAt: "desc" },
-  });
-}
-
-/**
- * Most recent snapshot for the user regardless of day or expiry — used as the
- * instant stopgap on a cold start so the morning open shows yesterday's ranking
- * while today's ranks in the background.
- */
-async function readMostRecentSnapshot(userId: string) {
-  return prisma.userRssDailyRankSnapshot.findFirst({
-    where: { userId },
-    orderBy: { updatedAt: "desc" },
-  });
-}
-
-async function persistRankSnapshot(args: {
-  userId: string;
-  dayKey: string;
-  rankedIds: string[];
-  rankReasons?: Record<string, string>;
-  status: RankSnapshotStatus;
-  source: RankSnapshotSource;
-  model?: string | null;
-  inputFingerprint: string;
-  expiresAt: Date;
-}) {
-  await prisma.userRssDailyRankSnapshot.upsert({
-    where: { userId_dayKey: { userId: args.userId, dayKey: args.dayKey } },
-    update: {
-      rankedItemIds: args.rankedIds,
-      rankReasons: args.rankReasons ?? {},
-      status: args.status,
-      source: args.source,
-      model: args.model ?? null,
-      inputFingerprint: args.inputFingerprint,
-      expiresAt: args.expiresAt,
-    },
-    create: {
-      userId: args.userId,
-      dayKey: args.dayKey,
-      rankedItemIds: args.rankedIds,
-      rankReasons: args.rankReasons ?? {},
-      status: args.status,
-      source: args.source,
-      model: args.model ?? null,
-      inputFingerprint: args.inputFingerprint,
-      expiresAt: args.expiresAt,
-    },
-  });
-}
-
-async function tryAcquireRankLock(userId: string, dayKey: string, ownerId: string): Promise<boolean> {
-  const now = new Date();
-  await prisma.userRssRankJobLock.deleteMany({
-    where: { userId, dayKey, expiresAt: { lte: now } },
-  });
-  try {
-    await prisma.userRssRankJobLock.create({
-      data: {
-        userId,
-        dayKey,
-        ownerId,
-        expiresAt: new Date(now.getTime() + LOCK_LEASE_MS),
-      },
-    });
-    return true;
-  } catch (error) {
-    const code = (error as { code?: string })?.code;
-    if (code === "P2002") return false;
-    throw error;
-  }
-}
-
-async function releaseRankLock(userId: string, dayKey: string, ownerId: string): Promise<void> {
-  await prisma.userRssRankJobLock.deleteMany({
-    where: { userId, dayKey, ownerId },
-  });
-}
-
-async function waitForRankSnapshot(userId: string, dayKey: string, timeoutMs: number) {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    const snapshot = await readValidRankSnapshot(userId, dayKey, new Date());
-    if (snapshot) return snapshot;
-    await sleep(LOCK_POLL_MS);
-  }
-  return null;
-}
-
 function deterministicFallbackIds(sortedFallback: DayCandidate[], cap: number): string[] {
   return sortedFallback.slice(0, cap).map((candidate) => candidate.feedItem.id);
 }
@@ -205,36 +104,16 @@ function deriveRecommendedRankIds(
   return sanitizeRankedIds(ids, sortedFallback, cap).filter((id) => Boolean(reasons[id]));
 }
 
-function reasonsFromSnapshotJson(value: unknown): Record<string, string> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof k === "string" && typeof v === "string") out[k] = v;
-  }
-  return out;
-}
-
-function snapshotRankReasons(snapshot: { rankReasons?: unknown }): Record<string, string> {
-  return reasonsFromSnapshotJson(snapshot.rankReasons);
-}
-
 async function getUserAndToken() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return null;
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: { email },
-    select: {
-      id: true,
-      rssRecommendationCap: true,
-      rssRecommendationPrompt: true,
-    },
+  const auth = await getSessionUser();
+  if (!auth) return null;
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: auth.userId },
+    select: { rssRecommendationCap: true, rssRecommendationPrompt: true },
   });
   return {
-    userId: user.id,
-    accessToken: session?.accessToken as string | undefined,
+    userId: auth.userId,
+    accessToken: auth.accessToken,
     recommendationCap: user.rssRecommendationCap,
     recommendationPrompt: user.rssRecommendationPrompt,
   };
@@ -342,7 +221,7 @@ async function acquireAndRank(params: {
   const lockAcquired = await tryAcquireRankLock(userId, dayKey, ownerId);
   if (!lockAcquired) {
     console.info(`[rss-inbox][${requestTag}] ranking lock busy day="${dayKey}", polling snapshot`);
-    const waited = await waitForRankSnapshot(userId, dayKey, LOCK_WAIT_MS);
+    const waited = await waitForRankSnapshot(userId, dayKey, RANK_LOCK_WAIT_MS);
     if (waited) {
       const ids = idsFromSnapshotJson(waited.rankedItemIds);
       const waitedReasons = snapshotRankReasons(waited);

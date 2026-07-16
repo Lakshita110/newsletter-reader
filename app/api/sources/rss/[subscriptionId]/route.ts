@@ -1,28 +1,14 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { parseRssCategoryInput } from "@/lib/rss-categories";
 import { normalizeUrl } from "@/lib/rss";
-
-async function getUserId() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return null;
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: { email },
-    select: { id: true },
-  });
-  return user.id;
-}
+import { getSessionUserId } from "@/lib/session-user";
 
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ subscriptionId: string }> }
 ) {
-  const userId = await getUserId();
+  const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { subscriptionId } = await params;
@@ -86,7 +72,7 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ subscriptionId: string }> }
 ) {
-  const userId = await getUserId();
+  const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { subscriptionId } = await params;

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { RANKING_MODEL } from "@/lib/rss-daily-cap-ranker";
+import { RANKING_MODEL, openRouterChat } from "@/lib/openrouter";
 
 export type RssReadProfile = {
   topPublications: Array<{ name: string; score: number }>;
@@ -15,14 +15,6 @@ type ReadProfileSnapshotRow = {
   recentReadCount7d: number;
   preferenceSummary: unknown;
   weekKey: string;
-};
-
-type OpenRouterProfileResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string | Array<{ type?: string; text?: string }>;
-    };
-  }>;
 };
 
 export function dayKeyUtc(value: Date | null): string {
@@ -171,17 +163,6 @@ function parseSnapshotToProfile(snapshot: ReadProfileSnapshotRow): RssReadProfil
   };
 }
 
-function contentToString(
-  content: string | Array<{ type?: string; text?: string }> | undefined
-): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((part) => (typeof part?.text === "string" ? part.text : ""))
-    .join("\n")
-    .trim();
-}
-
 function parseSummaryFromLlm(raw: string): string[] | null {
   const firstJson = raw.match(/\{[\s\S]*\}/)?.[0] ?? raw;
   try {
@@ -232,41 +213,22 @@ Rules:
 - Mention themes, favored sources, depth/format preference, and recency tendency.
 - No markdown, no prose outside JSON.`;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20000);
-  try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        ...(process.env.OPENROUTER_SITE_URL ? { "HTTP-Referer": process.env.OPENROUTER_SITE_URL } : {}),
-        ...(process.env.OPENROUTER_APP_NAME ? { "X-Title": process.env.OPENROUTER_APP_NAME } : {}),
+  const result = await openRouterChat({
+    apiKey,
+    model: RANKING_MODEL,
+    maxTokens: 450,
+    timeoutMs: 20000,
+    temperature: 0.1,
+    messages: [
+      {
+        role: "system",
+        content: "You are a profiling engine. Output strict JSON only with no extra text.",
       },
-      body: JSON.stringify({
-        model: RANKING_MODEL,
-        temperature: 0.1,
-        max_tokens: 450,
-        messages: [
-          {
-            role: "system",
-            content: "You are a profiling engine. Output strict JSON only with no extra text.",
-          },
-          { role: "user", content: prompt },
-        ],
-      }),
-      signal: controller.signal,
-    });
-    if (!response.ok) return null;
-    const data = (await response.json()) as OpenRouterProfileResponse;
-    const content = contentToString(data.choices?.[0]?.message?.content);
-    if (!content) return null;
-    return parseSummaryFromLlm(content);
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+      { role: "user", content: prompt },
+    ],
+  });
+  if (!result.ok || !result.content) return null;
+  return parseSummaryFromLlm(result.content);
 }
 
 async function computeUserRssReadProfile(userId: string): Promise<RssReadProfile> {

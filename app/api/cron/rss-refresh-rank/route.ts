@@ -5,23 +5,12 @@ import { computeDailyRankedSelection } from "@/lib/rss-ranking";
 import { dayKeyUtc, getUserRssReadProfile } from "@/lib/rss-helpers";
 import { normalizeRecommendationPrompt } from "@/lib/rss-recommendation-settings";
 import { buildRankingCandidates } from "@/lib/rss-candidates";
-
-const FALLBACK_SNAPSHOT_TTL_MS = 45 * 60 * 1000;
-
-function isAuthorized(req: Request): boolean {
-  const configured = process.env.CRON_SECRET;
-  if (!configured) return false;
-  const auth = req.headers.get("authorization") ?? "";
-  const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  const header = req.headers.get("x-cron-secret") ?? "";
-  return bearer === configured || header === configured;
-}
-
-function rankSnapshotExpiryUtc(dayKey: string): Date {
-  const nextDay = new Date(`${dayKey}T00:00:00.000Z`);
-  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-  return nextDay;
-}
+import { isCronAuthorized } from "@/lib/cron-auth";
+import {
+  FALLBACK_SNAPSHOT_TTL_MS,
+  persistRankSnapshot,
+  rankSnapshotExpiryUtc,
+} from "@/lib/rank-snapshot";
 
 async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
   const userSettings = await prisma.user.findUnique({
@@ -48,28 +37,16 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     expiresAt = new Date(Date.now() + FALLBACK_SNAPSHOT_TTL_MS);
   }
 
-  await prisma.userRssDailyRankSnapshot.upsert({
-    where: { userId_dayKey: { userId, dayKey } },
-    update: {
-      rankedItemIds: rankedIds,
-      rankReasons: ranking.rankReasons,
-      status,
-      source: "CRON",
-      model: ranking.model,
-      inputFingerprint: ranking.inputFingerprint,
-      expiresAt,
-    },
-    create: {
-      userId,
-      dayKey,
-      rankedItemIds: rankedIds,
-      rankReasons: ranking.rankReasons,
-      status,
-      source: "CRON",
-      model: ranking.model,
-      inputFingerprint: ranking.inputFingerprint,
-      expiresAt,
-    },
+  await persistRankSnapshot({
+    userId,
+    dayKey,
+    rankedIds,
+    rankReasons: ranking.rankReasons,
+    status,
+    source: "CRON",
+    model: ranking.model,
+    inputFingerprint: ranking.inputFingerprint,
+    expiresAt,
   });
 
   return {
@@ -85,7 +62,7 @@ export async function GET(req: Request) {
   console.info(
     `[rss-refresh-rank][${requestId}] invoked method="${req.method}" userAgent="${req.headers.get("user-agent") ?? ""}" hasAuth="${Boolean(req.headers.get("authorization"))}" hasCronSecret="${Boolean(req.headers.get("x-cron-secret"))}"`
   );
-  if (!isAuthorized(req)) {
+  if (!isCronAuthorized(req)) {
     console.warn(`[rss-refresh-rank][${requestId}] unauthorized`);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

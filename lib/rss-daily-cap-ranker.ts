@@ -1,3 +1,5 @@
+import { RANKING_MODEL_CHAIN, openRouterChat } from "@/lib/openrouter";
+
 type RankItemInput = {
   id: string;
   title: string;
@@ -22,15 +24,6 @@ type RankRequest = {
   };
 };
 
-type OpenRouterResponse = {
-  choices?: Array<{
-    finish_reason?: string;
-    message?: {
-      content?: string | Array<{ type?: string; text?: string }>;
-    };
-  }>;
-};
-
 type RankResult = {
   ids: string[];
   reasons: Record<string, string>;
@@ -47,23 +40,6 @@ type RankCacheEntry = {
 const rankCache = new Map<string, RankCacheEntry>();
 const inFlightRankings = new Map<string, Promise<RankResult | null>>();
 let providerCooldownUntilMs = 0;
-
-// The model chain is pinned in code by design: env-based model selection was
-// dropped so a misconfigured deployment can neither swap the chain nor
-// truncate it. Models are tried in order until one succeeds.
-export const RANKING_MODEL = "openai/gpt-4o-mini";
-export const RANKING_MODEL_CHAIN = [RANKING_MODEL, "google/gemini-2.0-flash-001"];
-
-function contentToString(
-  content: string | Array<{ type?: string; text?: string }> | undefined
-): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((part) => (typeof part?.text === "string" ? part.text : ""))
-    .join("\n")
-    .trim();
-}
 
 type ParsedPick = { rawId: string | number; reason: string };
 
@@ -336,73 +312,51 @@ ${candidates}`;
       `[rss-ranker] ranking start source="${req.sourceName}" day="${req.dayKey}" cap=${req.cap} candidates=${req.items.length} models="${modelsToTry.join(",")}"`
     );
     const timeoutMs = withTimeoutMs();
-    let data: OpenRouterResponse | null = null;
+    let content: string | null = null;
+    let finishReason: string | undefined;
     let usedModel: string | null = null;
 
     for (let attemptIndex = 0; attemptIndex < modelsToTry.length; attemptIndex++) {
       const selectedModel = modelsToTry[attemptIndex];
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      try {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-            ...(process.env.OPENROUTER_SITE_URL ? { "HTTP-Referer": process.env.OPENROUTER_SITE_URL } : {}),
-            ...(process.env.OPENROUTER_APP_NAME ? { "X-Title": process.env.OPENROUTER_APP_NAME } : {}),
+      const result = await openRouterChat({
+        apiKey,
+        model: selectedModel,
+        maxTokens: withMaxTokens(req.cap),
+        timeoutMs,
+        temperature: 0.1,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a ranking engine. Output exactly one-line JSON matching the requested schema with no extra text.",
           },
-          body: JSON.stringify({
-          model: selectedModel,
-            temperature: 0.1,
-            max_tokens: withMaxTokens(req.cap),
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are a ranking engine. Output exactly one-line JSON matching the requested schema with no extra text.",
-              },
-              { role: "user", content: prompt },
-            ],
-          }),
-          signal: controller.signal,
-        });
+          { role: "user", content: prompt },
+        ],
+      });
 
-        if (!response.ok) {
-          const errorBody = await response.text().catch(() => "");
-          const resetMs = response.status === 429 ? maybeExtractResetMs(errorBody) : null;
-          if (resetMs) {
-            providerCooldownUntilMs = resetMs;
-          } else if (response.status === 429) {
-            providerCooldownUntilMs = Date.now() + getFailureCooldownMs();
-          }
-          console.warn(
-            `[rss-ranker] model attempt failed model="${selectedModel}" attempt=${attemptIndex + 1}/${modelsToTry.length} status=${response.status} statusText="${response.statusText}" body="${errorBody.slice(
-              0,
-              240
-            )}"`
-          );
-          continue;
+      if (!result.ok) {
+        const resetMs = result.status === 429 ? maybeExtractResetMs(result.errorBody) : null;
+        if (resetMs) {
+          providerCooldownUntilMs = resetMs;
+        } else if (result.status === 429) {
+          providerCooldownUntilMs = Date.now() + getFailureCooldownMs();
         }
-
-        data = (await response.json()) as OpenRouterResponse;
-        usedModel = selectedModel;
-        if (attemptIndex > 0) {
-          console.info(`[rss-ranker] ranking succeeded using fallback model="${selectedModel}"`);
-        }
-        break;
-      } catch (error) {
         console.warn(
-          `[rss-ranker] model attempt threw model="${selectedModel}" attempt=${attemptIndex + 1}/${modelsToTry.length}`,
-          error
+          `[rss-ranker] model attempt failed model="${selectedModel}" attempt=${attemptIndex + 1}/${modelsToTry.length} status=${result.status ?? "thrown"} body="${result.errorBody.slice(0, 240)}"`
         );
         continue;
-      } finally {
-        clearTimeout(timer);
       }
+
+      content = result.content;
+      finishReason = result.finishReason;
+      usedModel = selectedModel;
+      if (attemptIndex > 0) {
+        console.info(`[rss-ranker] ranking succeeded using fallback model="${selectedModel}"`);
+      }
+      break;
     }
 
-    if (!data) {
+    if (content === null) {
       rankCache.set(cacheKey, {
         expiresAt: Date.now() + getFailureCooldownMs(),
         value: null,
@@ -411,13 +365,9 @@ ${candidates}`;
       return null;
     }
 
-    const content = contentToString(data.choices?.[0]?.message?.content);
     if (!content) {
-      console.warn(
-        `[rss-ranker] empty content returned modelResponsePreview="${JSON.stringify(data).slice(0, 400)}"`
-      );
+      console.warn(`[rss-ranker] empty content returned model="${usedModel}"`);
     }
-    const finishReason = data.choices?.[0]?.finish_reason;
     if (finishReason === "length") {
       console.warn(
         `[rss-ranker] output truncated (finish_reason=length, cap=${req.cap}) — raise withMaxTokens; trailing picks may be lost`

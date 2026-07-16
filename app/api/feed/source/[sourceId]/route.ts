@@ -1,34 +1,27 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getSessionUserId } from "@/lib/session-user";
 import {
   extractImageUrlFromHtml,
   getRssLookbackCutoff,
   getRssLookbackDays,
 } from "@/lib/rss-helpers";
 
-export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ sourceId: string }> }
+) {
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: { email },
-    select: { id: true },
-  });
-
-  const url = new URL(req.url);
-  const sourceId = url.pathname.split("/").filter(Boolean).pop();
+  const { sourceId } = await params;
   if (!sourceId) {
     return NextResponse.json({ error: "Missing source id" }, { status: 400 });
   }
   const rssCutoff = getRssLookbackCutoff(getRssLookbackDays());
 
   const sub = await prisma.userRssSubscription.findUnique({
-    where: { userId_rssSourceId: { userId: user.id, rssSourceId: sourceId } },
+    where: { userId_rssSourceId: { userId, rssSourceId: sourceId } },
     include: {
       source: {
         include: {
