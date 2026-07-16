@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getUserRssReadProfile } from "@/lib/rss-helpers";
+import { getUserRssReadProfile } from "@/lib/rss-read-profile";
 import { RANKING_MODEL, openRouterChat } from "@/lib/openrouter";
 import { getSessionUserId } from "@/lib/session-user";
 import { normalizeRssCategory, RSS_CATEGORY_OPTIONS } from "@/lib/rss-categories";

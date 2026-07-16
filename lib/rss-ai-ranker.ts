@@ -10,9 +10,7 @@ type RankItemInput = {
 };
 
 type RankRequest = {
-  sourceName: string;
   dayKey: string;
-  category: string;
   cap: number;
   items: RankItemInput[];
   userProfile?: {
@@ -130,7 +128,7 @@ function getCacheKey(req: RankRequest, model: string): string {
     ?.slice(0, 5)
     .map((p) => p.name)
     .join(",") ?? "none";
-  return `${model}|${req.dayKey}|${req.cap}|${req.category}|${ids}|${profileHint}`;
+  return `${model}|${req.dayKey}|${req.cap}|${ids}|${profileHint}`;
 }
 
 function getCacheTtlMs(): number {
@@ -205,14 +203,14 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
   const cached = rankCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     console.info(
-      `[rss-ranker] cache hit source="${req.sourceName}" day="${req.dayKey}" reason="${cached.reason}" cachedResult=${cached.value ? cached.value.ids.length : 0}`
+      `[rss-ranker] cache hit day="${req.dayKey}" reason="${cached.reason}" cachedResult=${cached.value ? cached.value.ids.length : 0}`
     );
     return cached.value ? { ...cached.value } : null;
   }
   const inFlight = inFlightRankings.get(cacheKey);
   if (inFlight) {
     console.info(
-      `[rss-ranker] join in-flight request source="${req.sourceName}" day="${req.dayKey}" cap=${req.cap}`
+      `[rss-ranker] join in-flight request day="${req.dayKey}" cap=${req.cap}`
     );
     const shared = await inFlight;
     return shared ? { ...shared } : null;
@@ -228,7 +226,7 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
         : null;
       return [
         `${index + 1}. id=${item.id}`,
-        `source=${item.sourceName?.trim() || req.sourceName}`,
+        `source=${item.sourceName?.trim() || "unknown"}`,
         `title=${item.title}`,
         `author=${item.author ?? "unknown"}`,
         snippetLine,
@@ -265,10 +263,6 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
 
 ` +
     `Context:
-` +
-    `source=${req.sourceName}
-` +
-    `category=${req.category}
 ` +
     `day=${req.dayKey}
 
@@ -309,7 +303,7 @@ ${candidates}`;
 
   const rankingPromise = (async (): Promise<RankResult | null> => {
     console.info(
-      `[rss-ranker] ranking start source="${req.sourceName}" day="${req.dayKey}" cap=${req.cap} candidates=${req.items.length} models="${modelsToTry.join(",")}"`
+      `[rss-ranker] ranking start day="${req.dayKey}" cap=${req.cap} candidates=${req.items.length} models="${modelsToTry.join(",")}"`
     );
     const timeoutMs = withTimeoutMs();
     let content: string | null = null;

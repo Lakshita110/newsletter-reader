@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parsePicks, rankItemsForDailyCap, withMaxTokens } from "./rss-daily-cap-ranker";
+import { parsePicks, rankItemsForDailyCap, withMaxTokens } from "./rss-ai-ranker";
 
 // The ranker prompt asks the model to emit, per selected item, one
 // {"id":"rss:x","reason":"<=8 words"} object — an id (~10 tokens), a short
@@ -102,9 +102,7 @@ describe("rankItemsForDailyCap", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await rankItemsForDailyCap({
-      sourceName: "Test Source",
       dayKey: "2026-07-01-within-cap-test",
-      category: "mixed",
       cap: 5,
       items: [
         {
@@ -142,9 +140,7 @@ describe("rankItemsForDailyCap", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await rankItemsForDailyCap({
-      sourceName: "Test Source",
       dayKey: "2026-07-01-truncated-test",
-      category: "mixed",
       cap: 5,
       items: [
         { id: "rss:a", title: "A", publishedAtIso: "2026-07-01T00:00:00.000Z" },
