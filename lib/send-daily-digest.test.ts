@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DigestUser } from "./send-daily-digest";
-import { normalizeDigestEmail, resolveDigestRecipient } from "./send-daily-digest";
+import { resolveDigestRecipient } from "./send-daily-digest";
+import { normalizeDigestEmail } from "./email-digest";
 
 const findFirstMock = vi.fn();
 const findManyMock = vi.fn();

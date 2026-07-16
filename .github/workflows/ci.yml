@@ -30,3 +30,11 @@ jobs:
 
       - name: Test
         run: npm run test
+
+      # Catches route-level wiring the unit tests can't (a broken build
+      # otherwise passes CI). No DB is needed: pages that touch Prisma are
+      # dynamic and don't run at build time.
+      - name: Build
+        run: npm run build
+        env:
+          DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"

@@ -1,20 +1,13 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { syncRssSource } from "@/lib/rss";
+import { getSessionUserId } from "@/lib/session-user";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: { email },
-    select: { id: true },
-  });
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
   const sourceIds = Array.isArray(body?.sourceIds)
@@ -23,7 +16,7 @@ export async function POST(req: Request) {
 
   const subscriptions = await prisma.userRssSubscription.findMany({
     where: {
-      userId: user.id,
+      userId,
       isActive: true,
       ...(sourceIds.length > 0 ? { rssSourceId: { in: sourceIds } } : {}),
     },

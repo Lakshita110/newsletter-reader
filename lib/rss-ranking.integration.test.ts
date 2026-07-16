@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RankingItem } from "./rss-ranking";
 
-// Unlike rss-ranking.test.ts, this file does NOT mock rss-daily-cap-ranker —
+// Unlike rss-ranking.test.ts, this file does NOT mock rss-ai-ranker —
 // it exercises the real parsePicks + rankItemsForDailyCap +
 // computeDailyRankedSelection pipeline end to end, with only the OpenRouter
 // `fetch` call mocked. This is what actually proves the truncation fix: a

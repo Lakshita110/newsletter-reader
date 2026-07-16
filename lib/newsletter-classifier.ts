@@ -1,5 +1,5 @@
 import type { gmail_v1 } from "googleapis";
-import { parseFrom } from "@/lib/email";
+import { parseFrom } from "@/lib/from-header";
 
 export type NewsletterClassification = {
   isNewsletter: boolean;

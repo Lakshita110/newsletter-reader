@@ -1,34 +1,26 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import {
-  extractImageUrlFromHtml,
-  getRssLookbackCutoff,
-  getRssLookbackDays,
-} from "@/lib/rss-helpers";
+import { getSessionUserId } from "@/lib/session-user";
+import { toFeedItem } from "@/lib/rss-candidates";
+import { getRssLookbackCutoff, getRssLookbackDays } from "@/lib/rss-helpers";
 
-export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export const dynamic = "force-dynamic";
 
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: { email },
-    select: { id: true },
-  });
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ sourceId: string }> }
+) {
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const url = new URL(req.url);
-  const sourceId = url.pathname.split("/").filter(Boolean).pop();
+  const { sourceId } = await params;
   if (!sourceId) {
     return NextResponse.json({ error: "Missing source id" }, { status: 400 });
   }
   const rssCutoff = getRssLookbackCutoff(getRssLookbackDays());
 
   const sub = await prisma.userRssSubscription.findUnique({
-    where: { userId_rssSourceId: { userId: user.id, rssSourceId: sourceId } },
+    where: { userId_rssSourceId: { userId, rssSourceId: sourceId } },
     include: {
       source: {
         include: {
@@ -56,19 +48,6 @@ export async function GET(req: Request) {
       rssUrl: sub.source.rssUrl,
       siteUrl: sub.source.siteUrl,
     },
-    items: sub.source.items.map((item) => ({
-      id: `rss:${item.id}`,
-      sourceId: sub.source.id,
-      sourceKind: "rss",
-      subject: item.title,
-      from: item.author ?? sub.source.name,
-      date: (item.publishedAt ?? item.createdAt).toISOString(),
-      snippet: item.snippet ?? "",
-      publicationName: sub.source.name,
-      publicationKey: `rss:${sub.source.id}`,
-      isOverflow: false,
-      externalUrl: item.link ?? undefined,
-      imageUrl: item.imageUrl ?? extractImageUrlFromHtml(item.htmlRaw),
-    })),
+    items: sub.source.items.map((item) => toFeedItem(item, sub.source, sub.category)),
   });
 }

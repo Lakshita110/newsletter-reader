@@ -5,11 +5,7 @@ import {
   dedupeByArticleKey,
   extractImageUrlFromHtml,
   getRssDailyTargetCap,
-  rssPriorityScore,
-  sortByPriorityAndRecency,
 } from "@/lib/rss-helpers";
-
-export type RssPriority = "HIGH" | "NORMAL" | "LOW";
 
 /**
  * A feed row as rendered by the inbox. Also used for Gmail newsletter items,
@@ -32,6 +28,41 @@ export type FeedItem = {
   imageUrl?: string;
 };
 
+type RssItemRow = {
+  id: string;
+  title: string;
+  author: string | null;
+  link: string | null;
+  imageUrl: string | null;
+  htmlRaw: string | null;
+  snippet: string | null;
+  publishedAt: Date | null;
+  createdAt: Date;
+};
+
+/** Map a stored RssItem row to the FeedItem shape every feed endpoint returns. */
+export function toFeedItem(
+  item: RssItemRow,
+  source: { id: string; name: string },
+  category?: string | null
+): FeedItem {
+  return {
+    id: `rss:${item.id}`,
+    sourceId: source.id,
+    sourceKind: "rss",
+    subject: item.title,
+    from: item.author ?? source.name,
+    date: (item.publishedAt ?? item.createdAt).toISOString(),
+    snippet: item.snippet ?? "",
+    publicationName: source.name,
+    publicationKey: `rss:${source.id}`,
+    category: normalizeRssCategory(category ?? "") ?? "other",
+    isOverflow: false,
+    externalUrl: item.link ?? undefined,
+    imageUrl: item.imageUrl ?? extractImageUrlFromHtml(item.htmlRaw),
+  };
+}
+
 /**
  * One RSS article in ranking form: the raw item fields the ranker/eval needs,
  * plus the pre-built `feedItem` the inbox renders and a precomputed sort key.
@@ -40,7 +71,6 @@ export type RankingCandidate = {
   sourceId: string;
   sourceName: string;
   dedupKey: string;
-  priority: RssPriority;
   item: {
     title: string;
     snippet: string | null;
@@ -65,7 +95,7 @@ export type AiRankItem = {
 export type RankingCandidateSet = {
   /** Every candidate before read-filtering/dedupe — the inbox `visible` list. */
   allCandidates: RankingCandidate[];
-  /** Unread, deduped, priority+recency sorted — the ranking input pool. */
+  /** Unread, deduped, recency sorted — the ranking input pool. */
   sortedFallback: RankingCandidate[];
   /** `sortedFallback` mapped to the ranker/snapshot shape. */
   aiItems: AiRankItem[];
@@ -122,21 +152,7 @@ export async function buildRankingCandidates(params: {
   const allCandidates: RankingCandidate[] = [];
   for (const sub of subscriptions) {
     for (const item of sub.source.items) {
-      const feedItem: FeedItem = {
-        id: `rss:${item.id}`,
-        sourceId: sub.source.id,
-        sourceKind: "rss",
-        subject: item.title,
-        from: item.author ?? sub.source.name,
-        date: (item.publishedAt ?? item.createdAt).toISOString(),
-        snippet: item.snippet ?? "",
-        publicationName: sub.source.name,
-        publicationKey: `rss:${sub.source.id}`,
-        category: normalizeRssCategory(sub.category) ?? "other",
-        isOverflow: false,
-        externalUrl: item.link ?? undefined,
-        imageUrl: item.imageUrl ?? extractImageUrlFromHtml(item.htmlRaw),
-      };
+      const feedItem = toFeedItem(item, sub.source, sub.category);
       allCandidates.push({
         sourceId: sub.source.id,
         sourceName: sub.source.name,
@@ -145,7 +161,6 @@ export async function buildRankingCandidates(params: {
           title: item.title,
           snippet: item.snippet ?? "",
         }),
-        priority: sub.priority,
         item: {
           title: item.title,
           snippet: item.snippet ?? null,
@@ -177,14 +192,9 @@ export async function buildRankingCandidates(params: {
   );
   const dedupedCandidates = dedupeByArticleKey(
     unreadCandidates,
-    (candidate) => rssPriorityScore(candidate.priority),
     (candidate) => candidate.sortTimeMs
   );
-  const sortedFallback = sortByPriorityAndRecency(
-    dedupedCandidates,
-    (candidate) => candidate.priority,
-    (candidate) => candidate.sortTimeMs
-  );
+  const sortedFallback = [...dedupedCandidates].sort((a, b) => b.sortTimeMs - a.sortTimeMs);
 
   const aiItems: AiRankItem[] = sortedFallback.map((candidate) => ({
     id: candidate.feedItem.id,

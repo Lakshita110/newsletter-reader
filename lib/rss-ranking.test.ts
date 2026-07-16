@@ -8,7 +8,7 @@ import type { RankingItem } from "./rss-ranking";
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
 const rankItemsForDailyCap = vi.fn();
-vi.mock("@/lib/rss-daily-cap-ranker", () => ({ rankItemsForDailyCap }));
+vi.mock("@/lib/rss-ai-ranker", () => ({ rankItemsForDailyCap }));
 
 const { diversityTrim, computeDailyRankedSelection } = await import("./rss-ranking");
 

@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
-import { rankItemsForDailyCap } from "@/lib/rss-daily-cap-ranker";
-import { type RssReadProfile, getUserRssReadProfile } from "@/lib/rss-helpers";
+import { rankItemsForDailyCap } from "@/lib/rss-ai-ranker";
+import { type RssReadProfile, getUserRssReadProfile } from "@/lib/rss-read-profile";
 
 export type RankingItem = {
   id: string;
@@ -87,6 +87,8 @@ export async function computeDailyRankedSelection(params: {
   recommendedIds: string[];
   rankReasons: Record<string, string>;
   status: "AI_SUCCESS" | "FALLBACK_DETERMINISTIC";
+  /** The model that produced the ranking; null on deterministic fallback. */
+  model: string | null;
   inputFingerprint: string;
 }> {
   const normalizedPrompt = params.customPrompt?.trim() ?? "";
@@ -100,6 +102,7 @@ export async function computeDailyRankedSelection(params: {
       recommendedIds: [],
       rankReasons: {},
       status: "FALLBACK_DETERMINISTIC",
+      model: null,
       inputFingerprint,
     };
   }
@@ -114,9 +117,7 @@ export async function computeDailyRankedSelection(params: {
   // represented publishers.
   const rankCap = Math.min(params.rankedItems.length, params.cap + DIVERSITY_OVERFETCH);
   const rankResult = await rankItemsForDailyCap({
-    sourceName: "All RSS Sources",
     dayKey: params.dayKey,
-    category: "mixed",
     cap: rankCap,
     userProfile: { ...readProfile, customPrompt: normalizedPrompt || null },
     items: params.rankedItems,
@@ -140,6 +141,7 @@ export async function computeDailyRankedSelection(params: {
       recommendedIds: reasonedPicks,
       rankReasons: reasons,
       status: "AI_SUCCESS",
+      model: rankResult?.model ?? null,
       inputFingerprint,
     };
   }
@@ -149,6 +151,7 @@ export async function computeDailyRankedSelection(params: {
     recommendedIds: [],
     rankReasons: {},
     status: "FALLBACK_DETERMINISTIC",
+    model: null,
     inputFingerprint,
   };
 }

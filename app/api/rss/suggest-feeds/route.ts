@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getUserRssReadProfile } from "@/lib/rss-helpers";
+import { getUserRssReadProfile } from "@/lib/rss-read-profile";
+import { RANKING_MODEL, openRouterChat } from "@/lib/openrouter";
+import { getSessionUserId } from "@/lib/session-user";
 import { normalizeRssCategory, RSS_CATEGORY_OPTIONS } from "@/lib/rss-categories";
 
 export const dynamic = "force-dynamic";
@@ -15,26 +15,8 @@ type SuggestedFeed = {
   reason: string;
 };
 
-type OpenRouterResponse = {
-  choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
-};
-
-function contentToString(content: string | Array<{ type?: string; text?: string }> | undefined): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content.map((p) => (typeof p?.text === "string" ? p.text : "")).join("\n").trim();
-}
-
-async function getUserId(): Promise<string | null> {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return null;
-  const user = await prisma.user.upsert({ where: { email }, update: {}, create: { email }, select: { id: true } });
-  return user.id;
-}
-
 export async function GET() {
-  const userId = await getUserId();
+  const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const apiKey = process.env.OPENROUTER_API_KEY;
@@ -74,39 +56,22 @@ Rules:
 - reason must be specific to their profile, not generic
 - Return only the JSON array, no prose`;
 
-  const model = process.env.OPENROUTER_MODEL ?? "gpt-4o-mini";
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30000);
-
-  let raw = "";
-  try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        ...(process.env.OPENROUTER_SITE_URL ? { "HTTP-Referer": process.env.OPENROUTER_SITE_URL } : {}),
-        ...(process.env.OPENROUTER_APP_NAME ? { "X-Title": process.env.OPENROUTER_APP_NAME } : {}),
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.4,
-        max_tokens: 1024,
-        messages: [
-          { role: "system", content: "You are a helpful feed curator. Return only valid JSON." },
-          { role: "user", content: prompt },
-        ],
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`OpenRouter ${res.status}`);
-    const data = (await res.json()) as OpenRouterResponse;
-    raw = contentToString(data.choices?.[0]?.message?.content);
-  } finally {
-    clearTimeout(timer);
+  const result = await openRouterChat({
+    apiKey,
+    model: RANKING_MODEL,
+    maxTokens: 1024,
+    timeoutMs: 30000,
+    temperature: 0.4,
+    messages: [
+      { role: "system", content: "You are a helpful feed curator. Return only valid JSON." },
+      { role: "user", content: prompt },
+    ],
+  });
+  if (!result.ok) {
+    return NextResponse.json({ error: "AI request failed" }, { status: 502 });
   }
 
-  const arrayMatch = raw.match(/\[[\s\S]*\]/);
+  const arrayMatch = result.content.match(/\[[\s\S]*\]/);
   if (!arrayMatch) return NextResponse.json({ error: "No suggestions returned" }, { status: 502 });
 
   let suggestions: SuggestedFeed[];

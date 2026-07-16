@@ -1,19 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createDigestTransporter, sendDigestForUser } from "@/lib/send-daily-digest";
+import { isCronAuthorized } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
 
-function isAuthorized(req: Request): boolean {
-  const configured = process.env.CRON_SECRET;
-  if (!configured) return false;
-  const auth = req.headers.get("authorization") ?? "";
-  const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  return bearer === configured || (req.headers.get("x-cron-secret") ?? "") === configured;
-}
-
 export async function GET(req: Request) {
-  if (!isAuthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isCronAuthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const transporter = createDigestTransporter();
   if (!transporter) {

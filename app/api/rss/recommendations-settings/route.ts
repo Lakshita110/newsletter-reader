@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   normalizeRecommendationCap,
   normalizeRecommendationPrompt,
-  RSS_RECOMMENDATION_CAP_DEFAULT,
   RSS_RECOMMENDATION_CAP_MAX,
   RSS_RECOMMENDATION_CAP_MIN,
   RSS_RECOMMENDATION_PROMPT_MAX_CHARS,
 } from "@/lib/rss-recommendation-settings";
-import { normalizeDigestEmail } from "@/lib/send-daily-digest";
+import { normalizeDigestEmail } from "@/lib/email-digest";
+import { getSessionUserId } from "@/lib/session-user";
+
+export const dynamic = "force-dynamic";
 
 const userSelect = {
   id: true,
@@ -24,18 +24,9 @@ const userSelect = {
 } as const;
 
 async function getOrCreateUser() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return null;
-  return prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: {
-      email,
-      rssRecommendationCap: RSS_RECOMMENDATION_CAP_DEFAULT,
-    },
-    select: userSelect,
-  });
+  const userId = await getSessionUserId();
+  if (!userId) return null;
+  return prisma.user.findUniqueOrThrow({ where: { id: userId }, select: userSelect });
 }
 
 export async function GET() {

@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createDigestTransporter, sendDigestForUser } from "@/lib/send-daily-digest";
+import { getSessionUserId } from "@/lib/session-user";
+
+export const dynamic = "force-dynamic";
 
 export async function POST() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const transporter = createDigestTransporter();
   if (!transporter) {
@@ -17,11 +17,10 @@ export async function POST() {
     );
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email },
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
     select: { id: true, email: true, digestEmail: true, digestTimezone: true, digestLastSentAt: true },
   });
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const result = await sendDigestForUser({
     transporter,

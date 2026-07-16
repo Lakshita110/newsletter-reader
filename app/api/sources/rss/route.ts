@@ -1,25 +1,13 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { normalizeUrl } from "@/lib/rss";
 import { parseRssCategoryInput } from "@/lib/rss-categories";
+import { getSessionUserId } from "@/lib/session-user";
 
-async function getUserId() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return null;
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: { email },
-    select: { id: true },
-  });
-  return user.id;
-}
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const userId = await getUserId();
+  const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const subscriptions = await prisma.userRssSubscription.findMany({
@@ -36,7 +24,6 @@ export async function GET() {
       rssUrl: sub.source.rssUrl,
       siteUrl: sub.source.siteUrl,
       isActive: sub.isActive,
-      priority: sub.priority,
       category: parseRssCategoryInput(sub.category).value ?? "other",
       lastSyncedAt: sub.source.lastSyncedAt,
       consecutiveFailures: sub.source.consecutiveFailures,
@@ -47,7 +34,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const userId = await getUserId();
+  const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));

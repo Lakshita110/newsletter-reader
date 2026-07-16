@@ -3,7 +3,7 @@ import { convert } from "html-to-text";
 let readabilityCtor: (typeof import("@mozilla/readability"))["Readability"] | null | undefined;
 let jsdomCtor: (typeof import("jsdom"))["JSDOM"] | null | undefined;
 
-function normalizeText(value: string): string {
+export function normalizeText(value: string): string {
   return value
     .replace(/\u00a0/g, " ")
     .replace(/\r\n?/g, "\n")

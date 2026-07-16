@@ -2,27 +2,18 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncRssSource } from "@/lib/rss";
 import { computeDailyRankedSelection } from "@/lib/rss-ranking";
-import { dayKeyUtc, getUserRssReadProfile } from "@/lib/rss-helpers";
+import { dayKeyUtc } from "@/lib/rss-helpers";
+import { getUserRssReadProfile } from "@/lib/rss-read-profile";
 import { normalizeRecommendationPrompt } from "@/lib/rss-recommendation-settings";
-import { runAndPersistRankEval } from "@/lib/rss-rank-eval";
 import { buildRankingCandidates } from "@/lib/rss-candidates";
+import { isCronAuthorized } from "@/lib/cron-auth";
+import {
+  FALLBACK_SNAPSHOT_TTL_MS,
+  persistRankSnapshot,
+  rankSnapshotExpiryUtc,
+} from "@/lib/rank-snapshot";
 
-const FALLBACK_SNAPSHOT_TTL_MS = 45 * 60 * 1000;
-
-function isAuthorized(req: Request): boolean {
-  const configured = process.env.CRON_SECRET;
-  if (!configured) return false;
-  const auth = req.headers.get("authorization") ?? "";
-  const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  const header = req.headers.get("x-cron-secret") ?? "";
-  return bearer === configured || header === configured;
-}
-
-function rankSnapshotExpiryUtc(dayKey: string): Date {
-  const nextDay = new Date(`${dayKey}T00:00:00.000Z`);
-  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-  return nextDay;
-}
+export const dynamic = "force-dynamic";
 
 async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
   const userSettings = await prisma.user.findUnique({
@@ -49,28 +40,16 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     expiresAt = new Date(Date.now() + FALLBACK_SNAPSHOT_TTL_MS);
   }
 
-  await prisma.userRssDailyRankSnapshot.upsert({
-    where: { userId_dayKey: { userId, dayKey } },
-    update: {
-      rankedItemIds: rankedIds,
-      rankReasons: ranking.rankReasons,
-      status,
-      source: "CRON",
-      model: process.env.OPENROUTER_MODEL ?? null,
-      inputFingerprint: ranking.inputFingerprint,
-      expiresAt,
-    },
-    create: {
-      userId,
-      dayKey,
-      rankedItemIds: rankedIds,
-      rankReasons: ranking.rankReasons,
-      status,
-      source: "CRON",
-      model: process.env.OPENROUTER_MODEL ?? null,
-      inputFingerprint: ranking.inputFingerprint,
-      expiresAt,
-    },
+  await persistRankSnapshot({
+    userId,
+    dayKey,
+    rankedIds,
+    rankReasons: ranking.rankReasons,
+    status,
+    source: "CRON",
+    model: ranking.model,
+    inputFingerprint: ranking.inputFingerprint,
+    expiresAt,
   });
 
   return {
@@ -78,9 +57,6 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     selected: rankedIds.length,
     status,
     totalCap,
-    aiItems,
-    selectedIds: rankedIds,
-    userProfileSummary: readProfile.preferenceSummary.join("; "),
   };
 }
 
@@ -89,7 +65,7 @@ export async function GET(req: Request) {
   console.info(
     `[rss-refresh-rank][${requestId}] invoked method="${req.method}" userAgent="${req.headers.get("user-agent") ?? ""}" hasAuth="${Boolean(req.headers.get("authorization"))}" hasCronSecret="${Boolean(req.headers.get("x-cron-secret"))}"`
   );
-  if (!isAuthorized(req)) {
+  if (!isCronAuthorized(req)) {
     console.warn(`[rss-refresh-rank][${requestId}] unauthorized`);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -164,24 +140,6 @@ export async function GET(req: Request) {
         console.info(
           `[rss-refresh-rank][${requestId}] ranked userId="${row.userId}" candidates=${result.candidates} selected=${result.selected} totalCap=${result.totalCap} status="${result.status}"`
         );
-        if (result.status === "AI_SUCCESS" && result.aiItems.length > 0) {
-          const byId = new Map(result.aiItems.map((item) => [item.id, item]));
-          const selectedEvalItems = result.selectedIds
-            .map((id) => byId.get(id))
-            .filter((item): item is NonNullable<typeof item> => Boolean(item))
-            .map((item) => ({ id: item.id, title: item.title, sourceName: item.sourceName, snippet: item.snippet }));
-          void runAndPersistRankEval({
-            userId: row.userId,
-            dayKey,
-            selectedItems: selectedEvalItems,
-            candidateItems: result.aiItems.map((item) => ({ id: item.id, title: item.title, sourceName: item.sourceName, snippet: item.snippet })),
-            userProfileSummary: result.userProfileSummary,
-            cap: result.totalCap,
-            source: "CRON",
-          }).catch((err) =>
-            console.warn(`[rss-refresh-rank][${requestId}] eval failed userId="${row.userId}"`, err)
-          );
-        }
       } catch (error) {
         const message = `${row.userId}: ${error instanceof Error ? error.message : "Unknown error"}`;
         rankErrors.push(message);

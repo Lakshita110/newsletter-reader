@@ -1,29 +1,15 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getSessionUserId } from "@/lib/session-user";
 
 export const dynamic = "force-dynamic";
-
-async function getUserId(): Promise<string | null> {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return null;
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: { email },
-    select: { id: true },
-  });
-  return user.id;
-}
 
 function toDateKey(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
 export async function GET() {
-  const userId = await getUserId();
+  const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const user = await prisma.user.findUnique({

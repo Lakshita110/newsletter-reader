@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getSessionUserId } from "@/lib/session-user";
+
+export const dynamic = "force-dynamic";
 
 type ReadStateUpdate = "in_progress" | "read" | "unread" | "saved" | "unsaved";
 type SourceKind = "gmail" | "rss";
@@ -31,22 +32,13 @@ function normalizeMetadata(value: unknown): ReadStateMetadata | undefined {
 }
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-
-  if (!email) {
+  const userId = await getSessionUserId();
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: { email },
-    select: { id: true },
-  });
-
   const rows = await prisma.messageReadStat.findMany({
-    where: { userId: user.id },
+    where: { userId },
     select: {
       messageExternalId: true,
       completedAt: true,
@@ -79,10 +71,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-
-  if (!email) {
+  const userId = await getSessionUserId();
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -114,13 +104,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing messageId(s)" }, { status: 400 });
   }
 
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: { email },
-    select: { id: true },
-  });
-
   const now = new Date();
 
   for (const targetId of targets) {
@@ -134,7 +117,7 @@ export async function POST(req: Request) {
       : {};
     const where = {
       userId_messageExternalId: {
-        userId: user.id,
+        userId,
         messageExternalId: targetId,
       },
     };
@@ -164,7 +147,7 @@ export async function POST(req: Request) {
           ...metadataFields,
         },
         create: {
-          userId: user.id,
+          userId,
           messageExternalId: targetId,
           firstOpenedAt: now,
           lastOpenedAt: now,
@@ -186,7 +169,7 @@ export async function POST(req: Request) {
           ...metadataFields,
         },
         create: {
-          userId: user.id,
+          userId,
           messageExternalId: targetId,
           savedAt: now,
           ...metadataFields,
@@ -251,7 +234,7 @@ export async function POST(req: Request) {
         ...metadataFields,
       },
       create: {
-        userId: user.id,
+        userId,
         messageExternalId: targetId,
         firstOpenedAt: now,
         lastOpenedAt: now,

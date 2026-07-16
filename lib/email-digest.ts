@@ -24,6 +24,18 @@ export function getLocalDateKey(tz: string, now: Date = new Date()): string {
   }
 }
 
+// Deliberately permissive: enough to reject obvious junk ("foo", "a@b") without
+// trying to fully validate RFC 5322. Returns the trimmed address, or null for
+// empty/invalid input — null means "fall back to the account email".
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function normalizeDigestEmail(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  return EMAIL_RE.test(trimmed) ? trimmed : null;
+}
+
 /** Subject line for the digest email, pluralized for the item count. */
 export function getDigestSubject(itemCount: number): string {
   const noun = itemCount === 1 ? "article" : "articles";

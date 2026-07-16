@@ -1,8 +1,9 @@
-import { getServerSession } from "next-auth";
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getSessionUserId } from "@/lib/session-user";
+
+export const dynamic = "force-dynamic";
 
 type SearchRow = {
   id: string;
@@ -26,21 +27,13 @@ function isMissingSearchVector(error: unknown): boolean {
 }
 
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const url = new URL(req.url);
   const q = url.searchParams.get("q")?.trim();
   const sourceId = url.searchParams.get("sourceId")?.trim();
   if (!q) return NextResponse.json({ items: [] });
-
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: { email },
-    select: { id: true },
-  });
 
   const likeQuery = `%${q}%`;
   const sourceFilter = sourceId
@@ -69,7 +62,7 @@ export async function GET(req: Request) {
       JOIN "RssSource" rs ON rs.id = ri."rssSourceId"
       JOIN "UserRssSubscription" urs
         ON urs."rssSourceId" = ri."rssSourceId"
-        AND urs."userId" = ${user.id}
+        AND urs."userId" = ${userId}
         AND urs."isActive" = true
       , plainto_tsquery('english', ${q}) query
       WHERE ri."searchVector" @@ query
@@ -95,7 +88,7 @@ export async function GET(req: Request) {
       JOIN "RssSource" rs ON rs.id = ri."rssSourceId"
       JOIN "UserRssSubscription" urs
         ON urs."rssSourceId" = ri."rssSourceId"
-        AND urs."userId" = ${user.id}
+        AND urs."userId" = ${userId}
         AND urs."isActive" = true
       WHERE (
         ri.title ILIKE ${likeQuery}

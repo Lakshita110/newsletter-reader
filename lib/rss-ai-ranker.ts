@@ -1,3 +1,5 @@
+import { RANKING_MODEL_CHAIN, openRouterChat } from "@/lib/openrouter";
+
 type RankItemInput = {
   id: string;
   title: string;
@@ -8,9 +10,7 @@ type RankItemInput = {
 };
 
 type RankRequest = {
-  sourceName: string;
   dayKey: string;
-  category: string;
   cap: number;
   items: RankItemInput[];
   userProfile?: {
@@ -22,16 +22,12 @@ type RankRequest = {
   };
 };
 
-type OpenRouterResponse = {
-  choices?: Array<{
-    finish_reason?: string;
-    message?: {
-      content?: string | Array<{ type?: string; text?: string }>;
-    };
-  }>;
+type RankResult = {
+  ids: string[];
+  reasons: Record<string, string>;
+  /** The model that produced this ranking; null when no AI call was made. */
+  model: string | null;
 };
-
-type RankResult = { ids: string[]; reasons: Record<string, string> };
 
 type RankCacheEntry = {
   expiresAt: number;
@@ -42,25 +38,6 @@ type RankCacheEntry = {
 const rankCache = new Map<string, RankCacheEntry>();
 const inFlightRankings = new Map<string, Promise<RankResult | null>>();
 let providerCooldownUntilMs = 0;
-
-// Model chain is hard-pinned in code (not read from env) because the production
-// Vercel env is temporarily unreachable and we need to force these models. The
-// chain is tried in order: gpt-4o-mini first, then gemini-flash if it fails.
-// Revert to the env-based reads (OPENROUTER_MODEL / OPENROUTER_FALLBACK_MODELS)
-// once env access is restored.
-const RANKING_MODEL = "openai/gpt-4o-mini";
-const RANKING_FALLBACK_MODELS = ["google/gemini-2.0-flash-001"];
-
-function contentToString(
-  content: string | Array<{ type?: string; text?: string }> | undefined
-): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((part) => (typeof part?.text === "string" ? part.text : ""))
-    .join("\n")
-    .trim();
-}
 
 type ParsedPick = { rawId: string | number; reason: string };
 
@@ -145,28 +122,13 @@ function normalizeRankToken(
   return trimmed;
 }
 
-function getConfiguredModels(primaryModel: string): string[] {
-  // Fallbacks are pinned in code (RANKING_FALLBACK_MODELS); we intentionally
-  // ignore OPENROUTER_FALLBACK_MODELS / OPENROUTER_MAX_MODEL_ATTEMPTS so the env
-  // can neither override the chain nor truncate it. Every model in the pinned
-  // chain is tried in order.
-  const unique: string[] = [];
-  const seen = new Set<string>();
-  for (const model of [primaryModel, ...RANKING_FALLBACK_MODELS]) {
-    if (seen.has(model)) continue;
-    seen.add(model);
-    unique.push(model);
-  }
-  return unique;
-}
-
 function getCacheKey(req: RankRequest, model: string): string {
   const ids = req.items.map((item) => item.id).join(",");
   const profileHint = req.userProfile?.topPublications
     ?.slice(0, 5)
     .map((p) => p.name)
     .join(",") ?? "none";
-  return `${model}|${req.dayKey}|${req.cap}|${req.category}|${ids}|${profileHint}`;
+  return `${model}|${req.dayKey}|${req.cap}|${ids}|${profileHint}`;
 }
 
 function getCacheTtlMs(): number {
@@ -205,20 +167,18 @@ function withTimeoutMs(): number {
 }
 
 export function withMaxTokens(cap: number): number {
-  // Each pick is now one {"id":"rss:x","reason":"..."} object: an id
-  // (~10 tokens), a short reason (<=8 words, ~12 tokens), plus the object's
-  // own braces/keys/quoting (~14 tokens) — call it ~36 tokens/item, plus
-  // envelope headroom. Even if this runs low and truncation still happens,
-  // atomic picks mean a cut tail just drops whole trailing items rather than
-  // splitting an id from its reason. Computed in code (env OPENROUTER_MAX_TOKENS
-  // ignored) because production env is currently unreachable; revert to the
-  // env read once access is restored.
+  // Each pick is one {"id":"rss:x","reason":"..."} object: an id (~10 tokens),
+  // a short reason (<=8 words, ~12 tokens), plus the object's own
+  // braces/keys/quoting (~14 tokens) — call it ~36 tokens/item, plus envelope
+  // headroom. Even if this runs low and truncation still happens, atomic picks
+  // mean a cut tail just drops whole trailing items rather than splitting an
+  // id from its reason.
   return Math.min(4096, Math.max(512, 256 + cap * 36));
 }
 
 export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult | null> {
-  if (req.cap <= 0) return { ids: [], reasons: {} };
-  if (req.items.length === 0) return { ids: [], reasons: {} };
+  if (req.cap <= 0) return { ids: [], reasons: {}, model: null };
+  if (req.items.length === 0) return { ids: [], reasons: {}, model: null };
 
   // Previously skipped the AI call entirely when candidates already fit
   // within the cap, returning every id with an empty reasons map. That meant
@@ -238,20 +198,19 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
     return null;
   }
 
-  // Primary + fallbacks are hard-pinned (see RANKING_MODEL / RANKING_FALLBACK_MODELS).
-  const modelsToTry = getConfiguredModels(RANKING_MODEL);
+  const modelsToTry = RANKING_MODEL_CHAIN;
   const cacheKey = getCacheKey(req, modelsToTry.join("|"));
   const cached = rankCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     console.info(
-      `[rss-ranker] cache hit source="${req.sourceName}" day="${req.dayKey}" reason="${cached.reason}" cachedResult=${cached.value ? cached.value.ids.length : 0}`
+      `[rss-ranker] cache hit day="${req.dayKey}" reason="${cached.reason}" cachedResult=${cached.value ? cached.value.ids.length : 0}`
     );
     return cached.value ? { ...cached.value } : null;
   }
   const inFlight = inFlightRankings.get(cacheKey);
   if (inFlight) {
     console.info(
-      `[rss-ranker] join in-flight request source="${req.sourceName}" day="${req.dayKey}" cap=${req.cap}`
+      `[rss-ranker] join in-flight request day="${req.dayKey}" cap=${req.cap}`
     );
     const shared = await inFlight;
     return shared ? { ...shared } : null;
@@ -267,7 +226,7 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
         : null;
       return [
         `${index + 1}. id=${item.id}`,
-        `source=${item.sourceName?.trim() || req.sourceName}`,
+        `source=${item.sourceName?.trim() || "unknown"}`,
         `title=${item.title}`,
         `author=${item.author ?? "unknown"}`,
         snippetLine,
@@ -304,10 +263,6 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
 
 ` +
     `Context:
-` +
-    `source=${req.sourceName}
-` +
-    `category=${req.category}
 ` +
     `day=${req.dayKey}
 
@@ -348,74 +303,54 @@ ${candidates}`;
 
   const rankingPromise = (async (): Promise<RankResult | null> => {
     console.info(
-      `[rss-ranker] ranking start source="${req.sourceName}" day="${req.dayKey}" cap=${req.cap} candidates=${req.items.length} models="${modelsToTry.join(",")}"`
+      `[rss-ranker] ranking start day="${req.dayKey}" cap=${req.cap} candidates=${req.items.length} models="${modelsToTry.join(",")}"`
     );
     const timeoutMs = withTimeoutMs();
-    let data: OpenRouterResponse | null = null;
+    let content: string | null = null;
+    let finishReason: string | undefined;
+    let usedModel: string | null = null;
 
     for (let attemptIndex = 0; attemptIndex < modelsToTry.length; attemptIndex++) {
       const selectedModel = modelsToTry[attemptIndex];
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      try {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-            ...(process.env.OPENROUTER_SITE_URL ? { "HTTP-Referer": process.env.OPENROUTER_SITE_URL } : {}),
-            ...(process.env.OPENROUTER_APP_NAME ? { "X-Title": process.env.OPENROUTER_APP_NAME } : {}),
+      const result = await openRouterChat({
+        apiKey,
+        model: selectedModel,
+        maxTokens: withMaxTokens(req.cap),
+        timeoutMs,
+        temperature: 0.1,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a ranking engine. Output exactly one-line JSON matching the requested schema with no extra text.",
           },
-          body: JSON.stringify({
-          model: selectedModel,
-            temperature: 0.1,
-            max_tokens: withMaxTokens(req.cap),
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are a ranking engine. Output exactly one-line JSON matching the requested schema with no extra text.",
-              },
-              { role: "user", content: prompt },
-            ],
-          }),
-          signal: controller.signal,
-        });
+          { role: "user", content: prompt },
+        ],
+      });
 
-        if (!response.ok) {
-          const errorBody = await response.text().catch(() => "");
-          const resetMs = response.status === 429 ? maybeExtractResetMs(errorBody) : null;
-          if (resetMs) {
-            providerCooldownUntilMs = resetMs;
-          } else if (response.status === 429) {
-            providerCooldownUntilMs = Date.now() + getFailureCooldownMs();
-          }
-          console.warn(
-            `[rss-ranker] model attempt failed model="${selectedModel}" attempt=${attemptIndex + 1}/${modelsToTry.length} status=${response.status} statusText="${response.statusText}" body="${errorBody.slice(
-              0,
-              240
-            )}"`
-          );
-          continue;
+      if (!result.ok) {
+        const resetMs = result.status === 429 ? maybeExtractResetMs(result.errorBody) : null;
+        if (resetMs) {
+          providerCooldownUntilMs = resetMs;
+        } else if (result.status === 429) {
+          providerCooldownUntilMs = Date.now() + getFailureCooldownMs();
         }
-
-        data = (await response.json()) as OpenRouterResponse;
-        if (attemptIndex > 0) {
-          console.info(`[rss-ranker] ranking succeeded using fallback model="${selectedModel}"`);
-        }
-        break;
-      } catch (error) {
         console.warn(
-          `[rss-ranker] model attempt threw model="${selectedModel}" attempt=${attemptIndex + 1}/${modelsToTry.length}`,
-          error
+          `[rss-ranker] model attempt failed model="${selectedModel}" attempt=${attemptIndex + 1}/${modelsToTry.length} status=${result.status ?? "thrown"} body="${result.errorBody.slice(0, 240)}"`
         );
         continue;
-      } finally {
-        clearTimeout(timer);
       }
+
+      content = result.content;
+      finishReason = result.finishReason;
+      usedModel = selectedModel;
+      if (attemptIndex > 0) {
+        console.info(`[rss-ranker] ranking succeeded using fallback model="${selectedModel}"`);
+      }
+      break;
     }
 
-    if (!data) {
+    if (content === null) {
       rankCache.set(cacheKey, {
         expiresAt: Date.now() + getFailureCooldownMs(),
         value: null,
@@ -424,13 +359,9 @@ ${candidates}`;
       return null;
     }
 
-    const content = contentToString(data.choices?.[0]?.message?.content);
     if (!content) {
-      console.warn(
-        `[rss-ranker] empty content returned modelResponsePreview="${JSON.stringify(data).slice(0, 400)}"`
-      );
+      console.warn(`[rss-ranker] empty content returned model="${usedModel}"`);
     }
-    const finishReason = data.choices?.[0]?.finish_reason;
     if (finishReason === "length") {
       console.warn(
         `[rss-ranker] output truncated (finish_reason=length, cap=${req.cap}) — raise withMaxTokens; trailing picks may be lost`
@@ -487,7 +418,7 @@ ${candidates}`;
     for (const pick of limited) reasons[pick.rawId as string] = pick.reason;
 
     console.info(`[rss-ranker] ranking success selected=${ids.length} reasons=${Object.keys(reasons).length}`);
-    const rankResult: RankResult = { ids, reasons };
+    const rankResult: RankResult = { ids, reasons, model: usedModel };
     rankCache.set(cacheKey, {
       expiresAt: Date.now() + getCacheTtlMs(),
       value: rankResult,

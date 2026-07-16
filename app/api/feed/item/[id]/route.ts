@@ -1,11 +1,30 @@
 import { google, gmail_v1 } from "googleapis";
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { extractArticleContent } from "@/lib/article-extract";
-import { parseFrom } from "@/lib/email";
+import { extractArticleContent, normalizeText } from "@/lib/article-extract";
+import { parseFrom } from "@/lib/from-header";
 import { getHeader } from "@/lib/newsletter-classifier";
+import { getSessionUser, getSessionUserId } from "@/lib/session-user";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * Route params may arrive percent-encoded (sometimes doubly, via client-side
+ * navigation), so decode until stable — bounded to two rounds.
+ */
+function decodeItemId(rawId: string): string {
+  let id = rawId;
+  for (let i = 0; i < 2; i++) {
+    try {
+      const decoded = decodeURIComponent(id);
+      if (decoded === id) break;
+      id = decoded;
+    } catch {
+      break;
+    }
+  }
+  return id;
+}
 
 function b64urlDecode(input: string) {
   const b64 = input.replace(/-/g, "+").replace(/_/g, "/");
@@ -40,17 +59,6 @@ function extractBodies(
   return { html, text };
 }
 
-function cleanText(value: string): string {
-  return value
-    .replace(/\u00a0/g, " ")
-    .replace(/\r\n?/g, "\n")
-    .split("\n")
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .join("\n\n")
-    .trim();
-}
-
 async function getGmailItem(id: string, accessToken: string) {
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -68,7 +76,7 @@ async function getGmailItem(id: string, accessToken: string) {
   const { html, text } = extractBodies(payload);
   const extractedText = html
     ? (await extractArticleContent(html)).text
-    : cleanText(text ?? msg.data.snippet ?? "");
+    : normalizeText(text ?? msg.data.snippet ?? "");
   const publication = parseFrom(from);
 
   return {
@@ -141,74 +149,41 @@ async function getRssItem(userId: string, rawId: string) {
   };
 }
 
-export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await getSessionUser();
+  if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: { email },
-    select: { id: true },
-  });
-
-  const url = new URL(req.url);
-  const rawId = url.pathname.split("/").filter(Boolean).pop();
+  const { id: rawId } = await params;
   if (!rawId) return NextResponse.json({ error: "Missing id in path" }, { status: 400 });
-
-  let id = rawId;
-  for (let i = 0; i < 2; i++) {
-    try {
-      const decoded = decodeURIComponent(id);
-      if (decoded === id) break;
-      id = decoded;
-    } catch {
-      break;
-    }
-  }
+  const id = decodeItemId(rawId);
 
   if (id.startsWith("rss:")) {
-    const data = await getRssItem(user.id, id);
+    const data = await getRssItem(auth.userId, id);
     if (!data) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(data);
   }
 
-  const accessToken = session?.accessToken as string | undefined;
-  if (!accessToken) {
+  if (!auth.accessToken) {
     return NextResponse.json({ error: "Missing Gmail access token" }, { status: 401 });
   }
 
-  const data = await getGmailItem(id, accessToken);
+  const data = await getGmailItem(id, auth.accessToken);
   return NextResponse.json(data);
 }
 
-export async function DELETE(req: Request) {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: { email },
-    select: { id: true },
-  });
-
-  const url = new URL(req.url);
-  const rawId = url.pathname.split("/").filter(Boolean).pop();
+  const { id: rawId } = await params;
   if (!rawId) return NextResponse.json({ error: "Missing id in path" }, { status: 400 });
-
-  let id = rawId;
-  for (let i = 0; i < 2; i++) {
-    try {
-      const decoded = decodeURIComponent(id);
-      if (decoded === id) break;
-      id = decoded;
-    } catch {
-      break;
-    }
-  }
+  const id = decodeItemId(rawId);
 
   if (!id.startsWith("rss:")) {
     return NextResponse.json(
@@ -225,7 +200,7 @@ export async function DELETE(req: Request) {
   if (!item) return NextResponse.json({ ok: true, deleted: false });
 
   const sub = await prisma.userRssSubscription.findUnique({
-    where: { userId_rssSourceId: { userId: user.id, rssSourceId: item.rssSourceId } },
+    where: { userId_rssSourceId: { userId, rssSourceId: item.rssSourceId } },
     select: { id: true, isActive: true },
   });
   if (!sub?.isActive) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -233,7 +208,7 @@ export async function DELETE(req: Request) {
   await prisma.$transaction([
     prisma.messageReadStat.deleteMany({
       where: {
-        userId: user.id,
+        userId,
         messageExternalId: id,
       },
     }),
