@@ -8,8 +8,6 @@ export type RssReadProfile = {
   customPrompt?: string | null;
 };
 
-type RssPriority = "HIGH" | "NORMAL" | "LOW";
-
 type ReadProfileSnapshotRow = {
   topPublications: unknown;
   avgCompletionPct: number;
@@ -44,25 +42,6 @@ export function weekKeyUtc(value: Date | null): string {
   return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
 }
 
-export function rssPriorityScore(priority: RssPriority): number {
-  if (priority === "HIGH") return 3;
-  if (priority === "NORMAL") return 2;
-  return 1;
-}
-
-export function sortByPriorityAndRecency<T>(
-  items: T[],
-  getPriority: (item: T) => RssPriority,
-  getSortTimeMs: (item: T) => number
-): T[] {
-  return [...items].sort((a, b) => {
-    const pa = rssPriorityScore(getPriority(a));
-    const pb = rssPriorityScore(getPriority(b));
-    if (pa !== pb) return pb - pa;
-    return getSortTimeMs(b) - getSortTimeMs(a);
-  });
-}
-
 export function getRssLookbackDays(): number {
   const raw = Number(process.env.RSS_LOOKBACK_DAYS ?? 5);
   if (!Number.isFinite(raw)) return 5;
@@ -73,16 +52,20 @@ export function getRssLookbackCutoff(days: number): Date {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
-export function getRssDailyTargetCap(totalCandidates: number, preferredCap?: number | null): number {
-  const minRaw = Number(process.env.RSS_DAILY_TARGET_MIN ?? 30);
-  const maxRaw = Number(process.env.RSS_DAILY_TARGET_MAX ?? 40);
-  const defaultRaw = Number(process.env.RSS_DAILY_TARGET_DEFAULT ?? 35);
+const DAILY_TARGET_MIN_DEFAULT = 30;
+const DAILY_TARGET_MAX_DEFAULT = 40;
+const DAILY_TARGET_DEFAULT = 35;
 
-  const minCap = Number.isFinite(minRaw) ? Math.max(1, Math.floor(minRaw)) : 10;
-  const maxCap = Number.isFinite(maxRaw) ? Math.max(minCap, Math.floor(maxRaw)) : 15;
+export function getRssDailyTargetCap(totalCandidates: number, preferredCap?: number | null): number {
+  const minRaw = Number(process.env.RSS_DAILY_TARGET_MIN ?? DAILY_TARGET_MIN_DEFAULT);
+  const maxRaw = Number(process.env.RSS_DAILY_TARGET_MAX ?? DAILY_TARGET_MAX_DEFAULT);
+  const defaultRaw = Number(process.env.RSS_DAILY_TARGET_DEFAULT ?? DAILY_TARGET_DEFAULT);
+
+  const minCap = Number.isFinite(minRaw) ? Math.max(1, Math.floor(minRaw)) : DAILY_TARGET_MIN_DEFAULT;
+  const maxCap = Number.isFinite(maxRaw) ? Math.max(minCap, Math.floor(maxRaw)) : Math.max(minCap, DAILY_TARGET_MAX_DEFAULT);
   const envDefaultCap = Number.isFinite(defaultRaw)
     ? Math.min(maxCap, Math.max(minCap, Math.floor(defaultRaw)))
-    : 35;
+    : Math.min(maxCap, Math.max(minCap, DAILY_TARGET_DEFAULT));
   const preferred = Number.isFinite(preferredCap as number)
     ? Math.floor(preferredCap as number)
     : envDefaultCap;
@@ -150,19 +133,12 @@ export function buildRssArticleDedupKey(args: {
 
 export function dedupeByArticleKey<T extends { dedupKey: string }>(
   items: T[],
-  scoreItem: (item: T) => number,
   sortTimeMs: (item: T) => number
 ): T[] {
   const dedupedByKey = new Map<string, T>();
   for (const item of items) {
     const prev = dedupedByKey.get(item.dedupKey);
-    if (!prev) {
-      dedupedByKey.set(item.dedupKey, item);
-      continue;
-    }
-    const prevScore = scoreItem(prev);
-    const nextScore = scoreItem(item);
-    if (nextScore > prevScore || (nextScore === prevScore && sortTimeMs(item) > sortTimeMs(prev))) {
+    if (!prev || sortTimeMs(item) > sortTimeMs(prev)) {
       dedupedByKey.set(item.dedupKey, item);
     }
   }

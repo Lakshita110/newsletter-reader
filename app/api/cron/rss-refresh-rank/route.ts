@@ -4,7 +4,6 @@ import { syncRssSource } from "@/lib/rss";
 import { computeDailyRankedSelection } from "@/lib/rss-ranking";
 import { dayKeyUtc, getUserRssReadProfile } from "@/lib/rss-helpers";
 import { normalizeRecommendationPrompt } from "@/lib/rss-recommendation-settings";
-import { runAndPersistRankEval } from "@/lib/rss-rank-eval";
 import { buildRankingCandidates } from "@/lib/rss-candidates";
 
 const FALLBACK_SNAPSHOT_TTL_MS = 45 * 60 * 1000;
@@ -78,9 +77,6 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     selected: rankedIds.length,
     status,
     totalCap,
-    aiItems,
-    selectedIds: rankedIds,
-    userProfileSummary: readProfile.preferenceSummary.join("; "),
   };
 }
 
@@ -164,24 +160,6 @@ export async function GET(req: Request) {
         console.info(
           `[rss-refresh-rank][${requestId}] ranked userId="${row.userId}" candidates=${result.candidates} selected=${result.selected} totalCap=${result.totalCap} status="${result.status}"`
         );
-        if (result.status === "AI_SUCCESS" && result.aiItems.length > 0) {
-          const byId = new Map(result.aiItems.map((item) => [item.id, item]));
-          const selectedEvalItems = result.selectedIds
-            .map((id) => byId.get(id))
-            .filter((item): item is NonNullable<typeof item> => Boolean(item))
-            .map((item) => ({ id: item.id, title: item.title, sourceName: item.sourceName, snippet: item.snippet }));
-          void runAndPersistRankEval({
-            userId: row.userId,
-            dayKey,
-            selectedItems: selectedEvalItems,
-            candidateItems: result.aiItems.map((item) => ({ id: item.id, title: item.title, sourceName: item.sourceName, snippet: item.snippet })),
-            userProfileSummary: result.userProfileSummary,
-            cap: result.totalCap,
-            source: "CRON",
-          }).catch((err) =>
-            console.warn(`[rss-refresh-rank][${requestId}] eval failed userId="${row.userId}"`, err)
-          );
-        }
       } catch (error) {
         const message = `${row.userId}: ${error instanceof Error ? error.message : "Unknown error"}`;
         rankErrors.push(message);

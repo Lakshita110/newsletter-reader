@@ -36,7 +36,6 @@ export async function GET() {
       rssUrl: sub.source.rssUrl,
       siteUrl: sub.source.siteUrl,
       isActive: sub.isActive,
-      priority: sub.priority,
       category: parseRssCategoryInput(sub.category).value ?? "other",
       lastSyncedAt: sub.source.lastSyncedAt,
       consecutiveFailures: sub.source.consecutiveFailures,

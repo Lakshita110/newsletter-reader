@@ -5,11 +5,7 @@ import {
   dedupeByArticleKey,
   extractImageUrlFromHtml,
   getRssDailyTargetCap,
-  rssPriorityScore,
-  sortByPriorityAndRecency,
 } from "@/lib/rss-helpers";
-
-export type RssPriority = "HIGH" | "NORMAL" | "LOW";
 
 /**
  * A feed row as rendered by the inbox. Also used for Gmail newsletter items,
@@ -40,7 +36,6 @@ export type RankingCandidate = {
   sourceId: string;
   sourceName: string;
   dedupKey: string;
-  priority: RssPriority;
   item: {
     title: string;
     snippet: string | null;
@@ -65,7 +60,7 @@ export type AiRankItem = {
 export type RankingCandidateSet = {
   /** Every candidate before read-filtering/dedupe — the inbox `visible` list. */
   allCandidates: RankingCandidate[];
-  /** Unread, deduped, priority+recency sorted — the ranking input pool. */
+  /** Unread, deduped, recency sorted — the ranking input pool. */
   sortedFallback: RankingCandidate[];
   /** `sortedFallback` mapped to the ranker/snapshot shape. */
   aiItems: AiRankItem[];
@@ -145,7 +140,6 @@ export async function buildRankingCandidates(params: {
           title: item.title,
           snippet: item.snippet ?? "",
         }),
-        priority: sub.priority,
         item: {
           title: item.title,
           snippet: item.snippet ?? null,
@@ -177,14 +171,9 @@ export async function buildRankingCandidates(params: {
   );
   const dedupedCandidates = dedupeByArticleKey(
     unreadCandidates,
-    (candidate) => rssPriorityScore(candidate.priority),
     (candidate) => candidate.sortTimeMs
   );
-  const sortedFallback = sortByPriorityAndRecency(
-    dedupedCandidates,
-    (candidate) => candidate.priority,
-    (candidate) => candidate.sortTimeMs
-  );
+  const sortedFallback = [...dedupedCandidates].sort((a, b) => b.sortTimeMs - a.sortTimeMs);
 
   const aiItems: AiRankItem[] = sortedFallback.map((candidate) => ({
     id: candidate.feedItem.id,
