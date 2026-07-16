@@ -81,7 +81,6 @@ export default function RssInboxPage() {
   >([]);
   const [recommendedIds, setRecommendedIds] = useState<string[]>([]);
   const [rankReasons, setRankReasons] = useState<Record<string, string>>({});
-  const [rankingPending, setRankingPending] = useState(false);
   const [rankedAt, setRankedAt] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isSyncingRss, setIsSyncingRss] = useState(false);
@@ -126,7 +125,6 @@ export default function RssInboxPage() {
         ? (data.rssMeta.rankReasons as Record<string, string>)
         : {}
     );
-    setRankingPending(data?.rssMeta?.rankingPending === true);
     setRankedAt(typeof data?.rssMeta?.rankedAt === "string" ? data.rssMeta.rankedAt : null);
     return nextItems as InboxItem[];
   }, [selectedSourceId, viewMode]);
@@ -223,12 +221,6 @@ export default function RssInboxPage() {
   useEffect(() => {
     saveMapToStorage("nr_saved_items_map", savedById);
   }, [savedById]);
-
-  useEffect(() => {
-    if (!rankingPending || isSyncingRss) return;
-    const timer = setTimeout(() => { loadRssInbox().catch(() => null); }, 3000);
-    return () => clearTimeout(timer);
-  }, [rankingPending, isSyncingRss, loadRssInbox]);
 
   const activeItems = useMemo(() => (isServerSearchActive ? searchItems : items), [isServerSearchActive, items, searchItems]);
   const publications = useMemo(() => getPublications(activeItems), [activeItems]);
@@ -475,9 +467,9 @@ export default function RssInboxPage() {
       />
 
       {rssSyncNotice && <div style={{ margin: "-8px 0 14px", color: "var(--muted)", fontSize: 12 }}>{rssSyncNotice}</div>}
-      {viewMode === "recommended" && (rankingPending || rankedAt) && (
+      {viewMode === "recommended" && rankedAt && (
         <div style={{ margin: "-8px 0 14px", color: "var(--muted)", fontSize: 12 }}>
-          {rankingPending ? "Ranking recommendations…" : rankedAt ? `Last ranked ${formatRankedAgo(rankedAt)}.` : null}
+          {`Last ranked ${formatRankedAgo(rankedAt)}.`}
         </div>
       )}
       {readStreak && (readStreak.streak > 0 || readStreak.weeklyCount > 0) && (
