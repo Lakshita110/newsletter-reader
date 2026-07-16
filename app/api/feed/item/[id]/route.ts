@@ -1,10 +1,12 @@
 import { google, gmail_v1 } from "googleapis";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { extractArticleContent } from "@/lib/article-extract";
-import { parseFrom } from "@/lib/email";
+import { extractArticleContent, normalizeText } from "@/lib/article-extract";
+import { parseFrom } from "@/lib/from-header";
 import { getHeader } from "@/lib/newsletter-classifier";
 import { getSessionUser, getSessionUserId } from "@/lib/session-user";
+
+export const dynamic = "force-dynamic";
 
 /**
  * Route params may arrive percent-encoded (sometimes doubly, via client-side
@@ -57,17 +59,6 @@ function extractBodies(
   return { html, text };
 }
 
-function cleanText(value: string): string {
-  return value
-    .replace(/\u00a0/g, " ")
-    .replace(/\r\n?/g, "\n")
-    .split("\n")
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .join("\n\n")
-    .trim();
-}
-
 async function getGmailItem(id: string, accessToken: string) {
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -85,7 +76,7 @@ async function getGmailItem(id: string, accessToken: string) {
   const { html, text } = extractBodies(payload);
   const extractedText = html
     ? (await extractArticleContent(html)).text
-    : cleanText(text ?? msg.data.snippet ?? "");
+    : normalizeText(text ?? msg.data.snippet ?? "");
   const publication = parseFrom(from);
 
   return {

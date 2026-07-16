@@ -4,6 +4,8 @@ import { normalizeUrl } from "@/lib/rss";
 import { parseRssCategoryInput } from "@/lib/rss-categories";
 import { getSessionUserId } from "@/lib/session-user";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

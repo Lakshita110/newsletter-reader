@@ -13,6 +13,8 @@ import {
   rankSnapshotExpiryUtc,
 } from "@/lib/rank-snapshot";
 
+export const dynamic = "force-dynamic";
+
 async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
   const userSettings = await prisma.user.findUnique({
     where: { id: userId },

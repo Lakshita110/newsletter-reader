@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/session-user";
-import {
-  extractImageUrlFromHtml,
-  getRssLookbackCutoff,
-  getRssLookbackDays,
-} from "@/lib/rss-helpers";
+import { toFeedItem } from "@/lib/rss-candidates";
+import { getRssLookbackCutoff, getRssLookbackDays } from "@/lib/rss-helpers";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(
   _req: Request,
@@ -49,19 +48,6 @@ export async function GET(
       rssUrl: sub.source.rssUrl,
       siteUrl: sub.source.siteUrl,
     },
-    items: sub.source.items.map((item) => ({
-      id: `rss:${item.id}`,
-      sourceId: sub.source.id,
-      sourceKind: "rss",
-      subject: item.title,
-      from: item.author ?? sub.source.name,
-      date: (item.publishedAt ?? item.createdAt).toISOString(),
-      snippet: item.snippet ?? "",
-      publicationName: sub.source.name,
-      publicationKey: `rss:${sub.source.id}`,
-      isOverflow: false,
-      externalUrl: item.link ?? undefined,
-      imageUrl: item.imageUrl ?? extractImageUrlFromHtml(item.htmlRaw),
-    })),
+    items: sub.source.items.map((item) => toFeedItem(item, sub.source, sub.category)),
   });
 }

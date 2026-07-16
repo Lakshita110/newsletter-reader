@@ -1,6 +1,6 @@
 import { google, gmail_v1 } from "googleapis";
 import { classifyNewsletter, getHeader } from "@/lib/newsletter-classifier";
-import { parseFrom, normalizePublicationKey } from "@/lib/email";
+import { parseFrom, normalizePublicationKey } from "@/lib/from-header";
 import type { FeedItem } from "@/lib/rss-candidates";
 
 function getGmailLookbackDays(): number {

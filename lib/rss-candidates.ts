@@ -28,6 +28,41 @@ export type FeedItem = {
   imageUrl?: string;
 };
 
+type RssItemRow = {
+  id: string;
+  title: string;
+  author: string | null;
+  link: string | null;
+  imageUrl: string | null;
+  htmlRaw: string | null;
+  snippet: string | null;
+  publishedAt: Date | null;
+  createdAt: Date;
+};
+
+/** Map a stored RssItem row to the FeedItem shape every feed endpoint returns. */
+export function toFeedItem(
+  item: RssItemRow,
+  source: { id: string; name: string },
+  category?: string | null
+): FeedItem {
+  return {
+    id: `rss:${item.id}`,
+    sourceId: source.id,
+    sourceKind: "rss",
+    subject: item.title,
+    from: item.author ?? source.name,
+    date: (item.publishedAt ?? item.createdAt).toISOString(),
+    snippet: item.snippet ?? "",
+    publicationName: source.name,
+    publicationKey: `rss:${source.id}`,
+    category: normalizeRssCategory(category ?? "") ?? "other",
+    isOverflow: false,
+    externalUrl: item.link ?? undefined,
+    imageUrl: item.imageUrl ?? extractImageUrlFromHtml(item.htmlRaw),
+  };
+}
+
 /**
  * One RSS article in ranking form: the raw item fields the ranker/eval needs,
  * plus the pre-built `feedItem` the inbox renders and a precomputed sort key.
@@ -117,21 +152,7 @@ export async function buildRankingCandidates(params: {
   const allCandidates: RankingCandidate[] = [];
   for (const sub of subscriptions) {
     for (const item of sub.source.items) {
-      const feedItem: FeedItem = {
-        id: `rss:${item.id}`,
-        sourceId: sub.source.id,
-        sourceKind: "rss",
-        subject: item.title,
-        from: item.author ?? sub.source.name,
-        date: (item.publishedAt ?? item.createdAt).toISOString(),
-        snippet: item.snippet ?? "",
-        publicationName: sub.source.name,
-        publicationKey: `rss:${sub.source.id}`,
-        category: normalizeRssCategory(sub.category) ?? "other",
-        isOverflow: false,
-        externalUrl: item.link ?? undefined,
-        imageUrl: item.imageUrl ?? extractImageUrlFromHtml(item.htmlRaw),
-      };
+      const feedItem = toFeedItem(item, sub.source, sub.category);
       allCandidates.push({
         sourceId: sub.source.id,
         sourceName: sub.source.name,

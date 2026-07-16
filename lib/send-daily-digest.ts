@@ -1,6 +1,11 @@
 import nodemailer from "nodemailer";
 import { prisma } from "@/lib/prisma";
-import { buildEmailHtml, getDigestSubject, getLocalDateKey } from "@/lib/email-digest";
+import {
+  buildEmailHtml,
+  getDigestSubject,
+  getLocalDateKey,
+  normalizeDigestEmail,
+} from "@/lib/email-digest";
 
 export type DigestUser = {
   id: string;
@@ -14,18 +19,6 @@ export type DigestSendResult =
   | { status: "sent"; itemCount: number; sentTo: string }
   | { status: "skipped"; reason: "already_sent_today" | "no_ranked_items" }
   | { status: "error"; message: string };
-
-// Deliberately permissive: enough to reject obvious junk ("foo", "a@b") without
-// trying to fully validate RFC 5322. Returns the trimmed address, or null for
-// empty/invalid input — null means "fall back to the account email".
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-export function normalizeDigestEmail(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  return EMAIL_RE.test(trimmed) ? trimmed : null;
-}
 
 /** The address a given user's digest will actually be delivered to. */
 export function resolveDigestRecipient(user: Pick<DigestUser, "email" | "digestEmail">): string {
@@ -61,10 +54,7 @@ export async function sendDigestForUser(params: {
     const localDateKey = getLocalDateKey(tz);
 
     if (!force && user.digestLastSentAt) {
-      const lastSentLocalKey = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(
-        user.digestLastSentAt
-      );
-      if (lastSentLocalKey === localDateKey) {
+      if (getLocalDateKey(tz, user.digestLastSentAt) === localDateKey) {
         return { status: "skipped", reason: "already_sent_today" };
       }
     }

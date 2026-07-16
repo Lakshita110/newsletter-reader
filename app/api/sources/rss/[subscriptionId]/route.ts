@@ -4,6 +4,8 @@ import { parseRssCategoryInput } from "@/lib/rss-categories";
 import { normalizeUrl } from "@/lib/rss";
 import { getSessionUserId } from "@/lib/session-user";
 
+export const dynamic = "force-dynamic";
+
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ subscriptionId: string }> }

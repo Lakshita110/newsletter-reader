@@ -7,8 +7,10 @@ import {
   RSS_RECOMMENDATION_CAP_MIN,
   RSS_RECOMMENDATION_PROMPT_MAX_CHARS,
 } from "@/lib/rss-recommendation-settings";
-import { normalizeDigestEmail } from "@/lib/send-daily-digest";
+import { normalizeDigestEmail } from "@/lib/email-digest";
 import { getSessionUserId } from "@/lib/session-user";
+
+export const dynamic = "force-dynamic";
 
 const userSelect = {
   id: true,

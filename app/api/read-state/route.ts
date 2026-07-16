@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/session-user";
 
+export const dynamic = "force-dynamic";
+
 type ReadStateUpdate = "in_progress" | "read" | "unread" | "saved" | "unsaved";
 type SourceKind = "gmail" | "rss";
 

@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { syncRssSource } from "@/lib/rss";
 import { getSessionUserId } from "@/lib/session-user";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: Request) {
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

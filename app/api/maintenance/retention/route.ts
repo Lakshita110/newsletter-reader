@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { runRetentionNow } from "@/lib/retention";
 import { isCronAuthorized } from "@/lib/cron-auth";
 
+export const dynamic = "force-dynamic";
+
 async function run(req: Request) {
   const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   console.info(
