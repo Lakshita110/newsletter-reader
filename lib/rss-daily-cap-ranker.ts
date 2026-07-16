@@ -31,7 +31,12 @@ type OpenRouterResponse = {
   }>;
 };
 
-type RankResult = { ids: string[]; reasons: Record<string, string> };
+type RankResult = {
+  ids: string[];
+  reasons: Record<string, string>;
+  /** The model that produced this ranking; null when no AI call was made. */
+  model: string | null;
+};
 
 type RankCacheEntry = {
   expiresAt: number;
@@ -43,13 +48,11 @@ const rankCache = new Map<string, RankCacheEntry>();
 const inFlightRankings = new Map<string, Promise<RankResult | null>>();
 let providerCooldownUntilMs = 0;
 
-// Model chain is hard-pinned in code (not read from env) because the production
-// Vercel env is temporarily unreachable and we need to force these models. The
-// chain is tried in order: gpt-4o-mini first, then gemini-flash if it fails.
-// Revert to the env-based reads (OPENROUTER_MODEL / OPENROUTER_FALLBACK_MODELS)
-// once env access is restored.
-const RANKING_MODEL = "openai/gpt-4o-mini";
-const RANKING_FALLBACK_MODELS = ["google/gemini-2.0-flash-001"];
+// The model chain is pinned in code by design: env-based model selection was
+// dropped so a misconfigured deployment can neither swap the chain nor
+// truncate it. Models are tried in order until one succeeds.
+export const RANKING_MODEL = "openai/gpt-4o-mini";
+export const RANKING_MODEL_CHAIN = [RANKING_MODEL, "google/gemini-2.0-flash-001"];
 
 function contentToString(
   content: string | Array<{ type?: string; text?: string }> | undefined
@@ -145,21 +148,6 @@ function normalizeRankToken(
   return trimmed;
 }
 
-function getConfiguredModels(primaryModel: string): string[] {
-  // Fallbacks are pinned in code (RANKING_FALLBACK_MODELS); we intentionally
-  // ignore OPENROUTER_FALLBACK_MODELS / OPENROUTER_MAX_MODEL_ATTEMPTS so the env
-  // can neither override the chain nor truncate it. Every model in the pinned
-  // chain is tried in order.
-  const unique: string[] = [];
-  const seen = new Set<string>();
-  for (const model of [primaryModel, ...RANKING_FALLBACK_MODELS]) {
-    if (seen.has(model)) continue;
-    seen.add(model);
-    unique.push(model);
-  }
-  return unique;
-}
-
 function getCacheKey(req: RankRequest, model: string): string {
   const ids = req.items.map((item) => item.id).join(",");
   const profileHint = req.userProfile?.topPublications
@@ -205,20 +193,18 @@ function withTimeoutMs(): number {
 }
 
 export function withMaxTokens(cap: number): number {
-  // Each pick is now one {"id":"rss:x","reason":"..."} object: an id
-  // (~10 tokens), a short reason (<=8 words, ~12 tokens), plus the object's
-  // own braces/keys/quoting (~14 tokens) — call it ~36 tokens/item, plus
-  // envelope headroom. Even if this runs low and truncation still happens,
-  // atomic picks mean a cut tail just drops whole trailing items rather than
-  // splitting an id from its reason. Computed in code (env OPENROUTER_MAX_TOKENS
-  // ignored) because production env is currently unreachable; revert to the
-  // env read once access is restored.
+  // Each pick is one {"id":"rss:x","reason":"..."} object: an id (~10 tokens),
+  // a short reason (<=8 words, ~12 tokens), plus the object's own
+  // braces/keys/quoting (~14 tokens) — call it ~36 tokens/item, plus envelope
+  // headroom. Even if this runs low and truncation still happens, atomic picks
+  // mean a cut tail just drops whole trailing items rather than splitting an
+  // id from its reason.
   return Math.min(4096, Math.max(512, 256 + cap * 36));
 }
 
 export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult | null> {
-  if (req.cap <= 0) return { ids: [], reasons: {} };
-  if (req.items.length === 0) return { ids: [], reasons: {} };
+  if (req.cap <= 0) return { ids: [], reasons: {}, model: null };
+  if (req.items.length === 0) return { ids: [], reasons: {}, model: null };
 
   // Previously skipped the AI call entirely when candidates already fit
   // within the cap, returning every id with an empty reasons map. That meant
@@ -238,8 +224,7 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
     return null;
   }
 
-  // Primary + fallbacks are hard-pinned (see RANKING_MODEL / RANKING_FALLBACK_MODELS).
-  const modelsToTry = getConfiguredModels(RANKING_MODEL);
+  const modelsToTry = RANKING_MODEL_CHAIN;
   const cacheKey = getCacheKey(req, modelsToTry.join("|"));
   const cached = rankCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
@@ -352,6 +337,7 @@ ${candidates}`;
     );
     const timeoutMs = withTimeoutMs();
     let data: OpenRouterResponse | null = null;
+    let usedModel: string | null = null;
 
     for (let attemptIndex = 0; attemptIndex < modelsToTry.length; attemptIndex++) {
       const selectedModel = modelsToTry[attemptIndex];
@@ -400,6 +386,7 @@ ${candidates}`;
         }
 
         data = (await response.json()) as OpenRouterResponse;
+        usedModel = selectedModel;
         if (attemptIndex > 0) {
           console.info(`[rss-ranker] ranking succeeded using fallback model="${selectedModel}"`);
         }
@@ -487,7 +474,7 @@ ${candidates}`;
     for (const pick of limited) reasons[pick.rawId as string] = pick.reason;
 
     console.info(`[rss-ranker] ranking success selected=${ids.length} reasons=${Object.keys(reasons).length}`);
-    const rankResult: RankResult = { ids, reasons };
+    const rankResult: RankResult = { ids, reasons, model: usedModel };
     rankCache.set(cacheKey, {
       expiresAt: Date.now() + getCacheTtlMs(),
       value: rankResult,

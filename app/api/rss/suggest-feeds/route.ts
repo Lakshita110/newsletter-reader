@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getUserRssReadProfile } from "@/lib/rss-helpers";
+import { RANKING_MODEL } from "@/lib/rss-daily-cap-ranker";
 import { normalizeRssCategory, RSS_CATEGORY_OPTIONS } from "@/lib/rss-categories";
 
 export const dynamic = "force-dynamic";
@@ -74,7 +75,6 @@ Rules:
 - reason must be specific to their profile, not generic
 - Return only the JSON array, no prose`;
 
-  const model = process.env.OPENROUTER_MODEL ?? "gpt-4o-mini";
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
 
@@ -89,7 +89,7 @@ Rules:
         ...(process.env.OPENROUTER_APP_NAME ? { "X-Title": process.env.OPENROUTER_APP_NAME } : {}),
       },
       body: JSON.stringify({
-        model,
+        model: RANKING_MODEL,
         temperature: 0.4,
         max_tokens: 1024,
         messages: [

@@ -404,7 +404,7 @@ async function acquireAndRank(params: {
       rankReasons: ranking.rankReasons,
       status: ranking.status,
       source: "ON_DEMAND",
-      model: process.env.OPENROUTER_MODEL ?? null,
+      model: ranking.model,
       inputFingerprint: ranking.inputFingerprint,
       expiresAt: isAiSuccess ? rankSnapshotExpiryUtc(dayKey) : new Date(Date.now() + FALLBACK_SNAPSHOT_TTL_MS),
     });

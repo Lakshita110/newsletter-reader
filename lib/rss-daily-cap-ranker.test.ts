@@ -119,6 +119,7 @@ describe("rankItemsForDailyCap", () => {
     expect(result).toEqual({
       ids: ["rss:within-cap-a"],
       reasons: { "rss:within-cap-a": "only candidate, still reasoned" },
+      model: "openai/gpt-4o-mini",
     });
   });
 

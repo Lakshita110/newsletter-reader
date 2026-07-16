@@ -43,11 +43,7 @@ Create `.env.local` and set at least the required values.
 | `RETENTION_RSS_DAYS` | Optional | Age-based retention limit for RSS items. |
 | `RETENTION_RSS_MAX_ITEMS_PER_SOURCE` | Optional | Per-source cap for RSS items. |
 | `OPENROUTER_API_KEY` | Optional | Enables AI-based daily RSS ranking. |
-| `OPENROUTER_MODEL` | Optional | Primary ranking model. **Currently ignored** — the model chain is hard-pinned in code (see below). |
-| `OPENROUTER_FALLBACK_MODELS` | Optional | Comma-separated fallback models. **Currently ignored** (hard-pinned in code). |
-| `OPENROUTER_MAX_MODEL_ATTEMPTS` | Optional | Max models to try per request. **Currently ignored** (hard-pinned in code). |
 | `OPENROUTER_TIMEOUT_MS` | Optional | Timeout for ranking requests. |
-| `OPENROUTER_MAX_TOKENS` | Optional | Max token budget for ranking responses. **Currently ignored** — computed from the daily cap in code. |
 | `OPENROUTER_RANK_CACHE_TTL_MS` | Optional | In-memory ranking cache TTL. |
 | `OPENROUTER_FAILURE_COOLDOWN_MS` | Optional | Cooldown after provider failure/rate limit. |
 | `OPENROUTER_APP_NAME` | Optional | Sent to OpenRouter for attribution. |
@@ -100,4 +96,4 @@ Endpoints:
 
 - AI ranking is optional; when unavailable/failing, the app falls back to deterministic ranking.
 - RSS article full content is fetched on demand in the reader flow; synced RSS storage is intentionally lightweight.
-- The ranking model chain and token budget are currently hard-pinned in `lib/rss-daily-cap-ranker.ts` (a temporary workaround while the production env was unreachable), so the `OPENROUTER_MODEL`, `OPENROUTER_FALLBACK_MODELS`, `OPENROUTER_MAX_MODEL_ATTEMPTS`, and `OPENROUTER_MAX_TOKENS` env vars have no effect. Revert to the env-based reads there to make them configurable again.
+- The ranking model chain and token budget are pinned in code by design (see `RANKING_MODEL_CHAIN`), so a misconfigured deployment can't silently swap or truncate the chain. Change models by editing the constants.

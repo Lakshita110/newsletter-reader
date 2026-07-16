@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { RANKING_MODEL } from "@/lib/rss-daily-cap-ranker";
 
 export type RssReadProfile = {
   topPublications: Array<{ name: string; score: number }>;
@@ -207,7 +208,6 @@ async function generatePreferenceSummaryWithLlm(args: {
   if (!apiKey) return null;
   if (args.reads.length === 0) return null;
 
-  const model = process.env.OPENROUTER_PROFILE_MODEL ?? process.env.OPENROUTER_MODEL ?? "openrouter/free";
   const readLines = args.reads.map((item, i) => `${i + 1}. source=${item.source} | title=${item.title}`).join("\n");
   const topPubs = args.topPublications
     .slice(0, 10)
@@ -244,7 +244,7 @@ Rules:
         ...(process.env.OPENROUTER_APP_NAME ? { "X-Title": process.env.OPENROUTER_APP_NAME } : {}),
       },
       body: JSON.stringify({
-        model,
+        model: RANKING_MODEL,
         temperature: 0.1,
         max_tokens: 450,
         messages: [

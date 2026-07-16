@@ -87,6 +87,8 @@ export async function computeDailyRankedSelection(params: {
   recommendedIds: string[];
   rankReasons: Record<string, string>;
   status: "AI_SUCCESS" | "FALLBACK_DETERMINISTIC";
+  /** The model that produced the ranking; null on deterministic fallback. */
+  model: string | null;
   inputFingerprint: string;
 }> {
   const normalizedPrompt = params.customPrompt?.trim() ?? "";
@@ -100,6 +102,7 @@ export async function computeDailyRankedSelection(params: {
       recommendedIds: [],
       rankReasons: {},
       status: "FALLBACK_DETERMINISTIC",
+      model: null,
       inputFingerprint,
     };
   }
@@ -140,6 +143,7 @@ export async function computeDailyRankedSelection(params: {
       recommendedIds: reasonedPicks,
       rankReasons: reasons,
       status: "AI_SUCCESS",
+      model: rankResult?.model ?? null,
       inputFingerprint,
     };
   }
@@ -149,6 +153,7 @@ export async function computeDailyRankedSelection(params: {
     recommendedIds: [],
     rankReasons: {},
     status: "FALLBACK_DETERMINISTIC",
+    model: null,
     inputFingerprint,
   };
 }
