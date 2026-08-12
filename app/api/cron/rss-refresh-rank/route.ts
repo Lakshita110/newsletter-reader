@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncRssSource } from "@/lib/rss";
-import { computeDailyRankedSelection } from "@/lib/rss-ranking";
+import { buildRankInputFingerprint, computeDailyRankedSelection } from "@/lib/rss-ranking";
 import { dayKeyUtc } from "@/lib/rss-helpers";
 import { getUserRssReadProfile } from "@/lib/rss-read-profile";
 import { normalizeRecommendationPrompt } from "@/lib/rss-recommendation-settings";
@@ -9,13 +9,15 @@ import { buildRankingCandidates } from "@/lib/rss-candidates";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import {
   FALLBACK_SNAPSHOT_TTL_MS,
+  idsFromSnapshotJson,
   persistRankSnapshot,
   rankSnapshotExpiryUtc,
+  readValidRankSnapshot,
 } from "@/lib/rank-snapshot";
 
 export const dynamic = "force-dynamic";
 
-async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
+export async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
   const userSettings = await prisma.user.findUnique({
     where: { id: userId },
     select: { rssRecommendationPrompt: true },
@@ -23,6 +25,24 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
   const customPrompt = normalizeRecommendationPrompt(userSettings?.rssRecommendationPrompt) ?? "";
 
   const { aiItems, totalCap } = await buildRankingCandidates({ userId });
+
+  // Nothing about today's candidate pool has changed since the last snapshot
+  // (same content, cap, prompt) — skip the OpenRouter call entirely. Cron
+  // runs several times a day so it can pick up newly-synced articles, but
+  // re-ranking on every run regardless of whether anything changed wastes a
+  // call per user per run and risks a redundant call failing/downgrading
+  // and clobbering a perfectly good existing ranking.
+  const inputFingerprint = buildRankInputFingerprint(dayKey, totalCap, customPrompt, aiItems);
+  const existing = await readValidRankSnapshot(userId, dayKey, new Date());
+  if (existing && existing.inputFingerprint === inputFingerprint) {
+    return {
+      candidates: aiItems.length,
+      selected: idsFromSnapshotJson(existing.rankedItemIds).length,
+      status: existing.status,
+      totalCap,
+      skipped: true,
+    };
+  }
 
   const readProfile = await getUserRssReadProfile(userId);
   const ranking = await computeDailyRankedSelection({
@@ -33,6 +53,22 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     customPrompt,
     readProfile,
   });
+
+  // A degraded re-rank must never erase an existing real ranking: if the
+  // input changed but this attempt only produced the deterministic fallback
+  // (rate limit, timeout, malformed output), keep serving the last good
+  // AI_SUCCESS snapshot rather than emptying the Recommended tab. A later
+  // cron run or on-demand request gets another chance.
+  if (ranking.status !== "AI_SUCCESS" && existing?.status === "AI_SUCCESS") {
+    return {
+      candidates: aiItems.length,
+      selected: idsFromSnapshotJson(existing.rankedItemIds).length,
+      status: existing.status,
+      totalCap,
+      skipped: true,
+    };
+  }
+
   const rankedIds = ranking.selectedIds;
   const status: "AI_SUCCESS" | "FALLBACK_DETERMINISTIC" = ranking.status;
   let expiresAt = rankSnapshotExpiryUtc(dayKey);
@@ -57,6 +93,7 @@ async function refreshTodaySnapshotForUser(userId: string, dayKey: string) {
     selected: rankedIds.length,
     status,
     totalCap,
+    skipped: false,
   };
 }
 
@@ -117,6 +154,7 @@ export async function GET(req: Request) {
     );
 
     let rankedUsers = 0;
+    let skippedUsers = 0;
     const rankErrors: string[] = [];
     const rankSummaries: Array<{
       userId: string;
@@ -124,21 +162,24 @@ export async function GET(req: Request) {
       selected: number;
       status: string;
       totalCap: number;
+      skipped: boolean;
     }> = [];
 
     for (const row of activeUsers) {
       try {
         const result = await refreshTodaySnapshotForUser(row.userId, dayKey);
         rankedUsers += 1;
+        if (result.skipped) skippedUsers += 1;
         rankSummaries.push({
           userId: row.userId,
           candidates: result.candidates,
           selected: result.selected,
           status: result.status,
           totalCap: result.totalCap,
+          skipped: result.skipped,
         });
         console.info(
-          `[rss-refresh-rank][${requestId}] ranked userId="${row.userId}" candidates=${result.candidates} selected=${result.selected} totalCap=${result.totalCap} status="${result.status}"`
+          `[rss-refresh-rank][${requestId}] ranked userId="${row.userId}" candidates=${result.candidates} selected=${result.selected} totalCap=${result.totalCap} status="${result.status}" skipped=${result.skipped}`
         );
       } catch (error) {
         const message = `${row.userId}: ${error instanceof Error ? error.message : "Unknown error"}`;
@@ -148,7 +189,7 @@ export async function GET(req: Request) {
     }
 
     console.info(
-      `[rss-refresh-rank][${requestId}] completed day="${dayKey}" syncedSources=${syncedSources} syncInserted=${syncInserted} syncUpdated=${syncUpdated} rankedUsers=${rankedUsers} syncErrors=${syncErrors.length} rankErrors=${rankErrors.length}`
+      `[rss-refresh-rank][${requestId}] completed day="${dayKey}" syncedSources=${syncedSources} syncInserted=${syncInserted} syncUpdated=${syncUpdated} rankedUsers=${rankedUsers} skippedUsers=${skippedUsers} syncErrors=${syncErrors.length} rankErrors=${rankErrors.length}`
     );
 
     return NextResponse.json({
@@ -158,6 +199,7 @@ export async function GET(req: Request) {
       syncInserted,
       syncUpdated,
       rankedUsers,
+      skippedUsers,
       syncErrors,
       rankErrors,
       rankSummaries: rankSummaries.slice(0, 20),
