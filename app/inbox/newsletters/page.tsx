@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { InboxFilters, type InboxViewMode, toDayOptions } from "../components/FilterPills";
 import { FeedList } from "../components/FeedList";
+import { FeedDeck } from "../components/FeedDeck";
+import { useUiMode } from "@/app/components/UiModeToggle";
 import { CatchUpOlderButton, ShowEarlierButton } from "../components/FeedControls";
 import { InboxHeader } from "../components/InboxHeader";
 import { InboxModeTabs } from "../components/InboxModeTabs";
@@ -39,6 +41,7 @@ export default function NewslettersInboxPage() {
   const [savedById, setSavedById] = useState<Record<string, boolean>>(() =>
     readMapFromStorage<boolean>("nr_saved_items_map")
   );
+  const [uiMode, setUiMode] = useUiMode();
   const router = useRouter();
 
   useEffect(() => {
@@ -186,6 +189,7 @@ export default function NewslettersInboxPage() {
     onOpen: markInProgress,
     onToggleRead: toggleRead,
     onToggleSaved: toggleSaved,
+    enabled: uiMode === "list",
   });
 
   useEffect(() => {
@@ -211,6 +215,8 @@ export default function NewslettersInboxPage() {
         userEmail={session.user?.email}
         q={q}
         onQueryChange={setQ}
+        uiMode={uiMode}
+        onUiModeChange={setUiMode}
       />
 
       <InboxFilters
@@ -229,7 +235,7 @@ export default function NewslettersInboxPage() {
         }}
       />
 
-      {viewMode === "all" && !selectedDay && (
+      {viewMode === "all" && !selectedDay && uiMode === "list" && (
         <ShowEarlierButton
           hiddenCount={dailyEdition.hiddenEarlierCount}
           showingAll={showAllEarlier}
@@ -248,20 +254,34 @@ export default function NewslettersInboxPage() {
         </div>
       )}
 
-      {!isLoading && (
-        <FeedList
-          grouped={grouped}
-          ordered={ordered}
-          selectedIndex={activeSelectedIndex}
-          statusById={statusById}
-          savedById={savedById}
-          onOpen={markInProgress}
-          onMarkRead={markRead}
-          onToggleSaved={toggleSaved}
-        />
-      )}
+      {!isLoading &&
+        (uiMode === "cards" ? (
+          <FeedDeck
+            ordered={ordered}
+            statusById={statusById}
+            savedById={savedById}
+            onOpen={markInProgress}
+            onMarkRead={markRead}
+            onToggleRead={toggleRead}
+            onToggleSaved={toggleSaved}
+            onExitDeck={() => setUiMode("list")}
+          />
+        ) : (
+          <FeedList
+            grouped={grouped}
+            ordered={ordered}
+            selectedIndex={activeSelectedIndex}
+            statusById={statusById}
+            savedById={savedById}
+            onOpen={markInProgress}
+            onMarkRead={markRead}
+            onToggleSaved={toggleSaved}
+          />
+        ))}
 
-      {viewMode === "all" && <CatchUpOlderButton count={olderUnreadIds.length} onClick={catchUpOlder} />}
+      {viewMode === "all" && uiMode === "list" && (
+        <CatchUpOlderButton count={olderUnreadIds.length} onClick={catchUpOlder} />
+      )}
     </main>
   );
 }

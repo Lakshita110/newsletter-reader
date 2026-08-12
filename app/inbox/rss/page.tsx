@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { InboxFilters, type InboxViewMode, toDayOptions } from "../components/FilterPills";
 import { FeedList } from "../components/FeedList";
+import { FeedDeck } from "../components/FeedDeck";
+import { useUiMode } from "@/app/components/UiModeToggle";
 import { CatchUpOlderButton, OverflowSources, ShowEarlierButton } from "../components/FeedControls";
 import { InboxHeader } from "../components/InboxHeader";
 import { InboxModeTabs } from "../components/InboxModeTabs";
@@ -84,6 +86,7 @@ export default function RssInboxPage() {
   const [rankingPending, setRankingPending] = useState(false);
   const [rankedAt, setRankedAt] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [uiMode, setUiMode] = useUiMode();
   const [isSyncingRss, setIsSyncingRss] = useState(false);
   const [rssSyncNotice, setRssSyncNotice] = useState<string | null>(null);
   const [manualSyncedIds, setManualSyncedIds] = useState<string[]>([]);
@@ -377,6 +380,7 @@ export default function RssInboxPage() {
     onToggleRead: toggleRead,
     onToggleSaved: toggleSaved,
     onDelete: deleteItem,
+    enabled: uiMode === "list",
   });
 
   const catchUpOlder = useCallback(() => {
@@ -429,6 +433,8 @@ export default function RssInboxPage() {
           { label: "Manage feeds", href: "/rss/settings" },
           { label: "Manage recommendations", href: "/rss/settings/recommendations" },
         ]}
+        uiMode={uiMode}
+        onUiModeChange={setUiMode}
       />
 
       <InboxFilters
@@ -502,7 +508,7 @@ export default function RssInboxPage() {
         </div>
       )}
 
-      {viewMode === "all" && !selectedDay && !isSourceFocused && (
+      {viewMode === "all" && !selectedDay && !isSourceFocused && uiMode === "list" && (
         <ShowEarlierButton
           hiddenCount={dailyEdition.hiddenEarlierCount}
           showingAll={showAllEarlier}
@@ -510,7 +516,7 @@ export default function RssInboxPage() {
         />
       )}
 
-      {overflowBySource.length > 0 && !selectedDay && !isSourceFocused && viewMode === "all" && (
+      {overflowBySource.length > 0 && !selectedDay && !isSourceFocused && viewMode === "all" && uiMode === "list" && (
         <OverflowSources entries={overflowBySource} />
       )}
 
@@ -525,22 +531,38 @@ export default function RssInboxPage() {
         </div>
       )}
 
-      {!isLoading && (
-        <FeedList
-          grouped={grouped}
-          ordered={ordered}
-          selectedIndex={activeSelectedIndex}
-          statusById={statusById}
-          savedById={savedById}
-          rankReasons={rankReasons}
-          onOpen={markInProgress}
-          onMarkRead={markRead}
-          onToggleSaved={toggleSaved}
-          onDelete={deleteItem}
-        />
-      )}
+      {!isLoading &&
+        (uiMode === "cards" ? (
+          <FeedDeck
+            ordered={ordered}
+            statusById={statusById}
+            savedById={savedById}
+            rankReasons={rankReasons}
+            onOpen={markInProgress}
+            onMarkRead={markRead}
+            onToggleRead={toggleRead}
+            onToggleSaved={toggleSaved}
+            onDelete={deleteItem}
+            onExitDeck={() => setUiMode("list")}
+          />
+        ) : (
+          <FeedList
+            grouped={grouped}
+            ordered={ordered}
+            selectedIndex={activeSelectedIndex}
+            statusById={statusById}
+            savedById={savedById}
+            rankReasons={rankReasons}
+            onOpen={markInProgress}
+            onMarkRead={markRead}
+            onToggleSaved={toggleSaved}
+            onDelete={deleteItem}
+          />
+        ))}
 
-      {viewMode === "all" && <CatchUpOlderButton count={olderUnreadIds.length} onClick={catchUpOlder} />}
+      {viewMode === "all" && uiMode === "list" && (
+        <CatchUpOlderButton count={olderUnreadIds.length} onClick={catchUpOlder} />
+      )}
     </main>
   );
 }

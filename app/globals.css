@@ -858,3 +858,217 @@ button.filter-select {
 .feed-loading-row .skeleton-inline {
   border-radius: 4px;
 }
+
+/* ---- Swipe card deck (optional mobile feed layout) ---- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ui-mode-toggle {
+  display: inline-flex;
+  border: 1px solid var(--faint);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.ui-mode-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 5px 12px;
+  min-height: 30px;
+  cursor: pointer;
+}
+
+.ui-mode-btn.active {
+  background: var(--surface-accent-soft);
+  color: var(--accent-blue);
+  font-weight: 600;
+}
+
+.feed-deck {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.feed-deck-progress {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.4px;
+}
+
+/* Both cards share one grid cell so the peeked card behind always matches the
+   front card's height instead of poking out below it. */
+.feed-deck-stage {
+  display: grid;
+  min-height: 340px;
+}
+
+.feed-deck-stage > .feed-deck-card {
+  grid-area: 1 / 1;
+}
+
+/* A card being dragged or flung leaves the layout box; clip horizontally so it
+   never adds a page-wide scroll axis. `clip` (not `hidden`) avoids creating a
+   scroll container that would break sticky/scroll behaviour elsewhere. */
+body:has(.feed-deck) {
+  overflow-x: clip;
+}
+
+.feed-deck-card {
+  border: 1px solid var(--faint);
+  border-radius: 16px;
+  background: var(--surface);
+  padding: 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.feed-deck-card-behind {
+  transform: scale(0.96) translateY(10px);
+  opacity: 0.55;
+  overflow: hidden;
+}
+
+.feed-deck-card-front {
+  position: relative;
+  /* Stop the browser from claiming the vertical pan so up/down swipes work. */
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  z-index: 1;
+  will-change: transform;
+}
+
+.feed-deck-card-front:active {
+  cursor: grabbing;
+}
+
+.feed-deck-hints {
+  position: absolute;
+  inset: 12px;
+  pointer-events: none;
+}
+
+.feed-deck-hint {
+  position: absolute;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-blue);
+  color: var(--accent-blue);
+  background: var(--surface-accent-soft);
+  transition: opacity 90ms linear;
+}
+
+.feed-deck-hint.hint-save { top: 0; right: 0; }
+.feed-deck-hint.hint-read { top: 0; left: 0; }
+.feed-deck-hint.hint-open { top: 0; left: 50%; transform: translateX(-50%); }
+.feed-deck-hint.hint-skip { bottom: 0; left: 50%; transform: translateX(-50%); }
+
+.feed-deck-meta {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.4px;
+}
+
+.feed-deck-image {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--faint);
+}
+
+.feed-deck-subject {
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: -0.2px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.feed-deck-snippet {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.feed-deck-swipe-legend {
+  margin: auto 0 0;
+  padding-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+.feed-deck-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.feed-deck-actions .feed-item-action-btn {
+  font-size: 13px;
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid var(--faint);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.feed-deck-actions .feed-item-action-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.feed-deck-empty {
+  border: 1px dashed var(--faint);
+  border-radius: 16px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.feed-deck-empty-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.feed-deck-empty-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feed-deck-card-front {
+    transition: none !important;
+  }
+}

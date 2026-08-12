@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { signOut } from "next-auth/react";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
+import { UiModeToggle, useIsMobileViewport, type UiMode } from "@/app/components/UiModeToggle";
 
 type Props = {
   todayCount: number;
@@ -13,6 +14,8 @@ type Props = {
   q: string;
   onQueryChange: (value: string) => void;
   profileLinks?: { label: string; href: string }[];
+  uiMode?: UiMode;
+  onUiModeChange?: (mode: UiMode) => void;
 };
 
 export function InboxHeader({
@@ -23,7 +26,10 @@ export function InboxHeader({
   q,
   onQueryChange,
   profileLinks = [],
+  uiMode,
+  onUiModeChange,
 }: Props) {
+  const isMobileViewport = useIsMobileViewport();
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
@@ -141,7 +147,7 @@ export function InboxHeader({
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <input
           value={q}
           onChange={(e) => onQueryChange(e.target.value)}
@@ -157,6 +163,10 @@ export function InboxHeader({
             outline: "none",
           }}
         />
+        {/* Card mode is a phone affordance, so the switch only appears there. */}
+        {uiMode && onUiModeChange && isMobileViewport && (
+          <UiModeToggle uiMode={uiMode} onChange={onUiModeChange} />
+        )}
       </div>
 
       {showShortcuts && (

@@ -1,17 +1,8 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { formatDateTime } from "../lib/date";
+import { summarizeSnippet } from "../lib/text";
 import type { EnrichedInboxItem, FeedReadStatus, GroupedInboxItems } from "../types";
-
-function summarizeSnippet(snippet: string): string {
-  const normalized = snippet.replace(/\s+/g, " ").trim();
-  if (!normalized) return "";
-
-  const firstSentence = normalized.split(/(?<=[.!?])\s+/)[0] ?? normalized;
-  const maxChars = 170;
-  if (firstSentence.length <= maxChars) return firstSentence;
-  return `${firstSentence.slice(0, maxChars).trimEnd()}...`;
-}
 
 function categoryToneClass(value: string | null | undefined): string {
   const key = (value ?? "other").toLowerCase();
