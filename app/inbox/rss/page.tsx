@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import { InboxFilters, type InboxViewMode, toDayOptions } from "../components/FilterPills";
 import { FeedList } from "../components/FeedList";
 import { FeedDeck } from "../components/FeedDeck";
-import { useUiMode } from "@/app/components/UiModeToggle";
+import { UiModeToggle, useUiMode } from "@/app/components/UiModeToggle";
 import { CatchUpOlderButton, OverflowSources, ShowEarlierButton } from "../components/FeedControls";
 import { InboxHeader } from "../components/InboxHeader";
 import { InboxModeTabs } from "../components/InboxModeTabs";
@@ -413,91 +413,99 @@ export default function RssInboxPage() {
 
   return (
     <main style={{ maxWidth: 768, margin: "44px auto", padding: "0 24px 20px" }}>
-      <InboxModeTabs mode="rss" />
-      <InboxHeader
-        todayCount={todayStats.totalToday}
-        isLoading={isLoading}
-        mode="rss"
-        userEmail={session.user?.email}
-        q={q}
-        onQueryChange={setQ}
-        profileLinks={[
-          { label: "Manage feeds", href: "/rss/settings" },
-          { label: "Manage recommendations", href: "/rss/settings/recommendations" },
-        ]}
-        uiMode={uiMode}
-        onUiModeChange={setUiMode}
-      />
-
-      <InboxFilters
-        viewMode={viewMode}
-        modeOrder={modeOrder}
-        onViewModeChange={(mode) => {
-          setViewMode(mode);
-          if (mode === "recommended") {
-            setSelectedPub(null);
-            setSelectedCategory(null);
-            setSelectedDay(null);
-          }
-        }}
-        selectedPub={selectedPub}
-        selectedCategory={selectedCategory}
-        selectedDay={selectedDay}
-        publicationOptions={publications.map((p) => ({ key: p.key, label: p.name }))}
-        categoryOptions={categories.map((c) => ({
-          key: c.key,
-          label: c.key === "uncategorized" ? "Uncategorized" : getRssCategoryLabel(c.key),
-        }))}
-        dayOptions={toDayOptions(days)}
-        onPublicationChange={setSelectedPub}
-        onCategoryChange={setSelectedCategory}
-        onDayChange={setSelectedDay}
-        rightAction={
-          <button
-            type="button"
-            onClick={syncRssFeeds}
-            disabled={isSyncingRss}
-            className="filter-action-btn"
-            title="Sync RSS feeds now"
-            style={{ gap: 6 }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M23 4v6h-6" />
-              <path d="M1 20v-6h6" />
-              <path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10" />
-              <path d="M20.49 15a9 9 0 0 1-14.13 3.36L1 14" />
-            </svg>
-            <span>{isSyncingRss ? "Syncing..." : "Sync feed"}</span>
-          </button>
-        }
-      />
-
-      {rssSyncNotice && <div style={{ margin: "-8px 0 14px", color: "var(--muted)", fontSize: 12 }}>{rssSyncNotice}</div>}
-      {viewMode === "recommended" && rankedAt && (
-        <div style={{ margin: "-8px 0 14px", color: "var(--muted)", fontSize: 12 }}>
-          {`Last ranked ${formatRankedAgo(rankedAt)}.`}
+      {uiMode === "cards" ? (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          <UiModeToggle uiMode={uiMode} onChange={setUiMode} />
         </div>
-      )}
-      {readStreak && (readStreak.streak > 0 || readStreak.weeklyCount > 0) && (
-        <div style={{ margin: "-8px 0 14px", fontSize: 12, color: "var(--muted)", display: "flex", gap: 12, flexWrap: "wrap" }}>
-          {readStreak.streak > 0 && (
-            <span title={`${readStreak.streak}-day reading streak`}>
-              {readStreak.streak >= 7 ? "🔥" : "📖"} {readStreak.streak}d streak
-            </span>
+      ) : (
+        <>
+          <InboxModeTabs mode="rss" />
+          <InboxHeader
+            todayCount={todayStats.totalToday}
+            isLoading={isLoading}
+            mode="rss"
+            userEmail={session.user?.email}
+            q={q}
+            onQueryChange={setQ}
+            profileLinks={[
+              { label: "Manage feeds", href: "/rss/settings" },
+              { label: "Manage recommendations", href: "/rss/settings/recommendations" },
+            ]}
+            uiMode={uiMode}
+            onUiModeChange={setUiMode}
+          />
+
+          <InboxFilters
+            viewMode={viewMode}
+            modeOrder={modeOrder}
+            onViewModeChange={(mode) => {
+              setViewMode(mode);
+              if (mode === "recommended") {
+                setSelectedPub(null);
+                setSelectedCategory(null);
+                setSelectedDay(null);
+              }
+            }}
+            selectedPub={selectedPub}
+            selectedCategory={selectedCategory}
+            selectedDay={selectedDay}
+            publicationOptions={publications.map((p) => ({ key: p.key, label: p.name }))}
+            categoryOptions={categories.map((c) => ({
+              key: c.key,
+              label: c.key === "uncategorized" ? "Uncategorized" : getRssCategoryLabel(c.key),
+            }))}
+            dayOptions={toDayOptions(days)}
+            onPublicationChange={setSelectedPub}
+            onCategoryChange={setSelectedCategory}
+            onDayChange={setSelectedDay}
+            rightAction={
+              <button
+                type="button"
+                onClick={syncRssFeeds}
+                disabled={isSyncingRss}
+                className="filter-action-btn"
+                title="Sync RSS feeds now"
+                style={{ gap: 6 }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M23 4v6h-6" />
+                  <path d="M1 20v-6h6" />
+                  <path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10" />
+                  <path d="M20.49 15a9 9 0 0 1-14.13 3.36L1 14" />
+                </svg>
+                <span>{isSyncingRss ? "Syncing..." : "Sync feed"}</span>
+              </button>
+            }
+          />
+
+          {rssSyncNotice && <div style={{ margin: "-8px 0 14px", color: "var(--muted)", fontSize: 12 }}>{rssSyncNotice}</div>}
+          {viewMode === "recommended" && rankedAt && (
+            <div style={{ margin: "-8px 0 14px", color: "var(--muted)", fontSize: 12 }}>
+              {`Last ranked ${formatRankedAgo(rankedAt)}.`}
+            </div>
           )}
-          <span style={{ color: readStreak.weeklyCount >= readStreak.weeklyGoal ? "var(--accent-blue, #2563eb)" : "var(--muted)" }}>
-            {readStreak.weeklyCount}/{readStreak.weeklyGoal} days this week
-          </span>
-        </div>
-      )}
-      {isServerSearchActive && (
-        <div style={{ margin: "-6px 0 14px", color: "var(--muted)", fontSize: 12 }}>
-          {isSearching
-            ? "Searching RSS articles..."
-            : searchError
-              ? searchError
-              : `Showing ${searchItems.length} search result${searchItems.length === 1 ? "" : "s"}.`}
-        </div>
+          {readStreak && (readStreak.streak > 0 || readStreak.weeklyCount > 0) && (
+            <div style={{ margin: "-8px 0 14px", fontSize: 12, color: "var(--muted)", display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {readStreak.streak > 0 && (
+                <span title={`${readStreak.streak}-day reading streak`}>
+                  {readStreak.streak >= 7 ? "🔥" : "📖"} {readStreak.streak}d streak
+                </span>
+              )}
+              <span style={{ color: readStreak.weeklyCount >= readStreak.weeklyGoal ? "var(--accent-blue, #2563eb)" : "var(--muted)" }}>
+                {readStreak.weeklyCount}/{readStreak.weeklyGoal} days this week
+              </span>
+            </div>
+          )}
+          {isServerSearchActive && (
+            <div style={{ margin: "-6px 0 14px", color: "var(--muted)", fontSize: 12 }}>
+              {isSearching
+                ? "Searching RSS articles..."
+                : searchError
+                  ? searchError
+                  : `Showing ${searchItems.length} search result${searchItems.length === 1 ? "" : "s"}.`}
+            </div>
+          )}
+        </>
       )}
 
       {viewMode === "all" && !selectedDay && !isSourceFocused && uiMode === "list" && (

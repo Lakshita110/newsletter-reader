@@ -98,8 +98,8 @@ export function FeedDeck({
 
   /** Run the action a direction maps to, then move the deck forward. */
   const commitSwipe = useCallback(
-    (direction: SwipeDirection, id: string) => {
-      const action = actionForSwipe(direction, id);
+    (direction: SwipeDirection, item: EnrichedInboxItem) => {
+      const action = actionForSwipe(direction, item.id);
 
       switch (action.kind) {
         case "toggleSaved":
@@ -115,6 +115,12 @@ export function FeedDeck({
           setAnnouncement("Marked read");
           break;
         case "open":
+          // Swipe up reads the source, not the internal detail view.
+          if (item.externalUrl) {
+            openExternal(item.externalUrl);
+            setAnnouncement("Opened full article");
+            break;
+          }
           openItem(action.id);
           return; // navigating away; don't advance the deck
         case "skip":
@@ -124,18 +130,18 @@ export function FeedDeck({
 
       setIndex((prev) => advanceIndex(prev, ordered.length));
     },
-    [onMarkRead, onToggleSaved, openItem, ordered.length, savedById]
+    [onMarkRead, onToggleSaved, openExternal, openItem, ordered.length, savedById]
   );
 
   /** Animate the card off-screen, then commit. */
   const flyOut = useCallback(
-    (direction: SwipeDirection, id: string) => {
+    (direction: SwipeDirection, item: EnrichedInboxItem) => {
       if (exiting) return;
       setDrag(null);
       setExiting(direction);
       exitTimer.current = setTimeout(() => {
         setExiting(null);
-        commitSwipe(direction, id);
+        commitSwipe(direction, item);
       }, EXIT_MS);
     },
     [commitSwipe, exiting]
@@ -177,7 +183,7 @@ export function FeedDeck({
       return;
     }
 
-    flyOut(direction, current.id);
+    flyOut(direction, current);
   };
 
   // Same letters as useFeedKeyboardNavigation so muscle memory carries over.
@@ -252,7 +258,6 @@ export function FeedDeck({
 
   const status = statusById[current.id] ?? "unread";
   const isRead = status === "read";
-  const isSaved = savedById?.[current.id] === true;
   const rankReason = rankReasons?.[current.id];
   const dx = drag?.dx ?? 0;
   const dy = drag?.dy ?? 0;
@@ -352,54 +357,9 @@ export function FeedDeck({
           {current.snippet && <p className="feed-deck-snippet">{summarizeSnippet(current.snippet, 320)}</p>}
 
           <p className="feed-deck-swipe-legend" aria-hidden="true">
-            ← Mark read · Save → · ↑ Open · ↓ Skip
+            ← Mark read · Save → · ↑ Full article · ↓ Skip
           </p>
         </article>
-      </div>
-
-      {/* Every gesture also has a button: nothing here is gesture-only. */}
-      <div className="feed-deck-actions">
-        {onToggleSaved && (
-          <button
-            type="button"
-            className="feed-item-action-btn feed-item-action-btn-saved"
-            aria-pressed={isSaved}
-            onClick={() => flyOut("right", current.id)}
-          >
-            {isSaved ? "Saved" : "Save for later"}
-          </button>
-        )}
-        <button type="button" className="feed-item-action-btn" onClick={() => flyOut("left", current.id)}>
-          {isRead ? "Next (read)" : "Mark read"}
-        </button>
-        <button type="button" className="feed-item-action-btn" onClick={() => openItem(current.id)}>
-          Open
-        </button>
-        {current.externalUrl && (
-          <button
-            type="button"
-            className="feed-item-action-btn"
-            onClick={() => openExternal(current.externalUrl as string)}
-          >
-            Full article
-          </button>
-        )}
-        {onDelete && current.sourceKind === "rss" && (
-          <button type="button" className="feed-item-action-btn" onClick={() => onDelete(current.id)}>
-            Delete
-          </button>
-        )}
-        <button type="button" className="feed-item-action-btn" onClick={() => flyOut("down", current.id)}>
-          Skip
-        </button>
-        <button
-          type="button"
-          className="feed-item-action-btn"
-          onClick={() => setIndex(retreatIndex)}
-          disabled={index === 0}
-        >
-          Back
-        </button>
       </div>
 
       <div className="sr-only" role="status" aria-live="polite">
