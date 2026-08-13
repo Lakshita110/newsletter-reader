@@ -35,6 +35,9 @@ type RankCacheEntry = {
   reason: string;
 };
 
+const DEFAULT_INTEREST_PROMPT =
+  "Prioritize personal relevance, quality, diversity, novelty, and recency. Avoid near-duplicates and politics-only lists. Include culture coverage, at least 1 strong tech item, and 1-2 deeper pieces when available.";
+
 const rankCache = new Map<string, RankCacheEntry>();
 const inFlightRankings = new Map<string, Promise<RankResult | null>>();
 let providerCooldownUntilMs = 0;
@@ -104,20 +107,17 @@ function normalizeRankToken(
   token: string | number,
   byIndex: Map<number, string>
 ): string | undefined {
-  if (typeof token === "number") {
-    const n = Math.floor(token);
-    return byIndex.get(n) ?? byIndex.get(n + 1);
-  }
+  // The model is asked for ids but sometimes echoes a list position instead.
+  // The prompt numbers candidates from 1; the n+1 lookup also tolerates a
+  // model that counted from 0.
+  const fromPosition = (n: number) => byIndex.get(n) ?? byIndex.get(n + 1);
+
+  if (typeof token === "number") return fromPosition(Math.floor(token));
 
   const trimmed = token.trim();
   const embeddedId = trimmed.match(/\brss:[A-Za-z0-9_-]+\b/)?.[0];
   if (embeddedId) return embeddedId;
-
-  const numeric = Number(trimmed);
-  if (Number.isFinite(numeric) && trimmed.match(/^\d+$/)) {
-    const n = Math.floor(numeric);
-    return byIndex.get(n) ?? byIndex.get(n + 1);
-  }
+  if (/^\d+$/.test(trimmed)) return fromPosition(Number(trimmed));
 
   return trimmed;
 }
@@ -131,16 +131,23 @@ function getCacheKey(req: RankRequest, model: string): string {
   return `${model}|${req.dayKey}|${req.cap}|${ids}|${profileHint}`;
 }
 
+/** Read a millisecond env override, ignoring unset/unparseable/sub-second values. */
+function envMs(name: string, fallbackMs: number): number {
+  const ms = Number(process.env[name] ?? fallbackMs);
+  if (!Number.isFinite(ms) || ms < 1000) return fallbackMs;
+  return ms;
+}
+
 function getCacheTtlMs(): number {
-  const ttl = Number(process.env.OPENROUTER_RANK_CACHE_TTL_MS ?? 10 * 60 * 1000);
-  if (!Number.isFinite(ttl) || ttl < 1000) return 10 * 60 * 1000;
-  return ttl;
+  return envMs("OPENROUTER_RANK_CACHE_TTL_MS", 10 * 60 * 1000);
 }
 
 function getFailureCooldownMs(): number {
-  const ms = Number(process.env.OPENROUTER_FAILURE_COOLDOWN_MS ?? 60 * 1000);
-  if (!Number.isFinite(ms) || ms < 1000) return 60 * 1000;
-  return ms;
+  return envMs("OPENROUTER_FAILURE_COOLDOWN_MS", 60 * 1000);
+}
+
+function getTimeoutMs(): number {
+  return envMs("OPENROUTER_TIMEOUT_MS", 300_000);
 }
 
 function maybeExtractResetMs(errorBody: string): number | null {
@@ -160,12 +167,6 @@ function maybeExtractResetMs(errorBody: string): number | null {
   }
 }
 
-function withTimeoutMs(): number {
-  const ms = Number(process.env.OPENROUTER_TIMEOUT_MS ?? 300000);
-  if (!Number.isFinite(ms) || ms < 1000) return 300000;
-  return ms;
-}
-
 export function withMaxTokens(cap: number): number {
   // Each pick is one {"id":"rss:x","reason":"..."} object: an id (~10 tokens),
   // a short reason (<=8 words, ~12 tokens), plus the object's own
@@ -177,13 +178,11 @@ export function withMaxTokens(cap: number): number {
 }
 
 export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult | null> {
-  if (req.cap <= 0) return { ids: [], reasons: {}, model: null };
-  if (req.items.length === 0) return { ids: [], reasons: {}, model: null };
+  if (req.cap <= 0 || req.items.length === 0) return { ids: [], reasons: {}, model: null };
 
-  // Previously skipped the AI call entirely when candidates already fit
-  // within the cap, returning every id with an empty reasons map. That meant
-  // "why?" pills never showed at all on any day the candidate pool was small
-  // — always call the ranker so every selected item gets a real reason.
+  // Note: even when the candidates already fit within the cap we still call
+  // the ranker, because the reasons it returns are what the UI's "why?" pills
+  // render — skipping the call leaves small-pool days with no reasons at all.
 
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -198,8 +197,7 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
     return null;
   }
 
-  const modelsToTry = RANKING_MODEL_CHAIN;
-  const cacheKey = getCacheKey(req, modelsToTry.join("|"));
+  const cacheKey = getCacheKey(req, RANKING_MODEL_CHAIN.join("|"));
   const cached = rankCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     console.info(
@@ -250,68 +248,53 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
       ? req.userProfile.preferenceSummary.map((x) => `- ${x}`).join("\n")
       : "- no strong preference signals yet";
 
-  const defaultInterestPrompt =
-    "Prioritize personal relevance, quality, diversity, novelty, and recency. Avoid near-duplicates and politics-only lists. Include culture coverage, at least 1 strong tech item, and 1-2 deeper pieces when available.";
   const customInterestPrompt = req.userProfile?.customPrompt?.trim();
+  const interestGuidance = customInterestPrompt
+    ? `User-stated interests: ${customInterestPrompt}`
+    : DEFAULT_INTEREST_PROMPT;
   const uniqueSourceCount = new Set(
     req.items.map((item) => item.sourceName?.trim().toLowerCase()).filter((value): value is string => Boolean(value))
   ).size;
   const targetUniqueSources = Math.min(uniqueSourceCount, Math.max(1, Math.min(req.cap, 8)));
+  const pickCount = Math.min(req.cap, req.items.length);
 
-  const prompt =
-    `Pick the best ${Math.min(req.cap, req.items.length)} RSS items for this user and order them best-to-worst.
+  const prompt = `Pick the best ${pickCount} RSS items for this user and order them best-to-worst.
 
-` +
-    `Context:
-` +
-    `day=${req.dayKey}
+Context:
+day=${req.dayKey}
 
-` +
-    `User profile:
-` +
-    `top_publications=${topPubsLine}
-` +
-    `avg_completion_pct=${req.userProfile?.avgCompletionPct ?? 0}
-` +
-    `recent_reads_7d=${req.userProfile?.recentReadCount7d ?? 0}
-` +
-    `${profileNotes}
+User profile:
+top_publications=${topPubsLine}
+avg_completion_pct=${req.userProfile?.avgCompletionPct ?? 0}
+recent_reads_7d=${req.userProfile?.recentReadCount7d ?? 0}
+${profileNotes}
 
-` +
-    `Interest guidance:
-` +
-    `${customInterestPrompt ? `User-stated interests: ${customInterestPrompt}` : defaultInterestPrompt}
+Interest guidance:
+${interestGuidance}
 
-` +
-    `Diversity guidance:
-` +
-    `Favor a varied set of publishers. Do not choose more than 1 article from the same source unless that source has a clearly stronger candidate than all others. Avoid selecting 3 or more items from the same publisher, and avoid publisher-heavy blocks such as multiple New Yorker stories in a row.
+Diversity guidance:
+Favor a varied set of publishers. Do not choose more than 1 article from the same source unless that source has a clearly stronger candidate than all others. Avoid selecting 3 or more items from the same publisher, and avoid publisher-heavy blocks such as multiple New Yorker stories in a row.
 
-` +
-    `Source coverage:
-` +
-    `Aim for at least ${targetUniqueSources} distinct sources when possible, while still prioritizing overall relevance.
+Source coverage:
+Aim for at least ${targetUniqueSources} distinct sources when possible, while still prioritizing overall relevance.
 
-` +
-    `Return exactly one line of JSON only: {"picks":[{"id":"rss:xxx","reason":"<=8 words why"}, ...]}
-` +
-    `Rules: order best-to-worst, exactly ${Math.min(req.cap, req.items.length)} picks, unique ids, every id must be from: ${validIds}. Every pick object must have both "id" and "reason" — never emit an id without its reason.
+Return exactly one line of JSON only: {"picks":[{"id":"rss:xxx","reason":"<=8 words why"}, ...]}
+Rules: order best-to-worst, exactly ${pickCount} picks, unique ids, every id must be from: ${validIds}. Every pick object must have both "id" and "reason" — never emit an id without its reason.
 
-` +
-    `Candidates:
+Candidates:
 ${candidates}`;
 
   const rankingPromise = (async (): Promise<RankResult | null> => {
     console.info(
-      `[rss-ranker] ranking start day="${req.dayKey}" cap=${req.cap} candidates=${req.items.length} models="${modelsToTry.join(",")}"`
+      `[rss-ranker] ranking start day="${req.dayKey}" cap=${req.cap} candidates=${req.items.length} models="${RANKING_MODEL_CHAIN.join(",")}"`
     );
-    const timeoutMs = withTimeoutMs();
+    const timeoutMs = getTimeoutMs();
     let content: string | null = null;
     let finishReason: string | undefined;
     let usedModel: string | null = null;
 
-    for (let attemptIndex = 0; attemptIndex < modelsToTry.length; attemptIndex++) {
-      const selectedModel = modelsToTry[attemptIndex];
+    for (let attemptIndex = 0; attemptIndex < RANKING_MODEL_CHAIN.length; attemptIndex++) {
+      const selectedModel = RANKING_MODEL_CHAIN[attemptIndex];
       const result = await openRouterChat({
         apiKey,
         model: selectedModel,
@@ -336,7 +319,7 @@ ${candidates}`;
           providerCooldownUntilMs = Date.now() + getFailureCooldownMs();
         }
         console.warn(
-          `[rss-ranker] model attempt failed model="${selectedModel}" attempt=${attemptIndex + 1}/${modelsToTry.length} status=${result.status ?? "thrown"} body="${result.errorBody.slice(0, 240)}"`
+          `[rss-ranker] model attempt failed model="${selectedModel}" attempt=${attemptIndex + 1}/${RANKING_MODEL_CHAIN.length} status=${result.status ?? "thrown"} body="${result.errorBody.slice(0, 240)}"`
         );
         continue;
       }
@@ -385,20 +368,18 @@ ${candidates}`;
     for (let i = 0; i < req.items.length; i++) {
       byIndex.set(i + 1, req.items[i].id);
     }
-    // Every entry in `deduped` came from one atomic {id, reason} pick, so ids
+    // Every entry in `resolved` came from one atomic {id, reason} pick, so ids
     // and reasons stay paired by construction — no separate recovery pass
     // that could salvage a different count of each.
-    const deduped: ParsedPick[] = [];
+    const resolved: Array<{ id: string; reason: string }> = [];
     const seenIds = new Set<string>();
     for (const pick of picks) {
       const id = normalizeRankToken(pick.rawId, byIndex);
-      if (!id) continue;
-      if (!allowed.has(id)) continue;
-      if (seenIds.has(id)) continue;
+      if (!id || !allowed.has(id) || seenIds.has(id)) continue;
       seenIds.add(id);
-      deduped.push({ rawId: id, reason: pick.reason });
+      resolved.push({ id, reason: pick.reason });
     }
-    if (deduped.length === 0) {
+    if (resolved.length === 0) {
       console.warn(
         `[rss-ranker] picks filtered out to empty set idPreview="${picks
           .slice(0, 8)
@@ -412,10 +393,10 @@ ${candidates}`;
       });
       return null;
     }
-    const limited = deduped.slice(0, req.cap);
-    const ids = limited.map((pick) => pick.rawId as string);
+    const limited = resolved.slice(0, req.cap);
+    const ids = limited.map((pick) => pick.id);
     const reasons: Record<string, string> = {};
-    for (const pick of limited) reasons[pick.rawId as string] = pick.reason;
+    for (const pick of limited) reasons[pick.id] = pick.reason;
 
     console.info(`[rss-ranker] ranking success selected=${ids.length} reasons=${Object.keys(reasons).length}`);
     const rankResult: RankResult = { ids, reasons, model: usedModel };

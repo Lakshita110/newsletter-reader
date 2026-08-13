@@ -1,15 +1,10 @@
 import { createHash } from "crypto";
 import { rankItemsForDailyCap } from "@/lib/rss-ai-ranker";
+import type { AiRankItem } from "@/lib/rss-candidates";
 import { type RssReadProfile, getUserRssReadProfile } from "@/lib/rss-read-profile";
 
-export type RankingItem = {
-  id: string;
-  title: string;
-  snippet: string;
-  author: string | null;
-  sourceName: string;
-  publishedAtIso: string;
-};
+/** Same shape the candidate builder emits; aliased so the two can't drift. */
+export type RankingItem = AiRankItem;
 
 export function buildRankInputFingerprint(
   dayKey: string,
@@ -93,8 +88,6 @@ export async function computeDailyRankedSelection(params: {
 }> {
   const normalizedPrompt = params.customPrompt?.trim() ?? "";
   const inputFingerprint = buildRankInputFingerprint(params.dayKey, params.cap, normalizedPrompt, params.rankedItems);
-  const deterministicIds =
-    params.cap <= 0 ? [] : params.rankedItems.slice(0, params.cap).map((item) => item.id);
 
   if (params.cap <= 0 || params.rankedItems.length === 0) {
     return {
@@ -107,14 +100,7 @@ export async function computeDailyRankedSelection(params: {
     };
   }
 
-  const readProfile =
-    params.readProfile ?? {
-      ...(await getUserRssReadProfile(params.userId)),
-      customPrompt: normalizedPrompt || null,
-    };
-  // Over-fetch beyond the final cap so the diversity trim below still has
-  // enough reasoned picks left to fill the cap after dropping over-
-  // represented publishers.
+  const readProfile = params.readProfile ?? (await getUserRssReadProfile(params.userId));
   const rankCap = Math.min(params.rankedItems.length, params.cap + DIVERSITY_OVERFETCH);
   const rankResult = await rankItemsForDailyCap({
     dayKey: params.dayKey,
@@ -123,31 +109,24 @@ export async function computeDailyRankedSelection(params: {
     items: params.rankedItems,
   }).catch(() => null);
 
-  const rankedIds = rankResult?.ids ?? null;
-  const reasons = rankResult?.reasons ?? {};
-  if (rankedIds && rankedIds.length > 0) {
-    // selectedIds: the AI's full ranked set, trimmed only for publisher
-    // diversity — this drives general ordering/overflow and must not shrink
-    // just because a reason is missing for some picks.
-    // recommendedIds: the subset of the trimmed set the AI actually
-    // explained. rankItemsForDailyCap now parses id+reason as one atomic
-    // pick, so every id it returns already has a reason by construction —
-    // this filter is a cheap defense-in-depth check, not the mechanism
-    // relied on to keep the two in sync.
-    const aiPicks = diversityTrim(rankedIds, params.rankedItems, params.cap);
-    const reasonedPicks = aiPicks.filter((id) => Boolean(reasons[id]));
+  if (rankResult && rankResult.ids.length > 0) {
+    // selectedIds drives general ordering/overflow, so it keeps every pick the
+    // AI made (diversity-trimmed only). recommendedIds additionally requires a
+    // reason: rankItemsForDailyCap parses id+reason as one atomic pick so they
+    // can't desync, and this filter is defense-in-depth on top of that.
+    const aiPicks = diversityTrim(rankResult.ids, params.rankedItems, params.cap);
     return {
       selectedIds: aiPicks,
-      recommendedIds: reasonedPicks,
-      rankReasons: reasons,
+      recommendedIds: aiPicks.filter((id) => Boolean(rankResult.reasons[id])),
+      rankReasons: rankResult.reasons,
       status: "AI_SUCCESS",
-      model: rankResult?.model ?? null,
+      model: rankResult.model,
       inputFingerprint,
     };
   }
 
   return {
-    selectedIds: deterministicIds,
+    selectedIds: params.rankedItems.slice(0, params.cap).map((item) => item.id),
     recommendedIds: [],
     rankReasons: {},
     status: "FALLBACK_DETERMINISTIC",

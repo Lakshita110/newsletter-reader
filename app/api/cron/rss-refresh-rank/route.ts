@@ -12,7 +12,7 @@ import {
   idsFromSnapshotJson,
   persistRankSnapshot,
   rankSnapshotExpiryUtc,
-  readValidRankSnapshot,
+  readMostRecentSnapshot,
 } from "@/lib/rank-snapshot";
 
 export const dynamic = "force-dynamic";
@@ -31,17 +31,23 @@ export async function refreshTodaySnapshotForUser(userId: string, dayKey: string
   // runs several times a day so it can pick up newly-synced articles, but
   // re-ranking on every run regardless of whether anything changed wastes a
   // call per user per run and risks a redundant call failing/downgrading
-  // and clobbering a perfectly good existing ranking.
+  // and clobbering a perfectly good existing ranking. Only a snapshot from
+  // today that hasn't expired counts as "existing" for this check — the
+  // inbox always serves readMostRecentSnapshot regardless of day or expiry,
+  // but cron's own re-rank decision still needs both.
   const inputFingerprint = buildRankInputFingerprint(dayKey, totalCap, customPrompt, aiItems);
-  const existing = await readValidRankSnapshot(userId, dayKey, new Date());
+  const latest = await readMostRecentSnapshot(userId);
+  const existing = latest && latest.dayKey === dayKey && latest.expiresAt.getTime() > Date.now() ? latest : null;
+  const keepExisting = (snapshot: NonNullable<typeof existing>) => ({
+    candidates: aiItems.length,
+    selected: idsFromSnapshotJson(snapshot.rankedItemIds).length,
+    status: snapshot.status,
+    totalCap,
+    skipped: true,
+  });
+
   if (existing && existing.inputFingerprint === inputFingerprint) {
-    return {
-      candidates: aiItems.length,
-      selected: idsFromSnapshotJson(existing.rankedItemIds).length,
-      status: existing.status,
-      totalCap,
-      skipped: true,
-    };
+    return keepExisting(existing);
   }
 
   const readProfile = await getUserRssReadProfile(userId);
@@ -60,38 +66,31 @@ export async function refreshTodaySnapshotForUser(userId: string, dayKey: string
   // AI_SUCCESS snapshot rather than emptying the Recommended tab. A later
   // cron run or on-demand request gets another chance.
   if (ranking.status !== "AI_SUCCESS" && existing?.status === "AI_SUCCESS") {
-    return {
-      candidates: aiItems.length,
-      selected: idsFromSnapshotJson(existing.rankedItemIds).length,
-      status: existing.status,
-      totalCap,
-      skipped: true,
-    };
+    return keepExisting(existing);
   }
 
-  const rankedIds = ranking.selectedIds;
-  const status: "AI_SUCCESS" | "FALLBACK_DETERMINISTIC" = ranking.status;
-  let expiresAt = rankSnapshotExpiryUtc(dayKey);
-  if (status !== "AI_SUCCESS" && totalCap > 0 && aiItems.length > 0) {
-    expiresAt = new Date(Date.now() + FALLBACK_SNAPSHOT_TTL_MS);
-  }
+  // A degraded snapshot gets a short TTL so the next request can retry sooner;
+  // an empty day has nothing to retry, so it keeps the full-day expiry.
+  const isDegraded = ranking.status !== "AI_SUCCESS" && totalCap > 0 && aiItems.length > 0;
 
   await persistRankSnapshot({
     userId,
     dayKey,
-    rankedIds,
+    rankedIds: ranking.selectedIds,
     rankReasons: ranking.rankReasons,
-    status,
+    status: ranking.status,
     source: "CRON",
     model: ranking.model,
     inputFingerprint: ranking.inputFingerprint,
-    expiresAt,
+    expiresAt: isDegraded
+      ? new Date(Date.now() + FALLBACK_SNAPSHOT_TTL_MS)
+      : rankSnapshotExpiryUtc(dayKey),
   });
 
   return {
     candidates: aiItems.length,
-    selected: rankedIds.length,
-    status,
+    selected: ranking.selectedIds.length,
+    status: ranking.status,
     totalCap,
     skipped: false,
   };
@@ -170,14 +169,7 @@ export async function GET(req: Request) {
         const result = await refreshTodaySnapshotForUser(row.userId, dayKey);
         rankedUsers += 1;
         if (result.skipped) skippedUsers += 1;
-        rankSummaries.push({
-          userId: row.userId,
-          candidates: result.candidates,
-          selected: result.selected,
-          status: result.status,
-          totalCap: result.totalCap,
-          skipped: result.skipped,
-        });
+        rankSummaries.push({ userId: row.userId, ...result });
         console.info(
           `[rss-refresh-rank][${requestId}] ranked userId="${row.userId}" candidates=${result.candidates} selected=${result.selected} totalCap=${result.totalCap} status="${result.status}" skipped=${result.skipped}`
         );
