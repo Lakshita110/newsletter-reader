@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import { InboxFilters, type InboxViewMode, toDayOptions } from "../components/FilterPills";
 import { FeedList } from "../components/FeedList";
 import { FeedDeck } from "../components/FeedDeck";
-import { useUiMode } from "@/app/components/UiModeToggle";
+import { UiModeToggle, useUiMode } from "@/app/components/UiModeToggle";
 import { CatchUpOlderButton, ShowEarlierButton } from "../components/FeedControls";
 import { InboxHeader } from "../components/InboxHeader";
 import { InboxModeTabs } from "../components/InboxModeTabs";
@@ -207,33 +207,41 @@ export default function NewslettersInboxPage() {
 
   return (
     <main style={{ maxWidth: 768, margin: "44px auto", padding: "0 24px 20px" }}>
-      <InboxModeTabs mode="newsletters" />
-      <InboxHeader
-        todayCount={todayStats.totalToday}
-        isLoading={isLoading}
-        mode="newsletters"
-        userEmail={session.user?.email}
-        q={q}
-        onQueryChange={setQ}
-        uiMode={uiMode}
-        onUiModeChange={setUiMode}
-      />
+      {uiMode === "cards" ? (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          <UiModeToggle uiMode={uiMode} onChange={setUiMode} />
+        </div>
+      ) : (
+        <>
+          <InboxModeTabs mode="newsletters" />
+          <InboxHeader
+            todayCount={todayStats.totalToday}
+            isLoading={isLoading}
+            mode="newsletters"
+            userEmail={session.user?.email}
+            q={q}
+            onQueryChange={setQ}
+            uiMode={uiMode}
+            onUiModeChange={setUiMode}
+          />
 
-      <InboxFilters
-        viewMode={viewMode}
-        modeOrder={["today", "unread", "saved", "all"]}
-        onViewModeChange={setViewMode}
-        selectedPub={selectedPub}
-        selectedCategory={null}
-        selectedDay={selectedDay}
-        publicationOptions={publications.map((p) => ({ key: p.key, label: p.name }))}
-        dayOptions={toDayOptions(days)}
-        onPublicationChange={setSelectedPub}
-        onDayChange={(key) => {
-          setSelectedDay(key);
-          if (key) setViewMode("all");
-        }}
-      />
+          <InboxFilters
+            viewMode={viewMode}
+            modeOrder={["today", "unread", "saved", "all"]}
+            onViewModeChange={setViewMode}
+            selectedPub={selectedPub}
+            selectedCategory={null}
+            selectedDay={selectedDay}
+            publicationOptions={publications.map((p) => ({ key: p.key, label: p.name }))}
+            dayOptions={toDayOptions(days)}
+            onPublicationChange={setSelectedPub}
+            onDayChange={(key) => {
+              setSelectedDay(key);
+              if (key) setViewMode("all");
+            }}
+          />
+        </>
+      )}
 
       {viewMode === "all" && !selectedDay && uiMode === "list" && (
         <ShowEarlierButton
