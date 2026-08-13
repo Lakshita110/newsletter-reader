@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildRankingCandidates } from "@/lib/rss-candidates";
 import { getGmailFeed } from "@/lib/gmail-feed";
-import { getSessionUser } from "@/lib/session-user";
+import { getSessionUserWithAccessToken } from "@/lib/session-user";
 import { getLatestRankedIds, selectRankedIds } from "@/lib/rank-snapshot";
 
 export const dynamic = "force-dynamic";
 
 async function getUserAndToken() {
-  const auth = await getSessionUser();
+  const auth = await getSessionUserWithAccessToken();
   if (!auth) return null;
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: auth.userId },
@@ -85,9 +85,6 @@ async function getRssFeed(
 export async function GET(req: Request) {
   const auth = await getUserAndToken();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!auth.accessToken) {
-    return NextResponse.json({ error: "Missing Gmail access token" }, { status: 401 });
-  }
   const url = new URL(req.url);
   const kind = url.searchParams.get("kind");
   const selectedSourceId = url.searchParams.get("sourceId");

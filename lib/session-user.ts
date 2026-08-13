@@ -31,3 +31,16 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 export async function getSessionUserId(): Promise<string | null> {
   return (await getSessionUser())?.userId ?? null;
 }
+
+export type SessionUserWithAccessToken = SessionUser & { accessToken: string };
+
+/**
+ * Like getSessionUser, but for the routes that call the Gmail API and need
+ * a usable access token — returns null (routes answer that with a 401) when
+ * signed in but the token is missing, e.g. after a failed refresh.
+ */
+export async function getSessionUserWithAccessToken(): Promise<SessionUserWithAccessToken | null> {
+  const user = await getSessionUser();
+  if (!user?.accessToken) return null;
+  return { ...user, accessToken: user.accessToken };
+}
