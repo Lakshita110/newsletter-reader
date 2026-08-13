@@ -28,16 +28,18 @@ vi.mock("@/lib/rss-read-profile", () => ({
   }),
 }));
 
-const readValidRankSnapshot = vi.fn();
+const readMostRecentSnapshot = vi.fn();
 const persistRankSnapshot = vi.fn();
 vi.mock("@/lib/rank-snapshot", async () => {
   const actual = await vi.importActual<typeof import("@/lib/rank-snapshot")>("@/lib/rank-snapshot");
   return {
     ...actual,
-    readValidRankSnapshot: (...args: unknown[]) => readValidRankSnapshot(...args),
+    readMostRecentSnapshot: (...args: unknown[]) => readMostRecentSnapshot(...args),
     persistRankSnapshot: (...args: unknown[]) => persistRankSnapshot(...args),
   };
 });
+
+const FUTURE = new Date(Date.now() + 60 * 60 * 1000);
 
 const { refreshTodaySnapshotForUser } = await import("./route");
 
@@ -57,7 +59,9 @@ describe("refreshTodaySnapshotForUser", () => {
     // Fingerprint must match what buildRankInputFingerprint(dayKey, cap, prompt, items) produces.
     const { buildRankInputFingerprint } = await import("@/lib/rss-ranking");
     const fingerprint = buildRankInputFingerprint("2026-01-01", 2, "", items);
-    readValidRankSnapshot.mockResolvedValue({
+    readMostRecentSnapshot.mockResolvedValue({
+      dayKey: "2026-01-01",
+      expiresAt: FUTURE,
       status: "AI_SUCCESS",
       inputFingerprint: fingerprint,
       rankedItemIds: ["rss:a", "rss:b"],
@@ -76,7 +80,9 @@ describe("refreshTodaySnapshotForUser", () => {
     const items = [aiItem("rss:a"), aiItem("rss:b"), aiItem("rss:c")];
     buildRankingCandidates.mockResolvedValue({ aiItems: items, totalCap: 3 });
     // Different fingerprint (existing snapshot ranked over fewer items) forces a re-rank attempt.
-    readValidRankSnapshot.mockResolvedValue({
+    readMostRecentSnapshot.mockResolvedValue({
+      dayKey: "2026-01-01",
+      expiresAt: FUTURE,
       status: "AI_SUCCESS",
       inputFingerprint: "stale-fingerprint",
       rankedItemIds: ["rss:a", "rss:b"],
@@ -103,7 +109,9 @@ describe("refreshTodaySnapshotForUser", () => {
     findUnique.mockResolvedValue({ rssRecommendationPrompt: null });
     const items = [aiItem("rss:a"), aiItem("rss:b"), aiItem("rss:c")];
     buildRankingCandidates.mockResolvedValue({ aiItems: items, totalCap: 3 });
-    readValidRankSnapshot.mockResolvedValue({
+    readMostRecentSnapshot.mockResolvedValue({
+      dayKey: "2026-01-01",
+      expiresAt: FUTURE,
       status: "AI_SUCCESS",
       inputFingerprint: "stale-fingerprint",
       rankedItemIds: ["rss:a", "rss:b"],
@@ -131,7 +139,7 @@ describe("refreshTodaySnapshotForUser", () => {
     findUnique.mockResolvedValue({ rssRecommendationPrompt: null });
     const items = [aiItem("rss:a")];
     buildRankingCandidates.mockResolvedValue({ aiItems: items, totalCap: 1 });
-    readValidRankSnapshot.mockResolvedValue(null);
+    readMostRecentSnapshot.mockResolvedValue(null);
     computeDailyRankedSelection.mockResolvedValue({
       selectedIds: ["rss:a"],
       recommendedIds: ["rss:a"],
@@ -145,5 +153,38 @@ describe("refreshTodaySnapshotForUser", () => {
 
     expect(result.skipped).toBe(false);
     expect(persistRankSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-ranks when the most recent snapshot is from a previous day, even with a matching fingerprint", async () => {
+    // readMostRecentSnapshot (unlike the old readValidRankSnapshot) isn't
+    // scoped to today's dayKey or expiry — it's whatever the inbox last
+    // served, which could be yesterday's. Cron must not mistake that for
+    // "already ranked today" just because the fingerprint happens to match.
+    findUnique.mockResolvedValue({ rssRecommendationPrompt: null });
+    const items = [aiItem("rss:a")];
+    buildRankingCandidates.mockResolvedValue({ aiItems: items, totalCap: 1 });
+    const { buildRankInputFingerprint } = await import("@/lib/rss-ranking");
+    const fingerprint = buildRankInputFingerprint("2026-01-02", 1, "", items);
+    readMostRecentSnapshot.mockResolvedValue({
+      dayKey: "2026-01-01",
+      expiresAt: FUTURE,
+      status: "AI_SUCCESS",
+      inputFingerprint: fingerprint,
+      rankedItemIds: ["rss:a"],
+    });
+    computeDailyRankedSelection.mockResolvedValue({
+      selectedIds: ["rss:a"],
+      recommendedIds: ["rss:a"],
+      rankReasons: { "rss:a": "a" },
+      status: "AI_SUCCESS",
+      model: "openai/gpt-4o-mini",
+      inputFingerprint: fingerprint,
+    });
+
+    const result = await refreshTodaySnapshotForUser("u1", "2026-01-02");
+
+    expect(result.skipped).toBe(false);
+    expect(persistRankSnapshot).toHaveBeenCalledTimes(1);
+    expect(persistRankSnapshot).toHaveBeenCalledWith(expect.objectContaining({ dayKey: "2026-01-02" }));
   });
 });
