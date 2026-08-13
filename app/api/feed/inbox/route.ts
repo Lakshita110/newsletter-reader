@@ -85,6 +85,9 @@ async function getRssFeed(
 export async function GET(req: Request) {
   const auth = await getUserAndToken();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!auth.accessToken) {
+    return NextResponse.json({ error: "Missing Gmail access token" }, { status: 401 });
+  }
   const url = new URL(req.url);
   const kind = url.searchParams.get("kind");
   const selectedSourceId = url.searchParams.get("sourceId");
