@@ -14,6 +14,8 @@ type Params = {
   onToggleSaved: (id: string) => void;
   onOpenExternal?: (url: string) => void;
   onDelete?: (id: string) => void;
+  /** Off in card mode, where FeedDeck owns the same keys. Defaults to on. */
+  enabled?: boolean;
 };
 
 export function useFeedKeyboardNavigation({
@@ -25,10 +27,13 @@ export function useFeedKeyboardNavigation({
   onToggleSaved,
   onOpenExternal,
   onDelete,
+  enabled = true,
 }: Params) {
   const router = useRouter();
 
   useEffect(() => {
+    if (!enabled) return;
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target) || ordered.length === 0) return;
 
@@ -76,6 +81,7 @@ export function useFeedKeyboardNavigation({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
     activeSelectedIndex,
+    enabled,
     onOpen,
     onOpenExternal,
     onDelete,
@@ -87,10 +93,11 @@ export function useFeedKeyboardNavigation({
   ]);
 
   useEffect(() => {
+    if (!enabled) return;
     const current = ordered[activeSelectedIndex];
     if (!current) return;
     const selector = `[data-feed-item-id="${escapeSelectorValue(current.id)}"]`;
     const el = document.querySelector<HTMLElement>(selector);
     el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [activeSelectedIndex, ordered]);
+  }, [activeSelectedIndex, enabled, ordered]);
 }
