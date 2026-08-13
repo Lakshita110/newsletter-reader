@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -25,11 +25,21 @@ export const metadata: Metadata = {
   title: "Cluck's Feed",
   description:
     "A calm, focused way to read newsletters and RSS in one keyboard-friendly inbox.",
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: "/icon.svg",
     shortcut: "/icon.svg",
-    apple: "/icon.svg",
+    apple: "/apple-touch-icon.png",
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Cluck's Feed",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0F172A",
 };
 
 export default function RootLayout({

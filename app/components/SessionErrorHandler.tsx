@@ -16,8 +16,17 @@ export function SessionErrorHandler() {
   const { data: session } = useSession();
 
   useEffect(() => {
-    if (session?.error === "RefreshAccessTokenError" || session?.error === "MissingRefreshToken") {
-      signIn("google");
+    if (session?.error === "RefreshAccessTokenError") {
+      // We already have a (now-rejected) refresh token on file, so the
+      // full consent screen isn't needed to re-establish one — Google
+      // will still issue a fresh refresh token on select_account as long
+      // as access is still granted. select_account is a much faster
+      // tap-through than the provider's default prompt=consent.
+      signIn("google", undefined, { prompt: "select_account" });
+    } else if (session?.error === "MissingRefreshToken") {
+      // No refresh token was ever captured for this session, so we must
+      // force the full consent screen to guarantee Google issues one.
+      signIn("google", undefined, { prompt: "consent" });
     }
   }, [session?.error]);
 
