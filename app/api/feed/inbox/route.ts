@@ -2,21 +2,25 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildRankingCandidates } from "@/lib/rss-candidates";
 import { getGmailFeed } from "@/lib/gmail-feed";
-import { getSessionUserWithAccessToken } from "@/lib/session-user";
+import { getSessionUser } from "@/lib/session-user";
 import { getLatestRankedIds, selectRankedIds } from "@/lib/rank-snapshot";
 
 export const dynamic = "force-dynamic";
 
 async function getUserAndToken() {
-  const auth = await getSessionUserWithAccessToken();
-  if (!auth) return null;
+  const sessionUser = await getSessionUser();
+  if (!sessionUser) return null;
   const user = await prisma.user.findUniqueOrThrow({
-    where: { id: auth.userId },
+    where: { id: sessionUser.userId },
     select: { rssRecommendationCap: true },
   });
   return {
-    userId: auth.userId,
-    accessToken: auth.accessToken,
+    userId: sessionUser.userId,
+    // May be undefined if the Gmail token is missing/expired — that's fine,
+    // getGmailFeed() handles a missing token on its own. RSS items don't
+    // need it at all, so the whole route shouldn't 401 just because Gmail
+    // access is unavailable.
+    accessToken: sessionUser.accessToken,
     recommendationCap: user.rssRecommendationCap,
   };
 }

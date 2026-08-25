@@ -42,12 +42,22 @@ export default function NewslettersInboxPage() {
     readMapFromStorage<boolean>("nr_saved_items_map")
   );
   const [uiMode, setUiMode] = useUiMode();
+  const [loadError, setLoadError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch("/api/feed/inbox?kind=newsletters");
+        if (!res.ok) {
+          setLoadError(
+            res.status === 401
+              ? "Signed out — sign back in to load your newsletters."
+              : `Couldn't load your newsletters (${res.status}).`
+          );
+          return;
+        }
+        setLoadError(null);
         const data = await res.json();
         setItems(Array.isArray(data?.items) ? data.items : []);
       } finally {
@@ -242,6 +252,8 @@ export default function NewslettersInboxPage() {
           />
         </>
       )}
+
+      {loadError && <div style={{ margin: "-8px 0 14px", color: "var(--danger, #d33)", fontSize: 12 }}>{loadError}</div>}
 
       {viewMode === "all" && !selectedDay && uiMode === "list" && (
         <ShowEarlierButton
