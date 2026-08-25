@@ -88,6 +88,7 @@ export default function RssInboxPage() {
   const [uiMode, setUiMode] = useUiMode();
   const [isSyncingRss, setIsSyncingRss] = useState(false);
   const [rssSyncNotice, setRssSyncNotice] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [manualSyncedIds, setManualSyncedIds] = useState<string[]>([]);
   const [readStreak, setReadStreak] = useState<{ streak: number; weeklyCount: number; weeklyGoal: number } | null>(null);
   const [statusById, setStatusById] = useState<Record<string, FeedReadStatus>>(() =>
@@ -114,6 +115,15 @@ export default function RssInboxPage() {
         : selectedSourceId;
     if (sourceFilterForApi) params.set("sourceId", sourceFilterForApi);
     const res = await fetch(`/api/feed/inbox?${params.toString()}`);
+    if (!res.ok) {
+      setLoadError(
+        res.status === 401
+          ? "Signed out — sign back in to load your feed."
+          : `Couldn't load your feed (${res.status}).`
+      );
+      return [] as InboxItem[];
+    }
+    setLoadError(null);
     const data = await res.json();
     const nextItems = Array.isArray(data?.items) ? data.items : [];
     setItems(nextItems);
@@ -478,6 +488,7 @@ export default function RssInboxPage() {
             }
           />
 
+          {loadError && <div style={{ margin: "-8px 0 14px", color: "var(--danger, #d33)", fontSize: 12 }}>{loadError}</div>}
           {rssSyncNotice && <div style={{ margin: "-8px 0 14px", color: "var(--muted)", fontSize: 12 }}>{rssSyncNotice}</div>}
           {viewMode === "recommended" && rankedAt && (
             <div style={{ margin: "-8px 0 14px", color: "var(--muted)", fontSize: 12 }}>
