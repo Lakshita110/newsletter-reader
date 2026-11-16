@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { buildRankingCandidates } from "@/lib/rss-candidates";
 import { getStoredNewsletterFeed, syncNewsletters } from "@/lib/newsletter-sync";
 import { getSavedArticleFeed } from "@/lib/saved-articles";
+import { findCoverage, htmlToPlainText, type CoverageSource } from "@/lib/coverage";
+import type { FeedItem } from "@/lib/rss-candidates";
 import { getSessionUser } from "@/lib/session-user";
 import { getLatestRankedIds, selectRankedIds } from "@/lib/rank-snapshot";
 
@@ -102,6 +104,37 @@ async function getNewsletterItems(userId: string, accessToken: string | undefine
   return getStoredNewsletterFeed(userId);
 }
 
+const COVERAGE_WINDOW_DAYS = 4;
+
+/**
+ * Mark RSS stories that a recent newsletter already covered, so Today can
+ * fold them. Failure here only loses the folding, so it logs and moves on.
+ */
+async function markCoveredStories(userId: string, items: FeedItem[]) {
+  const stories = items.filter((it) => it.sourceKind === "rss");
+  if (stories.length === 0) return;
+  try {
+    const issues = await prisma.newsletterIssue.findMany({
+      where: { userId, receivedAt: { gte: new Date(Date.now() - COVERAGE_WINDOW_DAYS * 86_400_000) } },
+      select: { gmailMessageId: true, fromName: true, subject: true, html: true, text: true },
+      orderBy: { receivedAt: "desc" },
+      take: 40,
+    });
+    const sources: CoverageSource[] = issues.map((issue) => ({
+      id: issue.gmailMessageId,
+      publicationName: issue.fromName,
+      subject: issue.subject,
+      text: issue.text ?? htmlToPlainText(issue.html ?? ""),
+    }));
+    for (const story of stories) {
+      const coverage = findCoverage(story.subject, sources);
+      if (coverage) story.coveredBy = coverage;
+    }
+  } catch (error) {
+    console.error("[rss-inbox] coverage check failed", error);
+  }
+}
+
 export async function GET(req: Request) {
   const auth = await getUserAndToken();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -128,6 +161,7 @@ export async function GET(req: Request) {
   if (selectedSourceId) items = items.filter((it) => it.sourceId === selectedSourceId);
   if (kind === "rss") items = items.filter((it) => it.sourceKind === "rss");
   if (kind === "newsletters") items = items.filter((it) => it.sourceKind === "gmail");
+  if (kind !== "newsletters") await markCoveredStories(auth.userId, items);
 
   return NextResponse.json({
     items,

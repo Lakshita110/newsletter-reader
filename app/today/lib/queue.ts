@@ -1,6 +1,6 @@
 import type { FeedReadStatus, InboxItem } from "@/app/inbox/types";
 
-export type QueueSection = "continue" | "newsletters" | "stories" | "saved";
+export type QueueSection = "continue" | "newsletters" | "stories" | "covered" | "saved";
 
 export type QueueInput = {
   items: InboxItem[];
@@ -40,7 +40,7 @@ export function buildTodayQueue({
   const time = (item: InboxItem) => new Date(item.date).getTime() || 0;
   const byNewest = (a: InboxItem, b: InboxItem) => time(b) - time(a);
 
-  const queue: TodayQueue = { continue: [], newsletters: [], stories: [], saved: [] };
+  const queue: TodayQueue = { continue: [], newsletters: [], stories: [], covered: [], saved: [] };
   const seen = new Set<string>();
 
   for (const item of [...items].sort(byNewest)) {
@@ -61,7 +61,7 @@ export function buildTodayQueue({
   }
 
   const rank = new Map(recommendedIds.map((id, i) => [id, i]));
-  queue.stories = items
+  const picked = items
     .filter(
       (item) =>
         item.sourceKind === "rss" &&
@@ -75,6 +75,10 @@ export function buildTodayQueue({
       return ra - rb || byNewest(a, b);
     })
     .slice(0, MAX_STORIES);
+  // Stories a newsletter already covered are folded away rather than
+  // dropped: still one tap away, but they don't count toward "to read".
+  queue.stories = picked.filter((item) => !item.coveredBy);
+  queue.covered = picked.filter((item) => item.coveredBy);
 
   return queue;
 }

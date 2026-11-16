@@ -20,6 +20,22 @@ function item(id: string, kind: "gmail" | "rss", date: string, extra: Partial<In
 }
 
 describe("buildTodayQueue", () => {
+  it("folds stories a newsletter already covered", () => {
+    const q = buildTodayQueue({
+      items: [
+        item("r-a", "rss", daysAgo(0), { coveredBy: { byId: "g1", publicationName: "Stratechery", subject: "x", matched: ["Nvidia", "China"] } }),
+        item("r-b", "rss", daysAgo(0)),
+      ],
+      statusById: {},
+      savedById: {},
+      recommendedIds: [],
+      now,
+    });
+    expect(q.stories.map((i) => i.id)).toEqual(["r-b"]);
+    expect(q.covered.map((i) => i.id)).toEqual(["r-a"]);
+    expect(flattenQueue(q).map((i) => i.id)).toEqual(["r-b"]);
+  });
+
   it("sorts items into continue / newsletters / stories / saved", () => {
     const items = [
       item("n-new", "gmail", daysAgo(0)),

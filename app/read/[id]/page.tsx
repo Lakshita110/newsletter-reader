@@ -8,6 +8,7 @@ import { ReaderNav } from "./components/ReaderNav";
 import { ReaderToolbar, useReaderFontSize } from "./components/ReaderToolbar";
 import { useReadingProgress } from "./lib/useReadingProgress";
 import { useHighlights } from "./lib/useHighlights";
+import { SummaryCard } from "./components/SummaryCard";
 import { HighlightList, HighlightPaintStyle, SelectionBar } from "./components/HighlightControls";
 import { toReadStatusMap, toSavedMap } from "@/app/inbox/lib/client-utils";
 import {
@@ -410,6 +411,8 @@ export default function ReadPage() {
         externalUrl={msg.externalUrl}
         backHref={backHref}
       />
+
+      <SummaryCard key={id} itemId={id} minutes={readingMinutes} />
 
       <article className="reader-content-shell" ref={articleRef}>
         <ReaderContent
