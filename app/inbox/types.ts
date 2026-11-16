@@ -1,7 +1,7 @@
 export type InboxItem = {
   id: string;
   sourceId?: string;
-  sourceKind?: "gmail" | "rss";
+  sourceKind?: "gmail" | "rss" | "web";
   subject: string;
   from: string;
   date: string;

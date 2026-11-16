@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildRankingCandidates } from "@/lib/rss-candidates";
 import { getStoredNewsletterFeed, syncNewsletters } from "@/lib/newsletter-sync";
+import { getSavedArticleFeed } from "@/lib/saved-articles";
 import { getSessionUser } from "@/lib/session-user";
 import { getLatestRankedIds, selectRankedIds } from "@/lib/rank-snapshot";
 
@@ -111,12 +112,15 @@ export async function GET(req: Request) {
   const enableRanking = !isNewsletterOnly;
   const requestTag = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
-  const [gmailItems, rss] = await Promise.all([
+  // Saved web links only belong in the combined (Today) view.
+  const includeWeb = !kind && !selectedSourceId;
+  const [gmailItems, rss, webItems] = await Promise.all([
     getNewsletterItems(auth.userId, auth.accessToken),
     getRssFeed(auth.userId, selectedSourceId, enableRanking, requestTag, auth.recommendationCap),
+    includeWeb ? getSavedArticleFeed(auth.userId) : Promise.resolve([]),
   ]);
 
-  let items = [...gmailItems, ...rss.visible].sort((a, b) => {
+  let items = [...gmailItems, ...rss.visible, ...webItems].sort((a, b) => {
     const ta = new Date(a.date).getTime();
     const tb = new Date(b.date).getTime();
     return tb - ta;

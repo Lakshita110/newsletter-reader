@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getRssCategoryLabel, RSS_CATEGORY_OPTIONS } from "@/lib/rss-categories";
 import NewsletterSendersSection from "./components/NewsletterSendersSection";
+import SaveAnywhereSection from "./components/SaveAnywhereSection";
 
 type Feed = {
   id: string;
@@ -282,13 +283,15 @@ export default function RssSettingsPage() {
               Newsletters and RSS feeds that land in your reader.
             </p>
           </div>
-          <Link href="/inbox/rss" className="back-link-muted">
-            Back to RSS inbox
+          <Link href="/today" className="back-link-muted">
+            Back to Today
           </Link>
         </div>
       </header>
 
       <NewsletterSendersSection />
+
+      <SaveAnywhereSection />
 
       <section style={{ marginBottom: 18, borderBottom: "1px solid var(--faint)", paddingBottom: 16 }}>
         <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>Add feed</div>

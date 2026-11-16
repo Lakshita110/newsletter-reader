@@ -214,9 +214,14 @@ export default function TodayPage() {
                   : `${totalToday} to read`}
           </p>
         </div>
-        <button type="button" className="today-icon-btn" onClick={() => load()} aria-label="Refresh">
-          ↻
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Link href="/save" className="today-icon-btn" aria-label="Save a link" style={{ display: "grid", placeItems: "center", textDecoration: "none" }}>
+            +
+          </Link>
+          <button type="button" className="today-icon-btn" onClick={() => load()} aria-label="Refresh">
+            ↻
+          </button>
+        </div>
       </header>
 
       {error && <div className="today-banner">{error}</div>}

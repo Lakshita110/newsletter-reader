@@ -1,6 +1,6 @@
 import type { InboxItem } from "../types";
 
-type ReadContext = { title: string; sourceKind: "gmail" | "rss"; publicationName: string };
+type ReadContext = { title: string; sourceKind: "gmail" | "rss" | "web"; publicationName: string };
 
 export function buildContextById(
   items: InboxItem[],

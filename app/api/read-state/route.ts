@@ -5,7 +5,7 @@ import { getSessionUserId } from "@/lib/session-user";
 export const dynamic = "force-dynamic";
 
 type ReadStateUpdate = "in_progress" | "read" | "unread" | "saved" | "unsaved";
-type SourceKind = "gmail" | "rss";
+type SourceKind = "gmail" | "rss" | "web";
 
 type ReadStateMetadata = {
   title?: string;
@@ -18,7 +18,7 @@ function toOptionalString(value: unknown): string | undefined {
 }
 
 function toSourceKind(value: unknown): SourceKind | undefined {
-  return value === "gmail" || value === "rss" ? value : undefined;
+  return value === "gmail" || value === "rss" || value === "web" ? value : undefined;
 }
 
 function normalizeMetadata(value: unknown): ReadStateMetadata | undefined {
