@@ -75,6 +75,35 @@ describe("refreshTodaySnapshotForUser", () => {
     expect(persistRankSnapshot).not.toHaveBeenCalled();
   });
 
+  it("Rank now retries an unchanged fallback snapshot that cron would skip", async () => {
+    findUnique.mockResolvedValue({ rssRecommendationPrompt: null });
+    const items = [aiItem("rss:a"), aiItem("rss:b")];
+    buildRankingCandidates.mockResolvedValue({ aiItems: items, totalCap: 2 });
+    const { buildRankInputFingerprint } = await import("@/lib/rss-ranking");
+    readMostRecentSnapshot.mockResolvedValue({
+      dayKey: "2026-01-01",
+      expiresAt: FUTURE,
+      status: "FALLBACK_DETERMINISTIC",
+      inputFingerprint: buildRankInputFingerprint("2026-01-01", 2, "", items),
+      rankedItemIds: ["rss:a", "rss:b"],
+    });
+    computeDailyRankedSelection.mockResolvedValue({
+      selectedIds: ["rss:b", "rss:a"],
+      recommendedIds: ["rss:b", "rss:a"],
+      rankReasons: { "rss:a": "a", "rss:b": "b" },
+      status: "AI_SUCCESS",
+      model: "m",
+      inputFingerprint: "fp",
+    });
+
+    expect((await refreshTodaySnapshotForUser("u1", "2026-01-01")).skipped).toBe(true);
+    expect(computeDailyRankedSelection).not.toHaveBeenCalled();
+
+    const onDemand = await refreshTodaySnapshotForUser("u1", "2026-01-01", "ON_DEMAND");
+    expect(onDemand).toMatchObject({ skipped: false, status: "AI_SUCCESS" });
+    expect(persistRankSnapshot).toHaveBeenCalledWith(expect.objectContaining({ source: "ON_DEMAND" }));
+  });
+
   it("never downgrades an existing AI_SUCCESS snapshot to a fallback re-rank result", async () => {
     findUnique.mockResolvedValue({ rssRecommendationPrompt: null });
     const items = [aiItem("rss:a"), aiItem("rss:b"), aiItem("rss:c")];

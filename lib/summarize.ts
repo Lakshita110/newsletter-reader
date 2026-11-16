@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { htmlToPlainText } from "@/lib/coverage";
-import { openRouterChat, RANKING_MODEL_CHAIN } from "@/lib/openrouter";
+import { FAST_MODEL_CHAIN, SMART_MODEL_CHAIN, openRouterChat } from "@/lib/openrouter";
 import { WEB_ID_PREFIX } from "@/lib/saved-articles";
 
 /** Enough for the gist of a long essay while keeping each call well under a cent. */
@@ -27,6 +27,17 @@ async function getItemText(userId: string, itemId: string): Promise<{ title: str
   return issue ? { title: issue.subject, text: issue.text ?? htmlToPlainText(issue.html ?? "") } : null;
 }
 
+/**
+ * Deep dives (Stratechery, Pragmatic Engineer, long Substack essays) are where
+ * a small model's summary turns into vague filler, and they're also the
+ * pieces most worth summarizing. Short news items are fine on the fast tier.
+ */
+export const LONG_READ_WORDS = 2000;
+
+export function summaryModelChain(wordCount: number): string[] {
+  return wordCount >= LONG_READ_WORDS ? SMART_MODEL_CHAIN : FAST_MODEL_CHAIN;
+}
+
 export function buildSummaryPrompt(title: string, text: string) {
   return [
     {
@@ -50,9 +61,10 @@ export async function getOrCreateSummary(userId: string, itemId: string) {
   if (!apiKey) throw new SummaryError("Summaries need OPENROUTER_API_KEY to be set", 503);
   const item = await getItemText(userId, itemId);
   if (!item) throw new SummaryError("Item not found", 404);
-  if (item.text.trim().split(/\s+/).length < 120) throw new SummaryError("Too short to summarize", 422);
+  const wordCount = item.text.trim().split(/\s+/).length;
+  if (wordCount < 120) throw new SummaryError("Too short to summarize", 422);
 
-  for (const model of RANKING_MODEL_CHAIN) {
+  for (const model of summaryModelChain(wordCount)) {
     const result = await openRouterChat({
       apiKey,
       model,

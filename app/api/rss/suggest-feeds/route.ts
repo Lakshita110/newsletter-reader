@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserRssReadProfile } from "@/lib/rss-read-profile";
-import { RANKING_MODEL, openRouterChat } from "@/lib/openrouter";
+import { SMART_MODEL_CHAIN, openRouterChatWithFallback } from "@/lib/openrouter";
 import { getSessionUserId } from "@/lib/session-user";
 import { normalizeRssCategory, RSS_CATEGORY_OPTIONS } from "@/lib/rss-categories";
 
@@ -56,9 +56,10 @@ Rules:
 - reason must be specific to their profile, not generic
 - Return only the JSON array, no prose`;
 
-  const result = await openRouterChat({
+  const result = await openRouterChatWithFallback({
     apiKey,
-    model: RANKING_MODEL,
+    models: SMART_MODEL_CHAIN,
+    logTag: "suggest-feeds",
     maxTokens: 1024,
     timeoutMs: 30000,
     temperature: 0.4,

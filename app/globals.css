@@ -1185,6 +1185,33 @@ body:has(.feed-deck) {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.today-row-why {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--accent-blue);
+  line-height: 1.35;
+}
+.today-rank-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  margin: -2px 2px 6px;
+}
+.today-rank-status button {
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent-blue);
+  background: none;
+  border: 1px solid var(--faint);
+  border-radius: 999px;
+  padding: 3px 10px;
+  min-height: 28px;
+}
+.today-rank-status button:disabled { opacity: 0.6; }
+.today-rank-error { flex-basis: 100%; color: #c0392b; }
 .today-empty { margin: 40px 0; text-align: center; color: var(--muted); }
 .today-hint { text-align: center; font-size: 12px; color: var(--muted); margin-top: 20px; opacity: 0.8; }
 .today-toast {

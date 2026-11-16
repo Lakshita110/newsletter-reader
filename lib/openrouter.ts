@@ -5,11 +5,35 @@
  * exactly once.
  */
 
-// The model chain is pinned in code by design: env-based model selection was
-// dropped so a misconfigured deployment can neither swap the chain nor
-// truncate it. Models are tried in order until one succeeds.
-export const RANKING_MODEL = "openai/gpt-4o-mini";
-export const RANKING_MODEL_CHAIN = [RANKING_MODEL, "google/gemini-2.0-flash-001"];
+// Model chains are pinned in code by design: env-based model selection was
+// dropped so a misconfigured deployment can neither swap a chain nor
+// truncate it. Models in a chain are tried in order until one succeeds.
+//
+// Two tiers, picked per task by how often it runs vs. how much judgment it
+// needs:
+// - FAST: cheap and quick. For high-volume or mechanical work (short
+//   summaries) where a small model is good enough.
+// - SMART: a strong model first. For low-volume calls whose output the whole
+//   day hangs on: choosing what's worth reading, profiling taste, suggesting
+//   sources, condensing long deep dives. These run a handful of times a day,
+//   so the stronger model costs a few dollars a month, not per call.
+// SMART ends with the FAST chain so an outage or a retired model id degrades
+// to the old behaviour instead of to "no ranking at all".
+export const FAST_MODEL_CHAIN = ["openai/gpt-4o-mini", "google/gemini-2.0-flash-001"];
+export const SMART_MODEL_CHAIN = ["anthropic/claude-sonnet-4.5", "openai/gpt-4.1", ...FAST_MODEL_CHAIN];
+export const RANKING_MODEL_CHAIN = SMART_MODEL_CHAIN;
+
+/** Short, human name for a model id, for "Picked by …" labels in the UI. */
+export function modelLabel(model: string | null | undefined): string | null {
+  if (!model) return null;
+  const known: Record<string, string> = {
+    "anthropic/claude-sonnet-4.5": "Claude Sonnet",
+    "openai/gpt-4.1": "GPT-4.1",
+    "openai/gpt-4o-mini": "GPT-4o mini",
+    "google/gemini-2.0-flash-001": "Gemini Flash",
+  };
+  return known[model] ?? model.split("/").pop() ?? model;
+}
 
 type OpenRouterMessage = {
   role: "system" | "user" | "assistant";
@@ -93,4 +117,32 @@ export async function openRouterChat(args: {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Try each model in `models` until one returns non-empty content. Every
+ * failed attempt is logged with its status so a retired model id or a missing
+ * credit balance shows up in the Vercel logs instead of silently degrading.
+ */
+export async function openRouterChatWithFallback(args: {
+  apiKey: string;
+  models: string[];
+  messages: OpenRouterMessage[];
+  maxTokens: number;
+  timeoutMs: number;
+  temperature?: number;
+  logTag: string;
+}): Promise<{ ok: true; content: string; model: string; finishReason?: string } | { ok: false; lastStatus: number | null }> {
+  let lastStatus: number | null = null;
+  for (const model of args.models) {
+    const result = await openRouterChat({ ...args, model });
+    if (result.ok && result.content.trim()) {
+      return { ok: true, content: result.content, model, finishReason: result.finishReason };
+    }
+    lastStatus = result.ok ? 200 : result.status;
+    console.warn(
+      `[${args.logTag}] model="${model}" failed: ${result.ok ? "empty content" : `status=${result.status ?? "thrown"} body="${result.errorBody.slice(0, 200)}"`}`
+    );
+  }
+  return { ok: false, lastStatus };
 }

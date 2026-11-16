@@ -1,8 +1,9 @@
+import { RANKING_MODEL_CHAIN } from "./openrouter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parsePicks, rankItemsForDailyCap, withMaxTokens } from "./rss-ai-ranker";
 
 // The ranker prompt asks the model to emit, per selected item, one
-// {"id":"rss:x","reason":"<=8 words"} object — an id (~10 tokens), a short
+// {"id":"rss:x","reason":"<=10 words"} object — an id (~10 tokens), a short
 // reason (~12 tokens), plus the object's own braces/keys/quoting (~14
 // tokens). If max_tokens is too small the response truncates mid-list
 // (finish_reason="length") and loses trailing picks. This guards the budget
@@ -117,7 +118,7 @@ describe("rankItemsForDailyCap", () => {
     expect(result).toEqual({
       ids: ["rss:within-cap-a"],
       reasons: { "rss:within-cap-a": "only candidate, still reasoned" },
-      model: "openai/gpt-4o-mini",
+      model: RANKING_MODEL_CHAIN[0],
     });
   });
 

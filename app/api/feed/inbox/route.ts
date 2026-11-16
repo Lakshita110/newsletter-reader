@@ -7,6 +7,7 @@ import { findCoverage, htmlToPlainText, type CoverageSource } from "@/lib/covera
 import type { FeedItem } from "@/lib/rss-candidates";
 import { getSessionUser } from "@/lib/session-user";
 import { getLatestRankedIds, selectRankedIds } from "@/lib/rank-snapshot";
+import { modelLabel } from "@/lib/openrouter";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,8 @@ async function getRssFeed(
   let recommendedIds = new Set<string>();
   let rankReasons: Record<string, string> = {};
   let rankedAt: string | null = null;
+  let rankStatus: string | null = null;
+  let rankModel: string | null = null;
   if (totalCap <= 0) {
     selectedIds = new Set();
   } else if (!enableRanking) {
@@ -54,6 +57,8 @@ async function getRssFeed(
   } else {
     const rankingResult = await getLatestRankedIds({ userId, sortedFallback, cap: totalCap });
     rankedAt = rankingResult.rankedAt;
+    rankStatus = rankingResult.status;
+    rankModel = modelLabel(rankingResult.model);
     rankReasons = rankingResult.rankReasons;
     recommendedIds = new Set(rankingResult.recommendedRankIds);
     if (rankingResult.selectedRankIds && rankingResult.selectedRankIds.length > 0) {
@@ -87,6 +92,8 @@ async function getRssFeed(
     rankReasons,
     overflowBySource: [...overflowBySource.values()].sort((a, b) => b.count - a.count),
     rankedAt,
+    rankStatus,
+    rankModel,
   };
 }
 
@@ -170,6 +177,10 @@ export async function GET(req: Request) {
       recommendedIds: rss.recommendedIds,
       rankReasons: rss.rankReasons,
       rankedAt: rss.rankedAt,
+      // Lets Today say "Picked by Claude Sonnet, 2h ago" or "not ranked yet"
+      // instead of silently showing newest-first when ranking failed.
+      rankStatus: rss.rankStatus,
+      rankModel: rss.rankModel,
     },
   });
 }

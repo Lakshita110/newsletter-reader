@@ -169,12 +169,12 @@ function maybeExtractResetMs(errorBody: string): number | null {
 
 export function withMaxTokens(cap: number): number {
   // Each pick is one {"id":"rss:x","reason":"..."} object: an id (~10 tokens),
-  // a short reason (<=8 words, ~12 tokens), plus the object's own
-  // braces/keys/quoting (~14 tokens) — call it ~36 tokens/item, plus envelope
+  // a short reason (<=10 words, ~16 tokens), plus the object's own
+  // braces/keys/quoting (~14 tokens) — call it ~40 tokens/item, plus envelope
   // headroom. Even if this runs low and truncation still happens, atomic picks
   // mean a cut tail just drops whole trailing items rather than splitting an
   // id from its reason.
-  return Math.min(4096, Math.max(512, 256 + cap * 36));
+  return Math.min(4096, Math.max(512, 256 + cap * 40));
 }
 
 export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult | null> {
@@ -217,7 +217,7 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
   const candidates = req.items
     .map((item, index) => {
       const snippetLine = item.snippet?.trim()
-        ? `snippet=${item.snippet.trim().slice(0, 150)}`
+        ? `snippet=${item.snippet.trim().slice(0, 280)}`
         : null;
       const dateLine = item.publishedAtIso
         ? `published=${item.publishedAtIso.slice(0, 10)}`
@@ -278,7 +278,10 @@ Favor a varied set of publishers. Do not choose more than 1 article from the sam
 Source coverage:
 Aim for at least ${targetUniqueSources} distinct sources when possible, while still prioritizing overall relevance.
 
-Return exactly one line of JSON only: {"picks":[{"id":"rss:xxx","reason":"<=8 words why"}, ...]}
+Quality guidance:
+Prefer original reporting and analysis over rewrites of press releases, listicles, and pieces whose snippet promises nothing specific. A reason must name what the reader gets from this particular piece (e.g. "inside look at TSMC's Arizona yields"), never a generic label like "relevant tech news".
+
+Return exactly one line of JSON only: {"picks":[{"id":"rss:xxx","reason":"<=10 words why"}, ...]}
 Rules: order best-to-worst, exactly ${pickCount} picks, unique ids, every id must be from: ${validIds}. Every pick object must have both "id" and "reason" — never emit an id without its reason.
 
 Candidates:
