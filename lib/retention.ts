@@ -137,6 +137,36 @@ async function pruneOrphanRssSources(): Promise<number> {
   return result.count;
 }
 
+function getNewsletterRetentionDays(): number {
+  const raw = Number(process.env.RETENTION_NEWSLETTER_DAYS ?? 120);
+  return Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 120;
+}
+
+/**
+ * Stored newsletter HTML is the biggest per-row cost (often 50-150 KB), so
+ * old issues are deleted unless saved. Saved issues are kept indefinitely —
+ * that is the point of saving.
+ */
+async function pruneNewslettersByAge(days: number): Promise<number> {
+  if (days <= 0) return 0;
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const deletedRows = await prisma.$queryRaw<Array<{ count: bigint | number | string }>>`
+    WITH deleted AS (
+      DELETE FROM "NewsletterIssue" n
+      WHERE n."receivedAt" < ${cutoff}
+        AND NOT EXISTS (
+          SELECT 1 FROM "MessageReadStat" m
+          WHERE m."userId" = n."userId"
+            AND m."messageExternalId" = n."gmailMessageId"
+            AND m."savedAt" IS NOT NULL
+        )
+      RETURNING 1
+    )
+    SELECT COUNT(*) AS count FROM deleted
+  `;
+  return toNumber(deletedRows[0]?.count);
+}
+
 export async function runRetentionNow() {
   const cfg = getConfig();
   const beforeDbBytes = await getDatabaseSizeBytes();
@@ -145,6 +175,8 @@ export async function runRetentionNow() {
   const rssDeletedByAge = await pruneRssByAge(cfg.rssRetentionDays);
   const rssDeletedByPerSourceCap = await pruneRssPerSource(cfg.rssMaxItemsPerSource);
   const rssSourcesDeletedOrphaned = await pruneOrphanRssSources();
+  const newsletterRetentionDays = getNewsletterRetentionDays();
+  const newslettersDeletedByAge = await pruneNewslettersByAge(newsletterRetentionDays);
 
   const rssItemsRemaining = await prisma.rssItem.count();
   const rssSourcesRemaining = await prisma.rssSource.count();
@@ -157,6 +189,8 @@ export async function runRetentionNow() {
     rssDeletedByAge,
     rssDeletedByPerSourceCap,
     rssSourcesDeletedOrphaned,
+    newsletterRetentionDays,
+    newslettersDeletedByAge,
     rssItemsRemaining,
     rssSourcesRemaining,
     dbSizeMbBefore: bytesToMb(beforeDbBytes),

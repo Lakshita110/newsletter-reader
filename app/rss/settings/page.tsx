@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getRssCategoryLabel, RSS_CATEGORY_OPTIONS } from "@/lib/rss-categories";
+import NewsletterSendersSection from "./components/NewsletterSendersSection";
 
 type Feed = {
   id: string;
@@ -276,9 +277,9 @@ export default function RssSettingsPage() {
           }}
         >
           <div>
-            <h1 className="app-page-title settings-title">RSS Feed Settings</h1>
+            <h1 className="app-page-title settings-title">Sources</h1>
             <p className="app-page-subtitle settings-subtitle">
-              Manage your sources, categories, and sync readiness.
+              Newsletters and RSS feeds that land in your reader.
             </p>
           </div>
           <Link href="/inbox/rss" className="back-link-muted">
@@ -286,6 +287,8 @@ export default function RssSettingsPage() {
           </Link>
         </div>
       </header>
+
+      <NewsletterSendersSection />
 
       <section style={{ marginBottom: 18, borderBottom: "1px solid var(--faint)", paddingBottom: 16 }}>
         <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>Add feed</div>

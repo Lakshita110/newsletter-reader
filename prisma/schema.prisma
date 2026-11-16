@@ -33,6 +33,9 @@ model User {
   rssSubscriptions         UserRssSubscription[]
   rssRankSnapshots         UserRssDailyRankSnapshot[]
   rssReadProfileSnapshot   UserRssReadProfileSnapshot?
+  newsletterSenders        NewsletterSender[]
+  newsletterIssues         NewsletterIssue[]
+  newslettersSyncedAt      DateTime?
 }
 
 model MessageReadStat {
@@ -146,4 +149,46 @@ model UserRssReadProfileSnapshot {
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([weekKey, updatedAt])
+}
+
+/// A sender the user explicitly reads. When a user has any active senders,
+/// newsletter sync matches exactly these addresses across all mail (inbox,
+/// archived, labeled) instead of guessing with the classifier over the inbox.
+model NewsletterSender {
+  id        String   @id @default(cuid())
+  userId    String
+  email     String
+  name      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, email])
+  @@index([userId, isActive])
+}
+
+/// A newsletter email copied out of Gmail so it stays readable after it ages
+/// out of the Gmail lookback window, and so the inbox doesn't need a Gmail
+/// round-trip per message on every load.
+model NewsletterIssue {
+  id             String   @id @default(cuid())
+  userId         String
+  gmailMessageId String
+  threadId       String?
+  fromEmail      String
+  fromName       String
+  publicationKey String
+  subject        String
+  snippet        String?
+  receivedAt     DateTime
+  html           String?  @db.Text
+  text           String?  @db.Text
+  webUrl         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, gmailMessageId])
+  @@index([userId, receivedAt])
 }

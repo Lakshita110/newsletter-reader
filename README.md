@@ -4,7 +4,7 @@ A focused reading app that turns your Gmail newsletters and subscribed RSS feeds
 
 ## What it does
 
-- Sign in with Google and read newsletter emails in an app UI instead of your mailbox.
+- Sign in with Google and read newsletter emails in an app UI instead of your mailbox. Pick the senders you read in Sources; each issue is copied into the database so it stays readable even after it's archived or ages out of Gmail.
 - Subscribe to RSS sources and sync recent articles into the same reading flow.
 - Track read progress and saved items across both newsletters and RSS.
 - Generate a daily RSS recommendation set with deterministic ranking plus optional AI ranking via OpenRouter.
@@ -35,13 +35,13 @@ Create `.env.local` and set at least the required values.
 | `GOOGLE_CLIENT_ID` | Yes | Google OAuth client ID for sign-in and Gmail access. |
 | `GOOGLE_CLIENT_SECRET` | Yes | Google OAuth client secret. |
 | `CRON_SECRET` | Recommended | Shared secret for protected cron/maintenance routes. |
-| `GMAIL_LOOKBACK_DAYS` | Optional | How many days of newsletter email history to fetch. |
 | `RSS_LOOKBACK_DAYS` | Optional | How many days of RSS content to retain during sync. |
 | `RSS_DAILY_TARGET_MIN` | Optional | Minimum recommended RSS items/day. |
 | `RSS_DAILY_TARGET_DEFAULT` | Optional | Default recommended RSS items/day. |
 | `RSS_DAILY_TARGET_MAX` | Optional | Maximum recommended RSS items/day. |
 | `RETENTION_RSS_DAYS` | Optional | Age-based retention limit for RSS items. |
 | `RETENTION_RSS_MAX_ITEMS_PER_SOURCE` | Optional | Per-source cap for RSS items. |
+| `RETENTION_NEWSLETTER_DAYS` | Optional | Days to keep stored newsletter issues (default 120; saved issues are kept). |
 | `OPENROUTER_API_KEY` | Optional | Enables AI-based daily RSS ranking. |
 | `OPENROUTER_TIMEOUT_MS` | Optional | Timeout for ranking requests. |
 | `OPENROUTER_RANK_CACHE_TTL_MS` | Optional | In-memory ranking cache TTL. |
