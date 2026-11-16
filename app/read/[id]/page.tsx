@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { ReaderContent } from "./components/ReaderContent";
 import { ReaderHeader } from "./components/ReaderHeader";
 import { ReaderNav } from "./components/ReaderNav";
+import { ReaderToolbar, useReaderFontSize } from "./components/ReaderToolbar";
+import { useReadingProgress } from "./lib/useReadingProgress";
 import { toReadStatusMap, toSavedMap } from "@/app/inbox/lib/client-utils";
 import {
   cleanHtml,
@@ -75,6 +77,11 @@ export default function ReadPage() {
     }
   });
   const prefetchedByIdRef = useRef<Record<string, ReadMessage>>({});
+  // Set by the Today screen so Back returns there instead of a classic inbox.
+  const [storedBackHref] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : window.localStorage.getItem("nr_reader_back")
+  );
+  const [fontSize, cycleFontSize] = useReaderFontSize();
 
   const fetchMessage = async (
     messageId: string,
@@ -279,11 +286,23 @@ export default function ReadPage() {
     return () => controller.abort();
   }, [nav?.next?.id, nav?.prev?.id, router]);
 
+  const backHref =
+    storedBackHref ?? (msg?.sourceKind === "rss" ? "/inbox/rss" : "/inbox/newsletters");
+  const progress = useReadingProgress(id, Boolean(msg));
+
+  // "Done" = mark read and move to the next thing in the queue (or back to
+  // the list when this was the last one). One thumb tap per article.
+  const doneAndNext = useCallback(() => {
+    if (!isMarkedRead) markRead();
+    const next = nav?.next;
+    if (next) router.push(`/read/${encodeURIComponent(next.id)}`);
+    else router.push(backHref);
+  }, [backHref, isMarkedRead, markRead, nav, router]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) return;
 
-      const backHref = msg?.sourceKind === "rss" ? "/inbox/rss" : "/inbox/newsletters";
       if (event.key === "b") {
         event.preventDefault();
         router.push(backHref);
@@ -330,7 +349,7 @@ export default function ReadPage() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [msg?.externalUrl, msg?.sourceKind, nav, router, toggleRead, toggleSaved]);
+  }, [backHref, msg?.externalUrl, nav, router, toggleRead, toggleSaved]);
 
   if (!id) {
     return (
@@ -350,14 +369,17 @@ export default function ReadPage() {
 
   return (
     <main
+      className="reader-main"
       style={{
         maxWidth: 680,
         margin: "56px auto",
         padding: "0 20px",
         lineHeight: 1.7,
         fontSize: 17,
+        ["--reader-font-size" as string]: `${fontSize}px`,
       }}
     >
+      <div className="reader-progress" style={{ width: `${progress.pct}%` }} aria-hidden />
       <ReaderHeader
         message={msg}
         readingMinutes={readingMinutes}
@@ -369,6 +391,7 @@ export default function ReadPage() {
         isSaved={isSaved}
         showViewControls={showViewControls}
         externalUrl={msg.externalUrl}
+        backHref={backHref}
       />
 
       <article className="reader-content-shell">
@@ -381,6 +404,22 @@ export default function ReadPage() {
       </article>
 
       <ReaderNav nav={nav} />
+
+      {progress.resumePct !== null && (
+        <button type="button" className="reader-resume" onClick={progress.resume}>
+          Resume at {Math.round(progress.resumePct)}%
+        </button>
+      )}
+
+      <ReaderToolbar
+        backHref={backHref}
+        isSaved={isSaved}
+        onToggleSaved={toggleSaved}
+        onDone={doneAndNext}
+        doneLabel={nav?.next ? "Done → Next" : "Done"}
+        externalUrl={msg.externalUrl}
+        onCycleFont={cycleFontSize}
+      />
     </main>
   );
 }

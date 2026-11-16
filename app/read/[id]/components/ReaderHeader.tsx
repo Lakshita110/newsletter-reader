@@ -13,6 +13,7 @@ export function ReaderHeader({
   isSaved,
   showViewControls,
   externalUrl,
+  backHref,
 }: {
   message: ReadMessage;
   readingMinutes: number | null;
@@ -24,9 +25,9 @@ export function ReaderHeader({
   isSaved: boolean;
   showViewControls: boolean;
   externalUrl?: string | null;
+  backHref: string;
 }) {
   const isRss = message.sourceKind === "rss";
-  const backHref = isRss ? "/inbox/rss" : "/inbox/newsletters";
   const sourceName = message.publicationName || message.from;
   const author = message.from && message.from !== sourceName ? message.from : null;
 
@@ -96,7 +97,7 @@ export function ReaderHeader({
             color: "var(--muted)",
           }}
         >
-          Back to inbox
+          {backHref.startsWith("/today") ? "Back to Today" : "Back to inbox"}
         </Link>
         <ThemeToggle />
       </div>
@@ -164,7 +165,8 @@ export function ReaderHeader({
             <div />
           )}
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {/* On phones the bottom toolbar has these actions within thumb reach. */}
+          <div className="reader-header-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {externalUrl && (
               <a
                 href={externalUrl}

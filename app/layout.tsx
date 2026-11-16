@@ -40,6 +40,9 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#0F172A",
+  // Lets content extend under the iPhone notch/home bar; the Today and
+  // reader layouts pad with env(safe-area-inset-*) to compensate.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
