@@ -38,6 +38,7 @@ model User {
   newslettersSyncedAt      DateTime?
   saveToken                String?                   @unique
   savedArticles            SavedArticle[]
+  highlights               Highlight[]
 }
 
 model MessageReadStat {
@@ -216,5 +217,27 @@ model SavedArticle {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, url])
+  @@index([userId, createdAt])
+}
+
+/// A passage highlighted in the reader, optionally with a note. Anchored by
+/// the quoted text plus a little surrounding context (not DOM offsets), so it
+/// survives re-rendering, view switches, and re-extraction of the article.
+model Highlight {
+  id              String   @id @default(cuid())
+  userId          String
+  itemId          String
+  itemTitle       String
+  publicationName String?
+  itemUrl         String?
+  quote           String   @db.Text
+  prefix          String?
+  suffix          String?
+  note            String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, itemId])
   @@index([userId, createdAt])
 }

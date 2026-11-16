@@ -7,6 +7,8 @@ import { ReaderHeader } from "./components/ReaderHeader";
 import { ReaderNav } from "./components/ReaderNav";
 import { ReaderToolbar, useReaderFontSize } from "./components/ReaderToolbar";
 import { useReadingProgress } from "./lib/useReadingProgress";
+import { useHighlights } from "./lib/useHighlights";
+import { HighlightList, HighlightPaintStyle, SelectionBar } from "./components/HighlightControls";
 import { toReadStatusMap, toSavedMap } from "@/app/inbox/lib/client-utils";
 import {
   cleanHtml,
@@ -290,6 +292,20 @@ export default function ReadPage() {
     storedBackHref ??
     (msg?.sourceKind === "web" ? "/today?tab=saved" : msg?.sourceKind === "rss" ? "/inbox/rss" : "/inbox/newsletters");
   const progress = useReadingProgress(id, Boolean(msg));
+  const articleRef = useRef<HTMLElement>(null);
+  const highlightMeta = useMemo(
+    () =>
+      msg && id
+        ? {
+            itemId: id,
+            itemTitle: msg.subject || "(No subject)",
+            publicationName: msg.publicationName ?? msg.from,
+            itemUrl: msg.externalUrl ?? null,
+          }
+        : null,
+    [id, msg]
+  );
+  const hl = useHighlights(articleRef, highlightMeta, `${id}:${activeView}:${msg ? 1 : 0}`);
 
   // "Done" = mark read and move to the next thing in the queue (or back to
   // the list when this was the last one). One thumb tap per article.
@@ -395,7 +411,7 @@ export default function ReadPage() {
         backHref={backHref}
       />
 
-      <article className="reader-content-shell">
+      <article className="reader-content-shell" ref={articleRef}>
         <ReaderContent
           message={msg}
           view={activeView}
@@ -404,7 +420,12 @@ export default function ReadPage() {
         />
       </article>
 
+      <HighlightPaintStyle />
+      <HighlightList highlights={hl.highlights} onUpdateNote={hl.updateNote} onRemove={hl.remove} />
+
       <ReaderNav nav={nav} />
+
+      {hl.selection && <SelectionBar key={`${hl.selection.start}-${hl.selection.end}`} onHighlight={hl.create} />}
 
       {progress.resumePct !== null && (
         <button type="button" className="reader-resume" onClick={progress.resume}>
