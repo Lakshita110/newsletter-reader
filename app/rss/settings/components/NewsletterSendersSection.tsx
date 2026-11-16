@@ -117,7 +117,7 @@ export default function NewsletterSendersSection() {
         <ul style={{ listStyle: "none", padding: 0, margin: "10px 0 0", display: "grid", gap: 6 }}>
           {senders.map((s) => (
             <li key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+              <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
                 {s.name ? <strong style={{ marginRight: 6 }}>{s.name}</strong> : null}
                 <span style={{ color: "var(--muted)" }}>{s.email}</span>
               </span>

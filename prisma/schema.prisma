@@ -36,6 +36,8 @@ model User {
   newsletterSenders        NewsletterSender[]
   newsletterIssues         NewsletterIssue[]
   newslettersSyncedAt      DateTime?
+  saveToken                String?                   @unique
+  savedArticles            SavedArticle[]
 }
 
 model MessageReadStat {
@@ -191,4 +193,28 @@ model NewsletterIssue {
 
   @@unique([userId, gmailMessageId])
   @@index([userId, receivedAt])
+}
+
+/// A web page saved from anywhere (share sheet, bookmarklet, paste). When the
+/// client sends the page HTML (e.g. from a logged-in browser on a paywalled
+/// site) we keep that; otherwise the server fetches the URL itself.
+model SavedArticle {
+  id          String   @id @default(cuid())
+  userId      String
+  url         String
+  title       String
+  siteName    String?
+  author      String?
+  excerpt     String?
+  imageUrl    String?
+  html        String?  @db.Text
+  text        String?  @db.Text
+  wordCount   Int      @default(0)
+  savedVia    String   @default("app")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, url])
+  @@index([userId, createdAt])
 }

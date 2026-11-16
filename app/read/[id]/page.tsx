@@ -256,12 +256,12 @@ export default function ReadPage() {
 
   const showViewControls = useMemo(() => {
     if (!msg) return false;
-    if (msg.sourceKind === "rss") return false;
+    if (msg.sourceKind !== "gmail") return false;
     const raw = msg.text || stripHtml(msg.html ?? "") || msg.snippet || "";
     return countWords(raw) > 45;
   }, [msg]);
 
-  const activeView = msg?.sourceKind === "rss" ? "clean" : view;
+  const activeView = msg?.sourceKind && msg.sourceKind !== "gmail" ? "clean" : view;
 
   const nav = useMemo(() => {
     if (!id || orderedItems.length === 0) return null;
@@ -287,7 +287,8 @@ export default function ReadPage() {
   }, [nav?.next?.id, nav?.prev?.id, router]);
 
   const backHref =
-    storedBackHref ?? (msg?.sourceKind === "rss" ? "/inbox/rss" : "/inbox/newsletters");
+    storedBackHref ??
+    (msg?.sourceKind === "web" ? "/today?tab=saved" : msg?.sourceKind === "rss" ? "/inbox/rss" : "/inbox/newsletters");
   const progress = useReadingProgress(id, Boolean(msg));
 
   // "Done" = mark read and move to the next thing in the queue (or back to

@@ -6,6 +6,7 @@ import { parseFrom } from "@/lib/from-header";
 import { getHeader } from "@/lib/newsletter-classifier";
 import { extractBodies } from "@/lib/gmail-body";
 import { getSessionUser, getSessionUserId } from "@/lib/session-user";
+import { getSavedArticleItem, WEB_ID_PREFIX } from "@/lib/saved-articles";
 
 export const dynamic = "force-dynamic";
 
@@ -160,6 +161,12 @@ export async function GET(
   const { id: rawId } = await params;
   if (!rawId) return NextResponse.json({ error: "Missing id in path" }, { status: 400 });
   const id = decodeItemId(rawId);
+
+  if (id.startsWith(WEB_ID_PREFIX)) {
+    const data = await getSavedArticleItem(auth.userId, id);
+    if (!data) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(data);
+  }
 
   if (id.startsWith("rss:")) {
     const data = await getRssItem(auth.userId, id);

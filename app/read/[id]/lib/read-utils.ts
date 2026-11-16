@@ -11,7 +11,7 @@ export type ReadMessage = {
   html?: string;
   text?: string;
   externalUrl?: string | null;
-  sourceKind?: "gmail" | "rss";
+  sourceKind?: "gmail" | "rss" | "web";
   publicationName?: string;
 };
 

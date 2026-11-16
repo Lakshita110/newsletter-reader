@@ -12,6 +12,13 @@ export default function manifest(): MetadataRoute.Manifest {
     display: "standalone",
     background_color: "#0F172A",
     theme_color: "#0F172A",
+    // Android/desktop Chrome: "Share → Cluck's Feed" opens /save with the link.
+    // (iOS doesn't support share targets; use the Shortcut from Sources.)
+    share_target: {
+      action: "/save",
+      method: "GET",
+      params: { title: "title", text: "text", url: "url" },
+    },
     shortcuts: [
       { name: "Today", url: "/today" },
       { name: "Saved", url: "/today?tab=saved" },
