@@ -288,8 +288,8 @@ export default function TodayPage() {
         <button type="button" className={tab === "saved" ? "active" : ""} onClick={() => setTab("saved")}>
           Saved
         </button>
-        <Link href="/inbox/newsletters">Newsletters</Link>
-        <Link href="/inbox/rss">News</Link>
+        <Link href="/highlights">Highlights</Link>
+        <Link href="/inbox/newsletters">Browse</Link>
         <Link href="/rss/settings">Sources</Link>
       </nav>
     </main>
