@@ -26,6 +26,8 @@ export type FeedItem = {
   isOverflow?: boolean;
   externalUrl?: string;
   imageUrl?: string;
+  /** Set when a recent newsletter already covered this story (see lib/coverage.ts). */
+  coveredBy?: { byId: string; publicationName: string; subject: string; matched: string[] };
 };
 
 type RssItemRow = {

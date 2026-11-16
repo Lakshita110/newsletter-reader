@@ -18,6 +18,7 @@ const SECTION_LABELS: Record<QueueSection, string> = {
   continue: "Continue reading",
   newsletters: "Newsletters",
   stories: "Top stories",
+  covered: "Already in your newsletters",
   saved: "Saved for later",
 };
 
@@ -107,7 +108,7 @@ export default function TodayPage() {
     [items, statusById, savedById, recommendedIds]
   );
   const ordered = useMemo(() => (tab === "saved" ? queue.saved : flattenQueue(queue)), [queue, tab]);
-  const sections: QueueSection[] = tab === "saved" ? ["saved"] : ["continue", "newsletters", "stories"];
+  const sections: QueueSection[] = tab === "saved" ? ["saved"] : ["continue", "newsletters", "stories", "covered"];
 
   // Make the top of the queue readable offline.
   const orderedIds = ordered.map((i) => i.id).join(",");
@@ -229,11 +230,7 @@ export default function TodayPage() {
       {sections.map((section) => {
         const list = queue[section];
         if (list.length === 0) return null;
-        return (
-          <section key={section} className="today-section">
-            <h2 className="today-section-title">
-              {SECTION_LABELS[section]} <span>{list.length}</span>
-            </h2>
+        const rows = (
             <ul className="today-list">
               {list.map((item) => (
                 <li key={item.id}>
@@ -252,12 +249,36 @@ export default function TodayPage() {
                         {statusById[item.id] === "in-progress" && <span className="today-dot" aria-label="In progress" />}
                       </div>
                       <div className="today-row-title">{item.subject || "(No subject)"}</div>
-                      {item.snippet && <div className="today-row-snippet">{item.snippet}</div>}
+                      {item.coveredBy ? (
+                        <div className="today-row-covered">
+                          Covered in {item.coveredBy.publicationName}: {item.coveredBy.subject}
+                        </div>
+                      ) : (
+                        item.snippet && <div className="today-row-snippet">{item.snippet}</div>
+                      )}
                     </Link>
                   </SwipeRow>
                 </li>
               ))}
             </ul>
+        );
+        if (section === "covered") {
+          // Folded by default: these overlap with something you're already reading.
+          return (
+            <details key={section} className="today-section today-fold">
+              <summary className="today-section-title">
+                {SECTION_LABELS[section]} <span>{list.length}</span>
+              </summary>
+              {rows}
+            </details>
+          );
+        }
+        return (
+          <section key={section} className="today-section">
+            <h2 className="today-section-title">
+              {SECTION_LABELS[section]} <span>{list.length}</span>
+            </h2>
+            {rows}
           </section>
         );
       })}

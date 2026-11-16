@@ -39,6 +39,7 @@ model User {
   saveToken                String?                   @unique
   savedArticles            SavedArticle[]
   highlights               Highlight[]
+  itemSummaries            ItemSummary[]
 }
 
 model MessageReadStat {
@@ -240,4 +241,18 @@ model Highlight {
 
   @@index([userId, itemId])
   @@index([userId, createdAt])
+}
+
+/// Cached on-demand summary of one item, so tapping "Summarize" twice (or on
+/// another device) never pays for a second model call.
+model ItemSummary {
+  id        String   @id @default(cuid())
+  userId    String
+  itemId    String
+  summary   String   @db.Text
+  model     String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId])
 }

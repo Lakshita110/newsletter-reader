@@ -12,6 +12,7 @@ export type InboxItem = {
   isOverflow?: boolean;
   externalUrl?: string;
   imageUrl?: string;
+  coveredBy?: { byId: string; publicationName: string; subject: string; matched: string[] };
 };
 
 export type FeedReadStatus = "unread" | "in-progress" | "read";
