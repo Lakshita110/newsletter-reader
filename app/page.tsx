@@ -7,12 +7,12 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/inbox");
+    router.replace("/today");
   }, [router]);
 
   return (
     <main style={{ padding: 24 }}>
-      <p>Redirecting to inbox...</p>
+      <p>Opening Today…</p>
     </main>
   );
 }

@@ -3,6 +3,9 @@ import Link from "next/link";
 export function InboxModeTabs({ mode }: { mode: "newsletters" | "rss" }) {
   return (
     <nav className="inbox-tabs" aria-label="Inbox sections">
+      <Link href="/today" className="inbox-tab">
+        Today
+      </Link>
       <Link
         href="/inbox/newsletters"
         className={mode === "newsletters" ? "inbox-tab active" : "inbox-tab"}

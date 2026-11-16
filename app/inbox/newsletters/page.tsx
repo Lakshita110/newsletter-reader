@@ -203,6 +203,8 @@ export default function NewslettersInboxPage() {
   });
 
   useEffect(() => {
+    // Back from the reader should return to this list, not to Today.
+    window.localStorage.removeItem("nr_reader_back");
     window.localStorage.setItem(
       "nr_ordered_items",
       JSON.stringify(ordered.map((it) => ({ id: it.id, subject: it.subject || "(No subject)" })))
