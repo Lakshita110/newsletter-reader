@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildRankingCandidates } from "@/lib/rss-candidates";
-import { getGmailFeed } from "@/lib/gmail-feed";
+import { getStoredNewsletterFeed, syncNewsletters } from "@/lib/newsletter-sync";
 import { getSessionUser } from "@/lib/session-user";
 import { getLatestRankedIds, selectRankedIds } from "@/lib/rank-snapshot";
 
@@ -17,7 +17,8 @@ async function getUserAndToken() {
   return {
     userId: sessionUser.userId,
     // May be undefined if the Gmail token is missing/expired — that's fine,
-    // getGmailFeed() handles a missing token on its own. RSS items don't
+    // syncNewsletters() handles a missing token on its own (stored issues
+    // still render). RSS items don't
     // need it at all, so the whole route shouldn't 401 just because Gmail
     // access is unavailable.
     accessToken: sessionUser.accessToken,
@@ -86,6 +87,20 @@ async function getRssFeed(
   };
 }
 
+/**
+ * Pull any new newsletter mail into the DB, then serve from the DB. A sync
+ * failure must not blank the inbox, but it is logged loudly rather than
+ * swallowed.
+ */
+async function getNewsletterItems(userId: string, accessToken: string | undefined) {
+  try {
+    await syncNewsletters(userId, accessToken);
+  } catch (error) {
+    console.error("[rss-inbox] newsletter sync failed; serving stored issues", error);
+  }
+  return getStoredNewsletterFeed(userId);
+}
+
 export async function GET(req: Request) {
   const auth = await getUserAndToken();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -97,7 +112,7 @@ export async function GET(req: Request) {
   const requestTag = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
   const [gmailItems, rss] = await Promise.all([
-    getGmailFeed(auth.accessToken),
+    getNewsletterItems(auth.userId, auth.accessToken),
     getRssFeed(auth.userId, selectedSourceId, enableRanking, requestTag, auth.recommendationCap),
   ]);
 

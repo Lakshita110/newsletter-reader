@@ -1,9 +1,10 @@
-import { google, gmail_v1 } from "googleapis";
+import { google } from "googleapis";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { extractArticleContent, normalizeText } from "@/lib/article-extract";
 import { parseFrom } from "@/lib/from-header";
 import { getHeader } from "@/lib/newsletter-classifier";
+import { extractBodies } from "@/lib/gmail-body";
 import { getSessionUser, getSessionUserId } from "@/lib/session-user";
 
 export const dynamic = "force-dynamic";
@@ -26,37 +27,37 @@ function decodeItemId(rawId: string): string {
   return id;
 }
 
-function b64urlDecode(input: string) {
-  const b64 = input.replace(/-/g, "+").replace(/_/g, "/");
-  const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
-  return Buffer.from(b64 + pad, "base64").toString("utf-8");
-}
-
-function extractBodies(
-  payload: gmail_v1.Schema$MessagePart | undefined
-): { html?: string; text?: string } {
-  let html: string | undefined;
-  let text: string | undefined;
-
-  const walk = (part: gmail_v1.Schema$MessagePart | undefined) => {
-    if (!part) return;
-
-    const mime = part.mimeType;
-    const data = part.body?.data;
-
-    if (data && (mime === "text/html" || mime === "text/plain")) {
-      const decoded = b64urlDecode(data);
-      if (mime === "text/html") html = html ?? decoded;
-      if (mime === "text/plain") text = text ?? decoded;
-    }
-
-    if (Array.isArray(part.parts)) {
-      for (const childPart of part.parts) walk(childPart);
-    }
+/**
+ * Serve a newsletter from the DB copy when we have one: works without a
+ * live Gmail token and after the email ages out or is deleted. The extracted
+ * reader text is computed once and cached on the row.
+ */
+async function getStoredNewsletterItem(userId: string, id: string) {
+  const issue = await prisma.newsletterIssue.findUnique({
+    where: { userId_gmailMessageId: { userId, gmailMessageId: id } },
+  });
+  if (!issue) return null;
+  const html = issue.html ?? undefined;
+  let text = issue.text ?? "";
+  if (html && !issue.text) {
+    text = (await extractArticleContent(html)).text;
+    await prisma.newsletterIssue.update({ where: { id: issue.id }, data: { text } });
+  }
+  return {
+    id: issue.gmailMessageId,
+    threadId: issue.threadId,
+    subject: issue.subject,
+    from: `${issue.fromName} <${issue.fromEmail}>`,
+    date: issue.receivedAt.toISOString(),
+    snippet: issue.snippet,
+    hasHtml: Boolean(html),
+    hasText: Boolean(text),
+    html,
+    text: text ? normalizeText(text) : undefined,
+    externalUrl: issue.webUrl,
+    sourceKind: "gmail" as const,
+    publicationName: issue.fromName,
   };
-
-  walk(payload);
-  return { html, text };
 }
 
 async function getGmailItem(id: string, accessToken: string) {
@@ -165,6 +166,9 @@ export async function GET(
     if (!data) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(data);
   }
+
+  const stored = await getStoredNewsletterItem(auth.userId, id);
+  if (stored) return NextResponse.json(stored);
 
   if (!auth.accessToken) {
     return NextResponse.json({ error: "Missing Gmail access token" }, { status: 401 });
