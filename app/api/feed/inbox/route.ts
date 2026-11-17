@@ -177,7 +177,7 @@ export async function GET(req: Request) {
       recommendedIds: rss.recommendedIds,
       rankReasons: rss.rankReasons,
       rankedAt: rss.rankedAt,
-      // Lets Today say "Picked by Claude Sonnet, 2h ago" or "not ranked yet"
+      // Lets Today say "Picked by GPT-5 mini, 2h ago" or "not ranked yet"
       // instead of silently showing newest-first when ranking failed.
       rankStatus: rss.rankStatus,
       rankModel: rss.rankModel,

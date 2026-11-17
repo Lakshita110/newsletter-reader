@@ -16,19 +16,20 @@
 // - SMART: a strong model first. For low-volume calls whose output the whole
 //   day hangs on: choosing what's worth reading, profiling taste, suggesting
 //   sources, condensing long deep dives. These run a handful of times a day,
-//   so the stronger model costs a few dollars a month, not per call.
+//   so even the stronger model costs well under a dollar a month.
 // SMART ends with the FAST chain so an outage or a retired model id degrades
 // to the old behaviour instead of to "no ranking at all".
 export const FAST_MODEL_CHAIN = ["openai/gpt-4o-mini", "google/gemini-2.0-flash-001"];
-export const SMART_MODEL_CHAIN = ["anthropic/claude-sonnet-4.5", "openai/gpt-4.1", ...FAST_MODEL_CHAIN];
+// She chose GPT-5 mini over Claude Sonnet (2026-11-17): a clear step up from
+// gpt-4o-mini at roughly a tenth of Sonnet's price.
+export const SMART_MODEL_CHAIN = ["openai/gpt-5-mini", ...FAST_MODEL_CHAIN];
 export const RANKING_MODEL_CHAIN = SMART_MODEL_CHAIN;
 
 /** Short, human name for a model id, for "Picked by …" labels in the UI. */
 export function modelLabel(model: string | null | undefined): string | null {
   if (!model) return null;
   const known: Record<string, string> = {
-    "anthropic/claude-sonnet-4.5": "Claude Sonnet",
-    "openai/gpt-4.1": "GPT-4.1",
+    "openai/gpt-5-mini": "GPT-5 mini",
     "openai/gpt-4o-mini": "GPT-4o mini",
     "google/gemini-2.0-flash-001": "Gemini Flash",
   };
@@ -48,6 +49,23 @@ type OpenRouterResponse = {
     };
   }>;
 };
+
+/**
+ * GPT-5 models reason before answering, and those hidden reasoning tokens
+ * count against max_tokens. At default effort they can use up the whole
+ * budget and return empty content (finish_reason "length"). Ranking and
+ * summarizing need judgment, not long chains of thought, so ask for low effort.
+ */
+export function reasoningFor(model: string): { effort: "low" } | undefined {
+  return model.startsWith("openai/gpt-5") ? { effort: "low" } : undefined;
+}
+
+/**
+ * Extra max_tokens for reasoning models, on top of what the caller budgeted
+ * for the visible answer, so a few hundred reasoning tokens can't truncate a
+ * ranking that was sized for its JSON alone.
+ */
+export const REASONING_TOKEN_HEADROOM = 2000;
 
 export type OpenRouterChatResult =
   | { ok: true; content: string; finishReason?: string }
@@ -92,8 +110,9 @@ export async function openRouterChat(args: {
       body: JSON.stringify({
         model: args.model,
         temperature: args.temperature ?? 0.1,
-        max_tokens: args.maxTokens,
+        max_tokens: args.maxTokens + (reasoningFor(args.model) ? REASONING_TOKEN_HEADROOM : 0),
         messages: args.messages,
+        ...(reasoningFor(args.model) ? { reasoning: reasoningFor(args.model) } : {}),
       }),
       signal: controller.signal,
     });

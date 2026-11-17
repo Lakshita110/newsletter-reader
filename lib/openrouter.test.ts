@@ -5,6 +5,8 @@ import {
   contentToString,
   modelLabel,
   openRouterChat,
+  reasoningFor,
+  REASONING_TOKEN_HEADROOM,
   openRouterChatWithFallback,
 } from "./openrouter";
 
@@ -82,7 +84,7 @@ describe("model tiers", () => {
   });
 
   it("labels known models for the UI and falls back to the id's tail", () => {
-    expect(modelLabel("anthropic/claude-sonnet-4.5")).toBe("Claude Sonnet");
+    expect(modelLabel("openai/gpt-5-mini")).toBe("GPT-5 mini");
     expect(modelLabel("vendor/some-model")).toBe("some-model");
     expect(modelLabel(null)).toBeNull();
   });
@@ -123,5 +125,24 @@ describe("openRouterChatWithFallback", () => {
     });
     expect(result).toEqual({ ok: false, lastStatus: 402 });
     warn.mockRestore();
+  });
+});
+
+describe("reasoningFor", () => {
+  it("keeps GPT-5 reasoning low so it can't eat the output budget, and leaves other models alone", () => {
+    expect(reasoningFor("openai/gpt-5-mini")).toEqual({ effort: "low" });
+    expect(reasoningFor("openai/gpt-4o-mini")).toBeUndefined();
+  });
+
+  it("is sent in the request body only for GPT-5 models", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: "x" } }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const base = { apiKey: "k", messages: [{ role: "user" as const, content: "hi" }], maxTokens: 10, timeoutMs: 1000 };
+    await openRouterChat({ ...base, model: "openai/gpt-5-mini" });
+    await openRouterChat({ ...base, model: "openai/gpt-4o-mini" });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).reasoning).toEqual({ effort: "low" });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).reasoning).toBeUndefined();
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).max_tokens).toBe(10 + REASONING_TOKEN_HEADROOM);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).max_tokens).toBe(10);
   });
 });
