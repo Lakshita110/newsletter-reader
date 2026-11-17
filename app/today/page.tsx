@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { SwipeRow } from "./components/SwipeRow";
+import { GmailBanner } from "./components/GmailBanner";
 import { buildTodayQueue, flattenQueue, type QueueSection } from "./lib/queue";
 import { prefetchForOffline } from "./lib/offline";
 import { readMapFromStorage, saveMapToStorage, toReadStatusMap, toSavedMap } from "@/app/inbox/lib/client-utils";
@@ -248,6 +249,7 @@ export default function TodayPage() {
       </header>
 
       {error && <div className="today-banner">{error}</div>}
+      <GmailBanner enabled={Boolean(session?.user?.email)} />
 
       {sections.map((section) => {
         const list = queue[section];

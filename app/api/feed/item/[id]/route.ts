@@ -6,6 +6,7 @@ import { parseFrom } from "@/lib/from-header";
 import { getHeader } from "@/lib/newsletter-classifier";
 import { extractBodies } from "@/lib/gmail-body";
 import { getSessionUser, getSessionUserId } from "@/lib/session-user";
+import { getGmailAccessToken } from "@/lib/gmail-token";
 import { getSavedArticleItem, WEB_ID_PREFIX } from "@/lib/saved-articles";
 
 export const dynamic = "force-dynamic";
@@ -177,11 +178,12 @@ export async function GET(
   const stored = await getStoredNewsletterItem(auth.userId, id);
   if (stored) return NextResponse.json(stored);
 
-  if (!auth.accessToken) {
-    return NextResponse.json({ error: "Missing Gmail access token" }, { status: 401 });
+  const accessToken = await getGmailAccessToken(auth.userId);
+  if (!accessToken) {
+    return NextResponse.json({ error: "Gmail isn't connected" }, { status: 401 });
   }
 
-  const data = await getGmailItem(id, auth.accessToken);
+  const data = await getGmailItem(id, accessToken);
   return NextResponse.json(data);
 }
 

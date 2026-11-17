@@ -8,6 +8,7 @@ import type { FeedItem } from "@/lib/rss-candidates";
 import { getSessionUser } from "@/lib/session-user";
 import { getLatestRankedIds, selectRankedIds } from "@/lib/rank-snapshot";
 import { modelLabel } from "@/lib/openrouter";
+import { getGmailAccessToken } from "@/lib/gmail-token";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ async function getUserAndToken() {
     // still render). RSS items don't
     // need it at all, so the whole route shouldn't 401 just because Gmail
     // access is unavailable.
-    accessToken: sessionUser.accessToken,
+    accessToken: (await getGmailAccessToken(sessionUser.userId)) ?? undefined,
     recommendationCap: user.rssRecommendationCap,
   };
 }
