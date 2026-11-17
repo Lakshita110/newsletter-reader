@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { normalizeUrl } from "@/lib/rss";
+import { fetchFeedTitle, normalizeUrl, syncRssSource } from "@/lib/rss";
+import { resolveFeedUrl } from "@/lib/feed-url";
 import { parseRssCategoryInput } from "@/lib/rss-categories";
 import { getSessionUserId } from "@/lib/session-user";
 
@@ -38,23 +39,30 @@ export async function POST(req: Request) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const rssUrl = typeof body?.rssUrl === "string" ? body.rssUrl.trim() : "";
-  const name = typeof body?.name === "string" ? body.name.trim() : "";
+  // Accept a Substack handle, homepage or post link as well as a real feed URL.
+  const rssUrl = resolveFeedUrl(typeof body?.rssUrl === "string" ? body.rssUrl : "");
   const siteUrl = typeof body?.siteUrl === "string" ? body.siteUrl.trim() : "";
   const parsedCategory = parseRssCategoryInput(body?.category);
-  if (!name) {
-    return NextResponse.json({ error: "Name is required" }, { status: 400 });
-  }
   if (parsedCategory.isInvalid) {
     return NextResponse.json({ error: "Invalid category option" }, { status: 400 });
   }
-  if (!parsedCategory.isProvided || !parsedCategory.value) {
-    return NextResponse.json({ error: "Category is required" }, { status: 400 });
-  }
-  const category = parsedCategory.value;
+  // Category only matters for filtering in Sources; one ranked feed doesn't need it.
+  const category = parsedCategory.value ?? "other";
   const normalized = normalizeUrl(rssUrl);
   if (!normalized) {
     return NextResponse.json({ error: "Missing rssUrl" }, { status: 400 });
+  }
+
+  // Fetch the feed before saving it: a typo should fail here with a clear
+  // message, not turn into a silently failing source. This also supplies the
+  // name when none was typed.
+  let name = typeof body?.name === "string" ? body.name.trim() : "";
+  try {
+    const title = await fetchFeedTitle(normalized);
+    if (!name) name = title;
+  } catch (err) {
+    console.warn("[sources/rss] feed check failed", normalized, err);
+    return NextResponse.json({ error: `Couldn't read a feed at ${normalized}` }, { status: 400 });
   }
 
   const source = await prisma.rssSource.upsert({
@@ -78,8 +86,12 @@ export async function POST(req: Request) {
     create: { userId, rssSourceId: source.id, category },
   });
 
+  // Pull its items now so the new source shows up in Today without waiting for the cron.
+  await syncRssSource(source.id).catch((err) => console.error("[sources/rss] initial sync failed", source.id, err));
+
   return NextResponse.json({
     ok: true,
+    name,
     subscriptionId: subscription.id,
     sourceId: source.id,
   });

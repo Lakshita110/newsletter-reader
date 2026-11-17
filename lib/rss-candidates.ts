@@ -195,7 +195,15 @@ export async function buildRankingCandidates(params: {
         });
   const readIdSet = new Set(readRows.map((row) => row.messageExternalId));
   const unreadCandidates = allCandidates.filter((candidate) => !readIdSet.has(candidate.feedItem.id));
-  const dedupedCandidates = dedupeByArticleKey(unreadCandidates, (candidate) => candidate.sortTimeMs);
+  // When a Substack arrives both by email and through its RSS feed, keep the
+  // email copy: it has the full (including paid) post, the feed often doesn't.
+  const newsletterKeys = new Set(
+    unreadCandidates.filter((c) => c.feedItem.sourceKind === "gmail").map((c) => c.dedupKey)
+  );
+  const withoutDuplicateStories = unreadCandidates.filter(
+    (c) => c.feedItem.sourceKind === "gmail" || !newsletterKeys.has(c.dedupKey)
+  );
+  const dedupedCandidates = dedupeByArticleKey(withoutDuplicateStories, (candidate) => candidate.sortTimeMs);
   const sortedFallback = [...dedupedCandidates].sort((a, b) => b.sortTimeMs - a.sortTimeMs);
 
   const aiItems: AiRankItem[] = sortedFallback.map((candidate) => ({
@@ -241,8 +249,11 @@ async function newsletterCandidates(userId: string, now: Date): Promise<RankingC
   return issues.map((issue) => ({
     sourceId: `newsletter:${issue.publicationKey}`,
     sourceName: issue.fromName,
-    // The Gmail id is unique per issue; newsletters are never deduped against stories.
-    dedupKey: `newsletter:${issue.gmailMessageId}`,
+    // Keyed by the post's web URL when we have one, so the same post from the
+    // publication's RSS feed collapses into this email copy (see above).
+    dedupKey: issue.webUrl
+      ? buildRssArticleDedupKey({ externalUrl: issue.webUrl })
+      : `newsletter:${issue.gmailMessageId}`,
     item: {
       title: issue.subject,
       snippet: issue.snippet,

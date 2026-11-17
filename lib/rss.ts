@@ -71,6 +71,12 @@ function extractRssImageUrl(item: Record<string, unknown>, html?: string | null)
   return extractImageUrlFromHtml(html ?? "");
 }
 
+/** Fetch a feed once to check it parses and read its title (used when adding a source). */
+export async function fetchFeedTitle(rssUrl: string): Promise<string> {
+  const feed = await parser.parseURL(rssUrl);
+  return feed.title?.trim() || new URL(rssUrl).hostname.replace(/^www\./, "");
+}
+
 export async function syncRssSource(rssSourceId: string) {
   const source = await prisma.rssSource.findUnique({ where: { id: rssSourceId } });
   if (!source || !source.isActive) return { inserted: 0, updated: 0, insertedItemIds: [] as string[] };
