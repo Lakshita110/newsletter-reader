@@ -4,7 +4,13 @@ import { classifyNewsletter, getHeader } from "@/lib/newsletter-classifier";
 import { parseFrom, normalizePublicationKey } from "@/lib/from-header";
 import { extractBodies } from "@/lib/gmail-body";
 import type { FeedItem } from "@/lib/rss-candidates";
-import { buildInboxQuery, buildSenderQuery, extractWebUrl, syncWindowStart } from "@/lib/newsletter-sync-helpers";
+import {
+  buildInboxQuery,
+  buildSenderQuery,
+  extractWebUrl,
+  isPlatformSender,
+  syncWindowStart,
+} from "@/lib/newsletter-sync-helpers";
 
 /** Don't hit Gmail more than once per this interval per user. */
 const MIN_SYNC_INTERVAL_MS = 2 * 60 * 1000;
@@ -140,13 +146,14 @@ async function fetchIssue(gmail: gmail_v1.Gmail, id: string, trustSenderList: bo
   const from = getHeader(headers, "From");
   const snippet = msg.data.snippet ?? "";
 
-  // With an explicit sender list the user already told us these are reads;
-  // the classifier only guards the fallback inbox-wide mode.
-  if (!trustSenderList && !classifyNewsletter(headers, subject, from, snippet).isNewsletter) {
+  const parsed = parseFrom(from);
+  // Senders she listed, and newsletter platforms, are reads by definition;
+  // the classifier only guards plain inbox mail in the no-sender-list mode.
+  const trusted = trustSenderList || isPlatformSender(parsed.email || from);
+  if (!trusted && !classifyNewsletter(headers, subject, from, snippet).isNewsletter) {
     return null;
   }
 
-  const parsed = parseFrom(from);
   const fromEmail = (parsed.email || from).toLowerCase();
   const { html, text } = extractBodies(msg.data.payload);
   const receivedAt = msg.data.internalDate

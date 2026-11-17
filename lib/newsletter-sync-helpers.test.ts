@@ -7,6 +7,8 @@ import {
   INCREMENTAL_OVERLAP_MS,
   normalizeSenderEmail,
   syncWindowStart,
+  isPlatformSender,
+  QUERY_WIDENED_AT,
 } from "./newsletter-sync-helpers";
 
 describe("normalizeSenderEmail", () => {
@@ -25,27 +27,44 @@ describe("normalizeSenderEmail", () => {
 
 describe("buildSenderQuery", () => {
   const after = new Date("2026-11-01T00:00:00Z");
-  it("ORs senders, has no inbox restriction, and uses an epoch lower bound", () => {
+  it("matches her senders and every newsletter platform anywhere in the mailbox", () => {
     const q = buildSenderQuery(["a@x.com", "b@y.com"], after);
-    expect(q).toBe(`{from:a@x.com OR from:b@y.com} after:${after.getTime() / 1000} -in:chats -in:spam -in:trash`);
+    expect(q.startsWith("{from:a@x.com from:b@y.com from:substack.com ")).toBe(true);
+    expect(q).toContain(`after:${after.getTime() / 1000} -in:chats -in:spam -in:trash -in:sent`);
     expect(q).not.toMatch(/in:inbox/);
   });
 });
 
 describe("buildInboxQuery", () => {
-  it("keeps the legacy inbox-only behavior", () => {
-    expect(buildInboxQuery(new Date(0))).toBe("in:inbox after:0 -in:chats");
+  it("searches the inbox plus newsletter platforms wherever they were filed", () => {
+    const q = buildInboxQuery(new Date(0));
+    expect(q).toMatch(/^\{in:inbox from:substack\.com from:stratechery\.com /);
+    expect(q).toContain("} after:0 -in:chats -in:spam -in:trash -in:sent");
+  });
+});
+
+describe("isPlatformSender", () => {
+  it("recognizes platform domains and their subdomains only", () => {
+    expect(isPlatformSender("derekthompson@substack.com")).toBe(true);
+    expect(isPlatformSender("Email@Stratechery.com")).toBe(true);
+    expect(isPlatformSender("thefrontiersyndicate@mail.beehiiv.com")).toBe(true);
+    expect(isPlatformSender("team@info.classpass.com")).toBe(false);
+    expect(isPlatformSender("someone@notsubstack.com")).toBe(false);
   });
 });
 
 describe("syncWindowStart", () => {
-  const now = new Date("2026-11-16T00:00:00Z");
+  const now = new Date("2026-11-20T00:00:00Z");
   it("reaches back the first-sync window when never synced", () => {
     expect(now.getTime() - syncWindowStart(null, now).getTime()).toBe(FIRST_SYNC_LOOKBACK_DAYS * 86_400_000);
   });
   it("overlaps the last sync so late mail is not missed", () => {
-    const last = new Date("2026-11-15T00:00:00Z");
+    const last = new Date("2026-11-19T00:00:00Z");
     expect(last.getTime() - syncWindowStart(last, now).getTime()).toBe(INCREMENTAL_OVERLAP_MS);
+  });
+  it("re-reads the full window once for mailboxes last synced with the old, narrower query", () => {
+    const last = new Date(QUERY_WIDENED_AT.getTime() - 1);
+    expect(now.getTime() - syncWindowStart(last, now).getTime()).toBe(FIRST_SYNC_LOOKBACK_DAYS * 86_400_000);
   });
 });
 

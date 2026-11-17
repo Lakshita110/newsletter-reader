@@ -16,6 +16,7 @@ export default function NewsletterSendersSection() {
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [mailbox, setMailbox] = useState<{ connected: boolean; mailbox: string | null } | null>(null);
 
   const load = async () => {
     const res = await fetch("/api/newsletters/senders", { cache: "no-store" });
@@ -24,6 +25,10 @@ export default function NewsletterSendersSection() {
 
   useEffect(() => {
     load().catch(() => setNotice("Could not load newsletter senders."));
+    fetch("/api/gmail/status", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => body && setMailbox({ connected: Boolean(body.connected), mailbox: body.mailbox ?? null }))
+      .catch((err: unknown) => console.error("[sources] gmail status failed", err));
   }, []);
 
   const add = async (emails: string[], name?: string) => {
@@ -87,10 +92,17 @@ export default function NewsletterSendersSection() {
           {busy === "suggest" ? "Scanning mail…" : "Find in my mail"}
         </button>
       </div>
+      {mailbox && (
+        <p style={{ fontSize: 13, margin: "0 0 6px", overflowWrap: "anywhere" }}>
+          {mailbox.connected
+            ? `Reading newsletters from ${mailbox.mailbox ?? "your Gmail"}.`
+            : "Gmail isn't connected, so new newsletters aren't coming in. Reconnect from Today."}
+        </p>
+      )}
       <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 10px" }}>
         {senders.length === 0
-          ? "No list yet, so newsletters are guessed from your inbox. Add senders to pull exactly these, even if they're archived or labeled."
-          : "Exactly these senders are pulled from all of Gmail, and each issue is kept so it never disappears."}
+          ? "Substack, Stratechery, beehiiv and other newsletter platforms are pulled automatically, even if archived or labeled. Other newsletters are guessed from your inbox; add their senders to pull them reliably."
+          : "These senders and all newsletter platforms (Substack, Stratechery, beehiiv…) are pulled from all of Gmail, and each issue is kept so it never disappears."}
       </p>
 
       <form

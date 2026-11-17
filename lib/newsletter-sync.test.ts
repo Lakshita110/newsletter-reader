@@ -94,7 +94,7 @@ describe("syncNewsletters", () => {
     expect(db.user.update).toHaveBeenCalled();
   });
 
-  it("without a sender list: inbox only, and drops what the classifier rejects", async () => {
+  it("without a sender list: inbox plus platforms, and drops what the classifier rejects", async () => {
     gmail.users.messages.list.mockResolvedValue({ data: { messages: [{ id: "news" }, { id: "friend" }] } });
     gmail.users.messages.get.mockImplementation(async ({ id }) =>
       id === "news"
@@ -106,6 +106,17 @@ describe("syncNewsletters", () => {
     expect(
       db.newsletterIssue.createMany.mock.calls[0][0].data.map((r: { gmailMessageId: string }) => r.gmailMessageId)
     ).toEqual(["news"]);
+    expect(result.added).toBe(1);
+  });
+
+  it("without a sender list: keeps platform issues (archived or labeled) even when the classifier wouldn't", async () => {
+    gmail.users.messages.list.mockResolvedValue({ data: { messages: [{ id: "derek" }] } });
+    // No List-Unsubscribe header: on its own the classifier would drop this.
+    gmail.users.messages.get.mockImplementation(async ({ id }) =>
+      message(id, "Derek Thompson <derekthompson@substack.com>", { listHeader: false })
+    );
+    const result = await syncNewsletters("u1", "tok");
+    expect(gmail.users.messages.list.mock.calls[0][0].q).toContain("from:substack.com");
     expect(result.added).toBe(1);
   });
 
