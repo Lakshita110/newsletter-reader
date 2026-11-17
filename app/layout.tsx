@@ -1,24 +1,39 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans, IBM_Plex_Mono, Playfair_Display } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { Providers } from "./providers";
 import { ThemeInitializer, ThemeToggle } from "./components/ThemeToggle";
 
-const sans = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+// Fonts are self-hosted (latin subset, from @fontsource, OFL licensed) rather
+// than loaded with next/font/google. The Google variant downloads the fonts
+// during `next build`, so a Google Fonts hiccup fails the whole build: that
+// happened in CI and likely on a production deploy on 2026-11-17. Local files
+// make the build independent of the network.
+const sans = localFont({
+  src: [
+    { path: "./fonts/ibm-plex-sans-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-latin-600-normal.woff2", weight: "600", style: "normal" },
+  ],
+  display: "swap",
 });
 
-const mono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
+const mono = localFont({
+  src: [
+    { path: "./fonts/ibm-plex-mono-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-latin-500-normal.woff2", weight: "500", style: "normal" },
+  ],
   variable: "--font-mono",
+  display: "swap",
 });
 
-const display = Playfair_Display({
-  subsets: ["latin"],
-  weight: ["600", "700"],
+const display = localFont({
+  src: [
+    { path: "./fonts/playfair-display-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/playfair-display-latin-700-normal.woff2", weight: "700", style: "normal" },
+  ],
   variable: "--font-display",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
