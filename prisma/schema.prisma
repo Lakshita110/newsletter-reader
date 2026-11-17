@@ -42,6 +42,9 @@ model User {
   gmailRefreshTokenEnc     String?
   /// Why Gmail access last failed (e.g. invalid_grant); null when connected.
   gmailTokenError          String?
+  /// True when the Gmail mailbox was chosen with "Use a different Gmail"
+  /// rather than being the sign-in account; sign-in then leaves it alone.
+  gmailConnectedSeparately Boolean                   @default(false)
   savedArticles            SavedArticle[]
   highlights               Highlight[]
   itemSummaries            ItemSummary[]
@@ -199,6 +202,9 @@ model NewsletterIssue {
   html           String?  @db.Text
   text           String?  @db.Text
   webUrl         String?
+  /// Lead photo picked from the email (lib/lead-image.ts); "" when the
+  /// issue was checked and has none, null when not checked yet.
+  imageUrl       String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)

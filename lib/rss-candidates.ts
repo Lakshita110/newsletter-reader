@@ -83,6 +83,8 @@ export type RankingCandidate = {
 /** The compact item shape handed to the AI ranker / eval / snapshot. */
 export type AiRankItem = {
   id: string;
+  /** Newsletters are subscriptions she chose; the ranker weighs them accordingly. */
+  kind: "newsletter" | "article";
   title: string;
   snippet: string;
   author: string | null;
@@ -172,6 +174,13 @@ export async function buildRankingCandidates(params: {
     }
   }
 
+  // One feed: unread newsletter issues compete in the same ranking as RSS
+  // stories, instead of living in a separate always-shown list. A source
+  // filter (RSS browse view) means "just this RSS source", so skip them then.
+  if (!selectedSourceId) {
+    allCandidates.push(...(await newsletterCandidates(userId, now)));
+  }
+
   const candidateIds = allCandidates.map((candidate) => candidate.feedItem.id);
   const readRows =
     candidateIds.length === 0
@@ -191,6 +200,7 @@ export async function buildRankingCandidates(params: {
 
   const aiItems: AiRankItem[] = sortedFallback.map((candidate) => ({
     id: candidate.feedItem.id,
+    kind: candidate.feedItem.sourceKind === "gmail" ? "newsletter" : "article",
     title: candidate.item.title,
     snippet: candidate.item.snippet ?? "",
     author: candidate.item.author ?? null,
@@ -201,4 +211,59 @@ export async function buildRankingCandidates(params: {
   const totalCap = getRssDailyTargetCap(sortedFallback.length, recommendationCap);
 
   return { allCandidates, sortedFallback, aiItems, totalCap };
+}
+
+/**
+ * Newsletters stay rankable for longer than RSS's 24h window: an issue from a
+ * few days ago that she hasn't read is still worth her time, a news story
+ * usually isn't.
+ */
+export const NEWSLETTER_CANDIDATE_DAYS = 7;
+
+async function newsletterCandidates(userId: string, now: Date): Promise<RankingCandidate[]> {
+  const since = new Date(now.getTime() - NEWSLETTER_CANDIDATE_DAYS * 24 * 60 * 60 * 1000);
+  const issues = await prisma.newsletterIssue.findMany({
+    where: { userId, receivedAt: { gte: since } },
+    orderBy: { receivedAt: "desc" },
+    take: 100,
+    select: {
+      gmailMessageId: true,
+      fromEmail: true,
+      fromName: true,
+      publicationKey: true,
+      subject: true,
+      snippet: true,
+      receivedAt: true,
+      webUrl: true,
+      imageUrl: true,
+    },
+  });
+  return issues.map((issue) => ({
+    sourceId: `newsletter:${issue.publicationKey}`,
+    sourceName: issue.fromName,
+    // The Gmail id is unique per issue; newsletters are never deduped against stories.
+    dedupKey: `newsletter:${issue.gmailMessageId}`,
+    item: {
+      title: issue.subject,
+      snippet: issue.snippet,
+      author: issue.fromName,
+      publishedAt: issue.receivedAt,
+      createdAt: issue.receivedAt,
+    },
+    feedItem: {
+      // Bare Gmail id, matching read/save state and the reader route.
+      id: issue.gmailMessageId,
+      sourceKind: "gmail",
+      subject: issue.subject,
+      from: `${issue.fromName} <${issue.fromEmail}>`,
+      date: issue.receivedAt.toISOString(),
+      snippet: issue.snippet ?? "",
+      publicationName: issue.fromName,
+      publicationKey: issue.publicationKey,
+      isOverflow: false,
+      externalUrl: issue.webUrl ?? undefined,
+      imageUrl: issue.imageUrl || undefined,
+    },
+    sortTimeMs: issue.receivedAt.getTime(),
+  }));
 }

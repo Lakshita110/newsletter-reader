@@ -1202,6 +1202,26 @@ body:has(.feed-deck) {
   text-decoration: none;
   -webkit-touch-callout: none;
 }
+.today-row-thumb {
+  float: right;
+  width: 76px;
+  height: 76px;
+  margin: 2px 0 6px 12px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--faint);
+}
+.today-row::after {
+  content: "";
+  display: block;
+  clear: both;
+}
+.today-row-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
 .today-row-meta {
   display: flex;
   align-items: center;
@@ -1422,6 +1442,19 @@ body:has(.feed-deck) {
 }
 .reader-main .reader-content-shell {
   font-size: var(--reader-font-size, 17px);
+  line-height: 1.65;
+  max-width: 680px;
+  margin-inline: auto;
+}
+.reader-main .reader-content-shell p {
+  margin: 0 0 1em;
+}
+.reader-inline-img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  display: block;
+  margin: 16px auto;
 }
 .reader-main .reader-content-shell img {
   max-width: 100%;
@@ -1434,8 +1467,12 @@ body:has(.feed-deck) {
   .reader-main {
     margin-top: calc(env(safe-area-inset-top) + 20px) !important;
   }
+  /* On a phone the bordered card just eats width: read edge to edge instead. */
   .reader-main .reader-content-shell {
     overflow-wrap: anywhere;
+    border: none;
+    background: transparent;
+    padding: 0;
   }
 }
 

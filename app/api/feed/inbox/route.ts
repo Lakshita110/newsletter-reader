@@ -76,6 +76,9 @@ async function getRssFeed(
   }
 
   for (const candidate of sortedFallback) {
+    // Newsletters are in the ranking pool too, but they are never hidden as
+    // "overflow": she subscribed to every one of them. Ranking only orders them.
+    if (candidate.feedItem.sourceKind === "gmail") continue;
     candidate.feedItem.isOverflow = !selectedIds.has(candidate.feedItem.id);
     if (!candidate.feedItem.isOverflow) continue;
     const prev = overflowBySource.get(candidate.sourceId) ?? {
@@ -161,7 +164,15 @@ export async function GET(req: Request) {
     includeWeb ? getSavedArticleFeed(auth.userId) : Promise.resolve([]),
   ]);
 
-  let items = [...gmailItems, ...rss.visible, ...webItems].sort((a, b) => {
+  // Recent newsletters arrive twice (the stored-issue list and the ranking
+  // pool); keep the first copy of each id.
+  const seen = new Set<string>();
+  const merged = [...gmailItems, ...rss.visible, ...webItems].filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+  let items = merged.sort((a, b) => {
     const ta = new Date(a.date).getTime();
     const tb = new Date(b.date).getTime();
     return tb - ta;

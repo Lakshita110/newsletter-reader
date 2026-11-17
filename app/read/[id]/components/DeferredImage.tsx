@@ -1,40 +1,22 @@
 "use client";
 
-import { useState } from "react";
-
+/**
+ * Inline article image. Images used to sit behind a "Load image" tap, which made
+ * photo-heavy newsletters read like a list of buttons; now they load lazily as
+ * you scroll. no-referrer avoids hotlink blocks on some CDNs, and a broken image
+ * is hidden instead of leaving an empty frame.
+ */
 export function DeferredImage({ src, alt }: { src?: string; alt?: string }) {
-  const [loaded, setLoaded] = useState(false);
-
   if (!src) return null;
-
-  if (!loaded) {
-    return (
-      <button
-        type="button"
-        onClick={() => setLoaded(true)}
-        className="reader-inline-action"
-        style={{
-          margin: "12px 0",
-        }}
-      >
-        Load image
-      </button>
-    );
-  }
-
   return (
-    // eslint-disable-next-line @next/next/no-img-element
+    // eslint-disable-next-line @next/next/no-img-element -- arbitrary remote hosts, no optimizer config
     <img
       src={src}
       alt={alt ?? ""}
       loading="lazy"
-      style={{
-        maxWidth: "100%",
-        height: "auto",
-        borderRadius: 12,
-        display: "block",
-        margin: "12px 0",
-      }}
+      referrerPolicy="no-referrer"
+      onError={(e) => (e.currentTarget.style.display = "none")}
+      className="reader-inline-img"
     />
   );
 }

@@ -4,10 +4,14 @@ import { syncRssSource } from "@/lib/rss";
 import { dayKeyUtc } from "@/lib/rss-helpers";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { refreshTodaySnapshotForUser } from "@/lib/rank-refresh";
+import { getGmailAccessToken } from "@/lib/gmail-token";
+import { syncNewsletters } from "@/lib/newsletter-sync";
 
 export { refreshTodaySnapshotForUser };
 
 export const dynamic = "force-dynamic";
+// RSS sync + newsletter sync + one ranking call per user.
+export const maxDuration = 60;
 
 export async function GET(req: Request) {
   const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -54,11 +58,33 @@ export async function GET(req: Request) {
       }
     }
 
-    const activeUsers = await prisma.userRssSubscription.findMany({
+    // Newsletters are part of the one ranked feed, so pull new issues before
+    // ranking. Gmail tokens live server-side now, so this works while she's
+    // away and the morning feed already includes overnight newsletters.
+    const gmailUsers = await prisma.user.findMany({
+      where: { gmailRefreshTokenEnc: { not: null } },
+      select: { id: true },
+    });
+    for (const { id } of gmailUsers) {
+      try {
+        const token = await getGmailAccessToken(id);
+        const result = await syncNewsletters(id, token ?? undefined, { force: true, timeBudgetMs: 10_000 });
+        console.info(
+          `[rss-refresh-rank][${requestId}] newsletters userId="${id}" status=${result.status} added=${result.added}`
+        );
+      } catch (error) {
+        console.error(`[rss-refresh-rank][${requestId}] newsletter sync failed userId="${id}"`, error);
+      }
+    }
+
+    const rssUsers = await prisma.userRssSubscription.findMany({
       where: { isActive: true },
       select: { userId: true },
       distinct: ["userId"],
     });
+    const activeUsers = [...new Set([...rssUsers.map((r) => r.userId), ...gmailUsers.map((u) => u.id)])].map(
+      (userId) => ({ userId })
+    );
     console.info(`[rss-refresh-rank][${requestId}] starting ranking day="${dayKey}" activeUsers=${activeUsers.length}`);
 
     let rankedUsers = 0;

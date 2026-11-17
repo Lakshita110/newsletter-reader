@@ -1,33 +1,35 @@
 import type { FeedReadStatus, InboxItem } from "@/app/inbox/types";
 
-export type QueueSection = "continue" | "newsletters" | "stories" | "covered" | "saved";
+export type QueueSection = "continue" | "feed" | "covered" | "saved";
 
 export type QueueInput = {
   items: InboxItem[];
   statusById: Record<string, FeedReadStatus>;
   savedById: Record<string, boolean>;
-  /** RSS ids the ranker picked for today, best first. */
+  /** Ids the ranker picked for today (newsletters and stories alike), best first. */
   recommendedIds: string[];
   now?: Date;
 };
 
 export type TodayQueue = Record<QueueSection, InboxItem[]>;
 
-/** Newsletters older than this drop out of Today (they're still in the archive views). */
+/** Newsletters older than this drop out of the feed (still in Saved if saved). */
 export const NEWSLETTER_WINDOW_DAYS = 14;
-/** Keep the stories list short: Today should feel finishable. */
-export const MAX_STORIES = 12;
+/** RSS stories the ranker didn't pick are capped, so the feed stays finishable. */
+export const MAX_UNPICKED_STORIES = 12;
 
 /**
- * Build the single "what should I read now" queue that replaces hopping
- * between the newsletter and RSS inboxes.
+ * Build the one feed: everything unread, in a single ranked list.
  *
  * Design choices:
- * - "Done" reuses the existing read state, so swiping something away in Today
- *   also clears it from the classic inboxes (and feeds the ranker's profile).
- * - Newsletters are things she chose and paid for, so all unread recent ones
- *   show; RSS only shows what the ranker picked, capped, to avoid a firehose.
- * - Saved items are their own section and are never auto-expired.
+ * - One list, not "newsletters" and "stories" sections. The ranker sees both
+ *   kinds together (lib/rss-candidates.ts), so its order is the feed order.
+ * - Items the ranker picked come first, in its order. Everything else follows
+ *   newest first: every recent newsletter (she subscribed to each one, so
+ *   none are hidden) and a capped number of RSS stories.
+ * - "In progress" sits above the feed so a half-read piece is never buried.
+ * - "Done" reuses the read state, so it also feeds the ranker's taste profile.
+ * - Saved is its own tab and never auto-expires.
  */
 export function buildTodayQueue({
   items,
@@ -38,17 +40,19 @@ export function buildTodayQueue({
 }: QueueInput): TodayQueue {
   const cutoff = now.getTime() - NEWSLETTER_WINDOW_DAYS * 86_400_000;
   const time = (item: InboxItem) => new Date(item.date).getTime() || 0;
-  const byNewest = (a: InboxItem, b: InboxItem) => time(b) - time(a);
+  const rank = new Map(recommendedIds.map((id, i) => [id, i]));
 
-  const queue: TodayQueue = { continue: [], newsletters: [], stories: [], covered: [], saved: [] };
+  const queue: TodayQueue = { continue: [], feed: [], covered: [], saved: [] };
+  const picked: InboxItem[] = [];
+  const unpickedNewsletters: InboxItem[] = [];
+  const unpickedStories: InboxItem[] = [];
   const seen = new Set<string>();
 
-  for (const item of [...items].sort(byNewest)) {
+  for (const item of [...items].sort((a, b) => time(b) - time(a))) {
     if (seen.has(item.id)) continue;
     seen.add(item.id);
     const status = statusById[item.id] ?? "unread";
     if (savedById[item.id]) {
-      // Saved = "read later": it lives in Saved until un-saved, read or not.
       queue.saved.push(item);
       continue;
     }
@@ -57,33 +61,25 @@ export function buildTodayQueue({
       queue.continue.push(item);
       continue;
     }
-    if (item.sourceKind !== "rss" && time(item) >= cutoff) queue.newsletters.push(item);
+    if (rank.has(item.id)) picked.push(item);
+    else if (item.sourceKind === "rss") {
+      if (!item.isOverflow) unpickedStories.push(item);
+    } else if (time(item) >= cutoff) unpickedNewsletters.push(item);
   }
 
-  const rank = new Map(recommendedIds.map((id, i) => [id, i]));
-  const picked = items
-    .filter(
-      (item) =>
-        item.sourceKind === "rss" &&
-        !item.isOverflow &&
-        !savedById[item.id] &&
-        (statusById[item.id] ?? "unread") === "unread"
-    )
-    .sort((a, b) => {
-      const ra = rank.get(a.id) ?? Number.MAX_SAFE_INTEGER;
-      const rb = rank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
-      return ra - rb || byNewest(a, b);
-    })
-    .slice(0, MAX_STORIES);
+  picked.sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+  const unpicked = [...unpickedNewsletters, ...unpickedStories.slice(0, MAX_UNPICKED_STORIES)].sort(
+    (a, b) => time(b) - time(a)
+  );
   // Stories a newsletter already covered are folded away rather than
   // dropped: still one tap away, but they don't count toward "to read".
-  queue.stories = picked.filter((item) => !item.coveredBy);
-  queue.covered = picked.filter((item) => item.coveredBy);
-
+  for (const item of [...picked, ...unpicked]) {
+    (item.coveredBy ? queue.covered : queue.feed).push(item);
+  }
   return queue;
 }
 
 /** Reading order used for "Done → next" inside the reader. */
 export function flattenQueue(queue: TodayQueue, includeSaved = false): InboxItem[] {
-  return [...queue.continue, ...queue.newsletters, ...queue.stories, ...(includeSaved ? queue.saved : [])];
+  return [...queue.continue, ...queue.feed, ...(includeSaved ? queue.saved : [])];
 }

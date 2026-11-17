@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { SwipeRow } from "./components/SwipeRow";
 import { GmailBanner } from "./components/GmailBanner";
+import { faviconDomain } from "@/lib/lead-image";
 import { buildTodayQueue, flattenQueue, type QueueSection } from "./lib/queue";
 import { prefetchForOffline } from "./lib/offline";
 import { readMapFromStorage, saveMapToStorage, toReadStatusMap, toSavedMap } from "@/app/inbox/lib/client-utils";
@@ -17,8 +18,7 @@ type Undo = { item: InboxItem; kind: "done" | "save"; prevStatus?: FeedReadStatu
 
 const SECTION_LABELS: Record<QueueSection, string> = {
   continue: "Continue reading",
-  newsletters: "Newsletters",
-  stories: "Top stories",
+  feed: "Your feed",
   covered: "Already in your newsletters",
   saved: "Saved for later",
 };
@@ -114,7 +114,7 @@ export default function TodayPage() {
     [items, statusById, savedById, recommendedIds]
   );
   const ordered = useMemo(() => (tab === "saved" ? queue.saved : flattenQueue(queue)), [queue, tab]);
-  const sections: QueueSection[] = tab === "saved" ? ["saved"] : ["continue", "newsletters", "stories", "covered"];
+  const sections: QueueSection[] = tab === "saved" ? ["saved"] : ["continue", "feed", "covered"];
 
   // Make the top of the queue readable offline.
   const orderedIds = ordered.map((i) => i.id).join(",");
@@ -224,7 +224,7 @@ export default function TodayPage() {
       });
   };
 
-  const totalToday = queue.continue.length + queue.newsletters.length + queue.stories.length;
+  const totalToday = queue.continue.length + queue.feed.length;
 
   return (
     <main className="today-shell">
@@ -271,32 +271,38 @@ export default function TodayPage() {
                   onSave={() => toggleSave(item)}
                   saveLabel={savedById[item.id] ? "Unsave" : "Save"}
                 >
-                  <Link
-                    href={`/read/${encodeURIComponent(item.id)}`}
-                    className="today-row"
-                    onClick={rememberQueueForReader}
-                    // A native link drag would steal the pointer and cancel the swipe.
-                    draggable={false}
-                  >
-                    <div className="today-row-meta">
-                      <span className="today-row-pub">{item.publicationName}</span>
-                      <span>{relativeTime(item.date)}</span>
-                      {statusById[item.id] === "in-progress" && <span className="today-dot" aria-label="In progress" />}
-                    </div>
-                    <div className="today-row-title">{item.subject || "(No subject)"}</div>
-                    {rankMeta.reasons[item.id] && (
-                      <div className="today-row-why">
-                        <span aria-hidden="true">✦</span> {rankMeta.reasons[item.id]}
-                      </div>
-                    )}
-                    {item.coveredBy ? (
-                      <div className="today-row-covered">
-                        Covered in {item.coveredBy.publicationName}: {item.coveredBy.subject}
-                      </div>
-                    ) : (
-                      item.snippet && <div className="today-row-snippet">{item.snippet}</div>
-                    )}
-                  </Link>
+                  {opensOriginal(item, tab) ? (
+                    // RSS stories open on the publisher's site: their pages read better than
+                    // our extraction, and tapping one counts as reading it (Undo is offered).
+                    <a
+                      href={item.externalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="today-row"
+                      onClick={() => markDone(item)}
+                      draggable={false}
+                    >
+                      <RowBody
+                        item={item}
+                        reason={rankMeta.reasons[item.id]}
+                        inProgress={statusById[item.id] === "in-progress"}
+                      />
+                    </a>
+                  ) : (
+                    <Link
+                      href={`/read/${encodeURIComponent(item.id)}`}
+                      className="today-row"
+                      onClick={rememberQueueForReader}
+                      // A native link drag would steal the pointer and cancel the swipe.
+                      draggable={false}
+                    >
+                      <RowBody
+                        item={item}
+                        reason={rankMeta.reasons[item.id]}
+                        inProgress={statusById[item.id] === "in-progress"}
+                      />
+                    </Link>
+                  )}
                 </SwipeRow>
               </li>
             ))}
@@ -316,10 +322,9 @@ export default function TodayPage() {
         return (
           <section key={section} className="today-section">
             <h2 className="today-section-title">
-              {section === "stories" && recommendedIds.length > 0 ? "Picked for you" : SECTION_LABELS[section]}{" "}
-              <span>{list.length}</span>
+              {SECTION_LABELS[section]} <span>{list.length}</span>
             </h2>
-            {section === "stories" && (
+            {section === "feed" && (
               <RankStatusLine
                 meta={rankMeta}
                 hasPicks={recommendedIds.length > 0}
@@ -359,7 +364,6 @@ export default function TodayPage() {
           Saved
         </button>
         <Link href="/highlights">Highlights</Link>
-        <Link href="/inbox/newsletters">Browse</Link>
         <Link href="/rss/settings">Sources</Link>
       </nav>
     </main>
@@ -431,5 +435,73 @@ function RankStatusLine({
       </button>
       {rankNow.error && <span className="today-rank-error">{rankNow.error}</span>}
     </div>
+  );
+}
+
+/**
+ * The source site's icon next to its name. Served by DuckDuckGo's icon
+ * service (only the domain is sent), and hidden if the site has none.
+ */
+function SourceIcon({ item }: { item: InboxItem }) {
+  const domain = faviconDomain(item.externalUrl, item.from);
+  if (!domain) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- tiny remote icon, no optimizer config
+    <img
+      className="today-row-icon"
+      src={`https://icons.duckduckgo.com/ip3/${domain}.ico`}
+      alt=""
+      width={16}
+      height={16}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={(e) => (e.currentTarget.style.display = "none")}
+    />
+  );
+}
+
+/**
+ * Newsletters (and anything saved) open in the in-app reader, where the full
+ * issue is stored. RSS stories open the original page instead.
+ */
+function opensOriginal(item: InboxItem, tab: string): item is InboxItem & { externalUrl: string } {
+  return tab === "today" && item.sourceKind === "rss" && Boolean(item.externalUrl);
+}
+
+function RowBody({ item, reason, inProgress }: { item: InboxItem; reason?: string; inProgress: boolean }) {
+  return (
+    <>
+      {item.imageUrl && (
+        // Lead photo; hidden if it fails to load rather than leaving a broken box.
+        // eslint-disable-next-line @next/next/no-img-element -- arbitrary remote hosts, no optimizer config
+        <img
+          className="today-row-thumb"
+          src={item.imageUrl}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={(e) => (e.currentTarget.style.display = "none")}
+        />
+      )}
+      <div className="today-row-meta">
+        <SourceIcon item={item} />
+        <span className="today-row-pub">{item.publicationName}</span>
+        <span>{relativeTime(item.date)}</span>
+        {inProgress && <span className="today-dot" aria-label="In progress" />}
+      </div>
+      <div className="today-row-title">{item.subject || "(No subject)"}</div>
+      {reason && (
+        <div className="today-row-why">
+          <span aria-hidden="true">✦</span> {reason}
+        </div>
+      )}
+      {item.coveredBy ? (
+        <div className="today-row-covered">
+          Covered in {item.coveredBy.publicationName}: {item.coveredBy.subject}
+        </div>
+      ) : (
+        item.snippet && <div className="today-row-snippet">{item.snippet}</div>
+      )}
+    </>
   );
 }

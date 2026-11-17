@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const db = {
   user: { findUniqueOrThrow: vi.fn(), update: vi.fn() },
   newsletterSender: { findMany: vi.fn() },
-  newsletterIssue: { findMany: vi.fn(), createMany: vi.fn() },
+  newsletterIssue: { findMany: vi.fn(), createMany: vi.fn(), update: vi.fn() },
 };
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 

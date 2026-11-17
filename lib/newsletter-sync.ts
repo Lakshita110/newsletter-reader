@@ -4,6 +4,7 @@ import { classifyNewsletter, getHeader } from "@/lib/newsletter-classifier";
 import { parseFrom, normalizePublicationKey } from "@/lib/from-header";
 import { extractBodies } from "@/lib/gmail-body";
 import type { FeedItem } from "@/lib/rss-candidates";
+import { pickLeadImage } from "@/lib/lead-image";
 import {
   buildInboxQuery,
   buildSenderQuery,
@@ -136,6 +137,7 @@ export async function syncNewsletters(
     where: { id: userId },
     data: { newslettersSyncedAt: new Date(startedAt) },
   });
+  await backfillLeadImages(userId);
   return { status: "synced", added };
 }
 
@@ -174,6 +176,7 @@ async function fetchIssue(gmail: gmail_v1.Gmail, id: string, trustSenderList: bo
     // text is extracted from the HTML (with Readability) on first open.
     text: html ? null : (text ?? null),
     webUrl: extractWebUrl(html),
+    imageUrl: pickLeadImage(html) ?? "",
   };
 }
 
@@ -193,6 +196,7 @@ export async function getStoredNewsletterFeed(userId: string): Promise<FeedItem[
       snippet: true,
       receivedAt: true,
       webUrl: true,
+      imageUrl: true,
     },
   });
   return rows.map((row) => ({
@@ -206,6 +210,7 @@ export async function getStoredNewsletterFeed(userId: string): Promise<FeedItem[
     publicationName: row.fromName,
     publicationKey: row.publicationKey,
     externalUrl: row.webUrl ?? undefined,
+    imageUrl: row.imageUrl || undefined,
   }));
 }
 
@@ -247,4 +252,24 @@ export async function suggestNewsletterSenders(accessToken: string, lookbackDays
     }
   }
   return [...counts.values()].sort((a, b) => b.count - a.count);
+}
+
+/**
+ * Issues stored before lead images existed have imageUrl = null. Fill a
+ * batch per sync from the HTML we already have (no Gmail calls), so photos
+ * appear on older issues without a separate migration job.
+ */
+async function backfillLeadImages(userId: string, batch = 40) {
+  const rows = await prisma.newsletterIssue.findMany({
+    where: { userId, imageUrl: null },
+    orderBy: { receivedAt: "desc" },
+    take: batch,
+    select: { id: true, html: true },
+  });
+  for (const row of rows) {
+    await prisma.newsletterIssue.update({
+      where: { id: row.id },
+      data: { imageUrl: pickLeadImage(row.html) ?? "" },
+    });
+  }
 }
