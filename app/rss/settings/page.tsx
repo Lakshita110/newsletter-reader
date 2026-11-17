@@ -390,9 +390,7 @@ export default function RssSettingsPage() {
                     ) : (
                       <div>
                         <div className="settings-feed-title">
-                          <Link href={`/source/${feed.sourceId}`} style={{ color: "inherit" }}>
-                            {feed.name}
-                          </Link>
+                          {feed.name}
                           <FeedHealthBadge
                             failures={feed.consecutiveFailures ?? 0}
                             lastErrorMessage={feed.lastErrorMessage}

@@ -23,7 +23,6 @@ export const FAST_MODEL_CHAIN = ["openai/gpt-4o-mini", "google/gemini-2.0-flash-
 // She chose GPT-5 mini over Claude Sonnet (2026-11-17): a clear step up from
 // gpt-4o-mini at roughly a tenth of Sonnet's price.
 export const SMART_MODEL_CHAIN = ["openai/gpt-5-mini", ...FAST_MODEL_CHAIN];
-export const RANKING_MODEL_CHAIN = SMART_MODEL_CHAIN;
 
 /** Short, human name for a model id, for "Picked by …" labels in the UI. */
 export function modelLabel(model: string | null | undefined): string | null {

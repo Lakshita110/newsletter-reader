@@ -116,21 +116,15 @@ export type RankingCandidateSet = {
 export async function buildRankingCandidates(params: {
   userId: string;
   now?: Date;
-  /** Restrict to a single source (inbox source filter). Omit to rank all. */
-  selectedSourceId?: string | null;
   /** Per-user cap override (inbox). Omit to use the env default. */
   recommendationCap?: number | null;
 }): Promise<RankingCandidateSet> {
-  const { userId, selectedSourceId, recommendationCap } = params;
+  const { userId, recommendationCap } = params;
   const now = params.now ?? new Date();
   const rollingCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   const subscriptions = await prisma.userRssSubscription.findMany({
-    where: {
-      userId,
-      isActive: true,
-      ...(selectedSourceId ? { rssSourceId: selectedSourceId } : {}),
-    },
+    where: { userId, isActive: true },
     include: {
       source: {
         include: {
@@ -175,11 +169,8 @@ export async function buildRankingCandidates(params: {
   }
 
   // One feed: unread newsletter issues compete in the same ranking as RSS
-  // stories, instead of living in a separate always-shown list. A source
-  // filter (RSS browse view) means "just this RSS source", so skip them then.
-  if (!selectedSourceId) {
-    allCandidates.push(...(await newsletterCandidates(userId, now)));
-  }
+  // stories, instead of living in a separate always-shown list.
+  allCandidates.push(...(await newsletterCandidates(userId, now)));
 
   const candidateIds = allCandidates.map((candidate) => candidate.feedItem.id);
   const readRows =

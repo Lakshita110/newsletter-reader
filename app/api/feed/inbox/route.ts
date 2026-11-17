@@ -31,46 +31,29 @@ async function getUserAndToken() {
   };
 }
 
-async function getRssFeed(
-  userId: string,
-  selectedSourceId?: string | null,
-  enableRanking: boolean = true,
-  requestTag: string = "req",
-  recommendationCap?: number | null
-) {
-  const overflowBySource = new Map<string, { sourceId: string; sourceName: string; count: number }>();
-  const { allCandidates, sortedFallback, totalCap } = await buildRankingCandidates({
-    userId,
-    selectedSourceId,
-    recommendationCap,
-  });
+/**
+ * The ranked pool for Today: every candidate from the last day (plus a week of
+ * newsletters), with the latest ranking applied. Stories outside the day's
+ * picks are flagged `isOverflow` so Today can show only a few of them.
+ */
+async function getRankedFeed(userId: string, recommendationCap: number | null) {
+  const { allCandidates, sortedFallback, totalCap } = await buildRankingCandidates({ userId, recommendationCap });
 
   let selectedIds = new Set<string>();
-  let recommendedIds = new Set<string>();
-  let rankReasons: Record<string, string> = {};
+  let recommendedIds: string[] = [];
   let rankedAt: string | null = null;
   let rankStatus: string | null = null;
   let rankModel: string | null = null;
-  if (totalCap <= 0) {
-    selectedIds = new Set();
-  } else if (!enableRanking) {
-    selectedIds = new Set(sortedFallback.slice(0, totalCap).map((candidate) => candidate.feedItem.id));
-  } else {
-    const rankingResult = await getLatestRankedIds({ userId, sortedFallback, cap: totalCap });
-    rankedAt = rankingResult.rankedAt;
-    rankStatus = rankingResult.status;
-    rankModel = modelLabel(rankingResult.model);
-    rankReasons = rankingResult.rankReasons;
-    recommendedIds = new Set(rankingResult.recommendedRankIds);
-    if (rankingResult.selectedRankIds && rankingResult.selectedRankIds.length > 0) {
-      console.info(
-        `[rss-inbox][${requestTag}] serving last ranking selected=${rankingResult.selectedRankIds.length} recommended=${rankingResult.recommendedRankIds.length} status="${rankingResult.status ?? "NONE"}" rankedAt="${rankedAt ?? ""}"`
-      );
-      selectedIds = new Set(
-        selectRankedIds(rankingResult.selectedRankIds, sortedFallback, totalCap, { backfill: true })
-      );
+  if (totalCap > 0) {
+    const ranking = await getLatestRankedIds({ userId, sortedFallback, cap: totalCap });
+    rankedAt = ranking.rankedAt;
+    rankStatus = ranking.status;
+    rankModel = modelLabel(ranking.model);
+    recommendedIds = ranking.recommendedRankIds;
+    if (ranking.selectedRankIds && ranking.selectedRankIds.length > 0) {
+      selectedIds = new Set(selectRankedIds(ranking.selectedRankIds, sortedFallback, totalCap, { backfill: true }));
     } else {
-      console.info(`[rss-inbox][${requestTag}] no ranking yet, using deterministic order`);
+      console.info("[feed] no ranking yet, using newest-first");
       selectedIds = new Set(sortedFallback.slice(0, totalCap).map((candidate) => candidate.feedItem.id));
     }
   }
@@ -80,21 +63,11 @@ async function getRssFeed(
     // "overflow": she subscribed to every one of them. Ranking only orders them.
     if (candidate.feedItem.sourceKind === "gmail") continue;
     candidate.feedItem.isOverflow = !selectedIds.has(candidate.feedItem.id);
-    if (!candidate.feedItem.isOverflow) continue;
-    const prev = overflowBySource.get(candidate.sourceId) ?? {
-      sourceId: candidate.sourceId,
-      sourceName: candidate.sourceName,
-      count: 0,
-    };
-    prev.count += 1;
-    overflowBySource.set(candidate.sourceId, prev);
   }
 
   return {
     visible: allCandidates.map((candidate) => candidate.feedItem),
-    recommendedIds: [...recommendedIds],
-    rankReasons,
-    overflowBySource: [...overflowBySource.values()].sort((a, b) => b.count - a.count),
+    recommendedIds,
     rankedAt,
     rankStatus,
     rankModel,
@@ -146,53 +119,37 @@ async function markCoveredStories(userId: string, items: FeedItem[]) {
   }
 }
 
-export async function GET(req: Request) {
+export async function GET() {
   const auth = await getUserAndToken();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const url = new URL(req.url);
-  const kind = url.searchParams.get("kind");
-  const selectedSourceId = url.searchParams.get("sourceId");
-  const isNewsletterOnly = kind === "newsletters";
-  const enableRanking = !isNewsletterOnly;
-  const requestTag = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
-  // Saved web links only belong in the combined (Today) view.
-  const includeWeb = !kind && !selectedSourceId;
-  const [gmailItems, rss, webItems] = await Promise.all([
+  const [gmailItems, ranked, webItems] = await Promise.all([
     getNewsletterItems(auth.userId, auth.accessToken),
-    getRssFeed(auth.userId, selectedSourceId, enableRanking, requestTag, auth.recommendationCap),
-    includeWeb ? getSavedArticleFeed(auth.userId) : Promise.resolve([]),
+    getRankedFeed(auth.userId, auth.recommendationCap),
+    getSavedArticleFeed(auth.userId),
   ]);
 
   // Recent newsletters arrive twice (the stored-issue list and the ranking
   // pool); keep the first copy of each id.
   const seen = new Set<string>();
-  const merged = [...gmailItems, ...rss.visible, ...webItems].filter((item) => {
-    if (seen.has(item.id)) return false;
-    seen.add(item.id);
-    return true;
-  });
-  let items = merged.sort((a, b) => {
-    const ta = new Date(a.date).getTime();
-    const tb = new Date(b.date).getTime();
-    return tb - ta;
-  });
-  if (selectedSourceId) items = items.filter((it) => it.sourceId === selectedSourceId);
-  if (kind === "rss") items = items.filter((it) => it.sourceKind === "rss");
-  if (kind === "newsletters") items = items.filter((it) => it.sourceKind === "gmail");
-  if (kind !== "newsletters") await markCoveredStories(auth.userId, items);
+  const items = [...gmailItems, ...ranked.visible, ...webItems]
+    .filter((item) => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    })
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  await markCoveredStories(auth.userId, items);
 
   return NextResponse.json({
     items,
-    overflowBySource: rss.overflowBySource,
     rssMeta: {
-      recommendedIds: rss.recommendedIds,
-      rankReasons: rss.rankReasons,
-      rankedAt: rss.rankedAt,
+      recommendedIds: ranked.recommendedIds,
+      rankedAt: ranked.rankedAt,
       // Lets Today say "Picked by GPT-5 mini, 2h ago" or "not ranked yet"
       // instead of silently showing newest-first when ranking failed.
-      rankStatus: rss.rankStatus,
-      rankModel: rss.rankModel,
+      rankStatus: ranked.rankStatus,
+      rankModel: ranked.rankModel,
     },
   });
 }

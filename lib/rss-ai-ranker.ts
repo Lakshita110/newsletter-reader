@@ -1,4 +1,4 @@
-import { RANKING_MODEL_CHAIN, openRouterChat } from "@/lib/openrouter";
+import { SMART_MODEL_CHAIN, openRouterChat } from "@/lib/openrouter";
 
 type RankItemInput = {
   id: string;
@@ -199,7 +199,7 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
     return null;
   }
 
-  const cacheKey = getCacheKey(req, RANKING_MODEL_CHAIN.join("|"));
+  const cacheKey = getCacheKey(req, SMART_MODEL_CHAIN.join("|"));
   const cached = rankCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     console.info(
@@ -287,15 +287,15 @@ ${candidates}`;
 
   const rankingPromise = (async (): Promise<RankResult | null> => {
     console.info(
-      `[rss-ranker] ranking start day="${req.dayKey}" cap=${req.cap} candidates=${req.items.length} models="${RANKING_MODEL_CHAIN.join(",")}"`
+      `[rss-ranker] ranking start day="${req.dayKey}" cap=${req.cap} candidates=${req.items.length} models="${SMART_MODEL_CHAIN.join(",")}"`
     );
     const timeoutMs = getTimeoutMs();
     let content: string | null = null;
     let finishReason: string | undefined;
     let usedModel: string | null = null;
 
-    for (let attemptIndex = 0; attemptIndex < RANKING_MODEL_CHAIN.length; attemptIndex++) {
-      const selectedModel = RANKING_MODEL_CHAIN[attemptIndex];
+    for (let attemptIndex = 0; attemptIndex < SMART_MODEL_CHAIN.length; attemptIndex++) {
+      const selectedModel = SMART_MODEL_CHAIN[attemptIndex];
       const result = await openRouterChat({
         apiKey,
         model: selectedModel,
@@ -320,7 +320,7 @@ ${candidates}`;
           providerCooldownUntilMs = Date.now() + getFailureCooldownMs();
         }
         console.warn(
-          `[rss-ranker] model attempt failed model="${selectedModel}" attempt=${attemptIndex + 1}/${RANKING_MODEL_CHAIN.length} status=${result.status ?? "thrown"} body="${result.errorBody.slice(0, 240)}"`
+          `[rss-ranker] model attempt failed model="${selectedModel}" attempt=${attemptIndex + 1}/${SMART_MODEL_CHAIN.length} status=${result.status ?? "thrown"} body="${result.errorBody.slice(0, 240)}"`
         );
         continue;
       }

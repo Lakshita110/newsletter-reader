@@ -1,4 +1,4 @@
-import { RANKING_MODEL_CHAIN } from "./openrouter";
+import { SMART_MODEL_CHAIN } from "./openrouter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parsePicks, rankItemsForDailyCap, withMaxTokens } from "./rss-ai-ranker";
 
@@ -161,7 +161,7 @@ describe("rankItemsForDailyCap", () => {
     expect(result).toEqual({
       ids: ["rss:within-cap-a"],
       reasons: { "rss:within-cap-a": "only candidate, still reasoned" },
-      model: RANKING_MODEL_CHAIN[0],
+      model: SMART_MODEL_CHAIN[0],
     });
   });
 

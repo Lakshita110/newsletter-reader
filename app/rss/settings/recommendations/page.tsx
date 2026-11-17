@@ -184,8 +184,8 @@ export default function RecommendationSettingsPage() {
               Tune how many articles the AI recommends and what it should prioritize.
             </p>
           </div>
-          <Link href="/inbox/rss" className="back-link-muted" style={{ marginTop: 4 }}>
-            Back to RSS inbox
+          <Link href="/rss/settings" className="back-link-muted" style={{ marginTop: 4 }}>
+            Back to Sources
           </Link>
         </div>
       </header>

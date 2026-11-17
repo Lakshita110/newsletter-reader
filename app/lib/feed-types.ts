@@ -16,14 +16,3 @@ export type InboxItem = {
 };
 
 export type FeedReadStatus = "unread" | "in-progress" | "read";
-
-export type EnrichedInboxItem = InboxItem & {
-  _date: Date | null;
-  _dayKey: string;
-};
-
-export type GroupedInboxItems = {
-  key: string;
-  label: string;
-  items: EnrichedInboxItem[];
-};
