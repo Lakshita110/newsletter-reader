@@ -3,8 +3,7 @@ import { classifyNewsletter, getHeader } from "./newsletter-classifier";
 
 type Header = { name: string; value: string };
 
-const headers = (...pairs: Array<[string, string]>): Header[] =>
-  pairs.map(([name, value]) => ({ name, value }));
+const headers = (...pairs: Array<[string, string]>): Header[] => pairs.map(([name, value]) => ({ name, value }));
 
 describe("getHeader", () => {
   it("matches header names case-insensitively", () => {

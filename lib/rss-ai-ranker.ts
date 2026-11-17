@@ -82,10 +82,8 @@ export function parsePicks(content: string): ParsedPick[] {
   // cut-off tail then loses only its final partial pick, and every pick that
   // does survive still has both fields.
   const out: ParsedPick[] = [];
-  const idFirst =
-    /\{\s*"id"\s*:\s*(?:"(rss:[A-Za-z0-9_-]+)"|(\d+))\s*,\s*"reason"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/g;
-  const reasonFirst =
-    /\{\s*"reason"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"id"\s*:\s*(?:"(rss:[A-Za-z0-9_-]+)"|(\d+))\s*\}/g;
+  const idFirst = /\{\s*"id"\s*:\s*(?:"(rss:[A-Za-z0-9_-]+)"|(\d+))\s*,\s*"reason"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/g;
+  const reasonFirst = /\{\s*"reason"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"id"\s*:\s*(?:"(rss:[A-Za-z0-9_-]+)"|(\d+))\s*\}/g;
   const unescape = (s: string) => s.replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
   let match: RegExpExecArray | null;
   while ((match = idFirst.exec(content)) !== null) {
@@ -103,10 +101,7 @@ export function parsePicks(content: string): ParsedPick[] {
   return out;
 }
 
-function normalizeRankToken(
-  token: string | number,
-  byIndex: Map<number, string>
-): string | undefined {
+function normalizeRankToken(token: string | number, byIndex: Map<number, string>): string | undefined {
   // The model is asked for ids but sometimes echoes a list position instead.
   // The prompt numbers candidates from 1; the n+1 lookup also tolerates a
   // model that counted from 0.
@@ -124,10 +119,11 @@ function normalizeRankToken(
 
 function getCacheKey(req: RankRequest, model: string): string {
   const ids = req.items.map((item) => item.id).join(",");
-  const profileHint = req.userProfile?.topPublications
-    ?.slice(0, 5)
-    .map((p) => p.name)
-    .join(",") ?? "none";
+  const profileHint =
+    req.userProfile?.topPublications
+      ?.slice(0, 5)
+      .map((p) => p.name)
+      .join(",") ?? "none";
   return `${model}|${req.dayKey}|${req.cap}|${ids}|${profileHint}`;
 }
 
@@ -207,21 +203,15 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
   }
   const inFlight = inFlightRankings.get(cacheKey);
   if (inFlight) {
-    console.info(
-      `[rss-ranker] join in-flight request day="${req.dayKey}" cap=${req.cap}`
-    );
+    console.info(`[rss-ranker] join in-flight request day="${req.dayKey}" cap=${req.cap}`);
     const shared = await inFlight;
     return shared ? { ...shared } : null;
   }
 
   const candidates = req.items
     .map((item, index) => {
-      const snippetLine = item.snippet?.trim()
-        ? `snippet=${item.snippet.trim().slice(0, 280)}`
-        : null;
-      const dateLine = item.publishedAtIso
-        ? `published=${item.publishedAtIso.slice(0, 10)}`
-        : null;
+      const snippetLine = item.snippet?.trim() ? `snippet=${item.snippet.trim().slice(0, 280)}` : null;
+      const dateLine = item.publishedAtIso ? `published=${item.publishedAtIso.slice(0, 10)}` : null;
       return [
         `${index + 1}. id=${item.id}`,
         `source=${item.sourceName?.trim() || "unknown"}`,
@@ -236,17 +226,15 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
     .join("\n\n");
   const validIds = req.items.map((item) => item.id).join(", ");
 
-  const topPubsLine =
-    req.userProfile?.topPublications?.length
-      ? req.userProfile.topPublications
-          .slice(0, 8)
-          .map((p) => `${p.name}(${p.score.toFixed(1)})`)
-          .join(", ")
-      : "none";
-  const profileNotes =
-    req.userProfile?.preferenceSummary?.length
-      ? req.userProfile.preferenceSummary.map((x) => `- ${x}`).join("\n")
-      : "- no strong preference signals yet";
+  const topPubsLine = req.userProfile?.topPublications?.length
+    ? req.userProfile.topPublications
+        .slice(0, 8)
+        .map((p) => `${p.name}(${p.score.toFixed(1)})`)
+        .join(", ")
+    : "none";
+  const profileNotes = req.userProfile?.preferenceSummary?.length
+    ? req.userProfile.preferenceSummary.map((x) => `- ${x}`).join("\n")
+    : "- no strong preference signals yet";
 
   const customInterestPrompt = req.userProfile?.customPrompt?.trim();
   const interestGuidance = customInterestPrompt
@@ -355,9 +343,7 @@ ${candidates}`;
     }
     const picks = parsePicks(content);
     if (picks.length === 0) {
-      console.warn(
-        `[rss-ranker] invalid/empty picks returned contentPreview="${content.slice(0, 200)}"`
-      );
+      console.warn(`[rss-ranker] invalid/empty picks returned contentPreview="${content.slice(0, 200)}"`);
       rankCache.set(cacheKey, {
         expiresAt: Date.now() + getFailureCooldownMs(),
         value: null,

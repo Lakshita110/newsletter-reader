@@ -7,9 +7,7 @@ function b64urlDecode(input: string) {
 }
 
 /** Walk a MIME tree and return the first text/html and text/plain bodies. */
-export function extractBodies(
-  payload: gmail_v1.Schema$MessagePart | undefined
-): { html?: string; text?: string } {
+export function extractBodies(payload: gmail_v1.Schema$MessagePart | undefined): { html?: string; text?: string } {
   let html: string | undefined;
   let text: string | undefined;
 

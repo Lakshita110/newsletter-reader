@@ -9,7 +9,10 @@ export const FIRST_SYNC_LOOKBACK_DAYS = 30;
 export const INCREMENTAL_OVERLAP_MS = 2 * 24 * 60 * 60 * 1000;
 
 export function normalizeSenderEmail(raw: string): string | null {
-  const email = raw.trim().toLowerCase().replace(/^mailto:/, "");
+  const email = raw
+    .trim()
+    .toLowerCase()
+    .replace(/^mailto:/, "");
   // Deliberately loose: Gmail accepts plus-addresses and subdomains, and we
   // only need enough validation to keep junk out of the search query.
   if (!/^[^\s@()"]+@[^\s@()"]+\.[^\s@()"]+$/.test(email)) return null;
@@ -41,8 +44,10 @@ export function syncWindowStart(lastSyncedAt: Date | null, now: Date = new Date(
   return new Date(lastSyncedAt.getTime() - INCREMENTAL_OVERLAP_MS);
 }
 
-const WEB_LINK_TEXT = /\b(view (this post |it |this email )?(on the web|in (your )?browser|online)|read (it )?(online|in (the )?app|on (the )?web))\b/i;
-const POST_URL = /^https:\/\/([a-z0-9-]+\.substack\.com\/p\/|stratechery\.com\/\d{4}\/|newsletter\.pragmaticengineer\.com\/p\/|www\.lennysnewsletter\.com\/p\/|[a-z0-9.-]+\/p\/[a-z0-9-]+)/i;
+const WEB_LINK_TEXT =
+  /\b(view (this post |it |this email )?(on the web|in (your )?browser|online)|read (it )?(online|in (the )?app|on (the )?web))\b/i;
+const POST_URL =
+  /^https:\/\/([a-z0-9-]+\.substack\.com\/p\/|stratechery\.com\/\d{4}\/|newsletter\.pragmaticengineer\.com\/p\/|www\.lennysnewsletter\.com\/p\/|[a-z0-9.-]+\/p\/[a-z0-9-]+)/i;
 
 /**
  * Find the canonical web URL of a newsletter issue, so the reader can offer
@@ -56,10 +61,14 @@ export function extractWebUrl(html: string | undefined | null): string | null {
   const anchors = [...html.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)];
   const cleaned = anchors.map(([, href, inner]) => ({
     href: href.replace(/&amp;/g, "&").trim(),
-    text: inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+    text: inner
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
   }));
   const usable = cleaned.filter(
-    (a) => a.href.startsWith("https://") && !/\/redirect\/|\/unsubscribe|\/action\/|list-manage|\/subscribe\b/i.test(a.href)
+    (a) =>
+      a.href.startsWith("https://") && !/\/redirect\/|\/unsubscribe|\/action\/|list-manage|\/subscribe\b/i.test(a.href)
   );
   const labelled = usable.find((a) => WEB_LINK_TEXT.test(a.text));
   if (labelled) return stripTracking(labelled.href);

@@ -37,18 +37,7 @@ export function stripHtml(html: string): string {
     return fallback;
   }
 
-  for (const selector of [
-    "script",
-    "style",
-    "noscript",
-    "iframe",
-    "svg",
-    "canvas",
-    "meta",
-    "link",
-    "title",
-    "head",
-  ]) {
+  for (const selector of ["script", "style", "noscript", "iframe", "svg", "canvas", "meta", "link", "title", "head"]) {
     doc.querySelectorAll(selector).forEach((node) => node.remove());
   }
 
@@ -168,4 +157,3 @@ function getNodeText(node: Node): string {
   if (!("children" in node) || !Array.isArray(node.children)) return "";
   return node.children.map(getNodeText).join(" ");
 }
-

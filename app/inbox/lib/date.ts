@@ -64,4 +64,3 @@ export function formatDateTime(value: string): string {
   });
   return `${date} - ${time}`;
 }
-

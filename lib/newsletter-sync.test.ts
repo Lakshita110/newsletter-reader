@@ -13,7 +13,11 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 const gmail = { users: { messages: { list: vi.fn(), get: vi.fn() } } };
 vi.mock("googleapis", () => ({
   google: {
-    auth: { OAuth2: class { setCredentials() {} } },
+    auth: {
+      OAuth2: class {
+        setCredentials() {}
+      },
+    },
     gmail: () => gmail,
   },
 }));
@@ -99,7 +103,9 @@ describe("syncNewsletters", () => {
     );
     const result = await syncNewsletters("u1", "tok");
     expect(gmail.users.messages.list.mock.calls[0][0].q).toContain("in:inbox");
-    expect(db.newsletterIssue.createMany.mock.calls[0][0].data.map((r: { gmailMessageId: string }) => r.gmailMessageId)).toEqual(["news"]);
+    expect(
+      db.newsletterIssue.createMany.mock.calls[0][0].data.map((r: { gmailMessageId: string }) => r.gmailMessageId)
+    ).toEqual(["news"]);
     expect(result.added).toBe(1);
   });
 

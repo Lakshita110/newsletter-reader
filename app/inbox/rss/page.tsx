@@ -43,8 +43,7 @@ function mapSearchRows(rows: unknown[]): InboxItem[] {
       const sourceName =
         typeof row.sourceName === "string" && row.sourceName.trim() ? row.sourceName : "Unknown source";
       const publishedAt = typeof row.publishedAt === "string" && row.publishedAt ? row.publishedAt : null;
-      const category =
-        typeof row.category === "string" && row.category.trim() ? row.category.trim() : "other";
+      const category = typeof row.category === "string" && row.category.trim() ? row.category.trim() : "other";
       return {
         id: typeof row.id === "string" ? row.id : "",
         sourceId: sourceId || undefined,
@@ -78,9 +77,9 @@ export default function RssInboxPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [showAllEarlier, setShowAllEarlier] = useState(false);
-  const [overflowBySource, setOverflowBySource] = useState<
-    { sourceId: string; sourceName: string; count: number }[]
-  >([]);
+  const [overflowBySource, setOverflowBySource] = useState<{ sourceId: string; sourceName: string; count: number }[]>(
+    []
+  );
   const [recommendedIds, setRecommendedIds] = useState<string[]>([]);
   const [rankReasons, setRankReasons] = useState<Record<string, string>>({});
   const [rankedAt, setRankedAt] = useState<string | null>(null);
@@ -90,7 +89,9 @@ export default function RssInboxPage() {
   const [rssSyncNotice, setRssSyncNotice] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [manualSyncedIds, setManualSyncedIds] = useState<string[]>([]);
-  const [readStreak, setReadStreak] = useState<{ streak: number; weeklyCount: number; weeklyGoal: number } | null>(null);
+  const [readStreak, setReadStreak] = useState<{ streak: number; weeklyCount: number; weeklyGoal: number } | null>(
+    null
+  );
   const [statusById, setStatusById] = useState<Record<string, FeedReadStatus>>(() =>
     readMapFromStorage<FeedReadStatus>("nr_read_status_map")
   );
@@ -106,41 +107,46 @@ export default function RssInboxPage() {
   const searchQuery = q.trim();
   const isServerSearchActive = searchQuery.length > 0;
 
-  const loadRssInbox = useCallback(async (opts?: { forceRecommendedPool?: boolean }) => {
-    const params = new URLSearchParams({ kind: "rss" });
-    const sourceFilterForApi = opts?.forceRecommendedPool
-      ? null
-      : viewMode === "recommended"
+  const loadRssInbox = useCallback(
+    async (opts?: { forceRecommendedPool?: boolean }) => {
+      const params = new URLSearchParams({ kind: "rss" });
+      const sourceFilterForApi = opts?.forceRecommendedPool
         ? null
-        : selectedSourceId;
-    if (sourceFilterForApi) params.set("sourceId", sourceFilterForApi);
-    const res = await fetch(`/api/feed/inbox?${params.toString()}`);
-    if (!res.ok) {
-      setLoadError(
-        res.status === 401
-          ? "Signed out — sign back in to load your feed."
-          : `Couldn't load your feed (${res.status}).`
+        : viewMode === "recommended"
+          ? null
+          : selectedSourceId;
+      if (sourceFilterForApi) params.set("sourceId", sourceFilterForApi);
+      const res = await fetch(`/api/feed/inbox?${params.toString()}`);
+      if (!res.ok) {
+        setLoadError(
+          res.status === 401
+            ? "Signed out — sign back in to load your feed."
+            : `Couldn't load your feed (${res.status}).`
+        );
+        return [] as InboxItem[];
+      }
+      setLoadError(null);
+      const data = await res.json();
+      const nextItems = Array.isArray(data?.items) ? data.items : [];
+      setItems(nextItems);
+      setOverflowBySource(Array.isArray(data?.overflowBySource) ? data.overflowBySource : []);
+      setRecommendedIds(
+        Array.isArray(data?.rssMeta?.recommendedIds)
+          ? data.rssMeta.recommendedIds.filter((id: unknown): id is string => typeof id === "string")
+          : []
       );
-      return [] as InboxItem[];
-    }
-    setLoadError(null);
-    const data = await res.json();
-    const nextItems = Array.isArray(data?.items) ? data.items : [];
-    setItems(nextItems);
-    setOverflowBySource(Array.isArray(data?.overflowBySource) ? data.overflowBySource : []);
-    setRecommendedIds(
-      Array.isArray(data?.rssMeta?.recommendedIds)
-        ? data.rssMeta.recommendedIds.filter((id: unknown): id is string => typeof id === "string")
-        : []
-    );
-    setRankReasons(
-      data?.rssMeta?.rankReasons && typeof data.rssMeta.rankReasons === "object" && !Array.isArray(data.rssMeta.rankReasons)
-        ? (data.rssMeta.rankReasons as Record<string, string>)
-        : {}
-    );
-    setRankedAt(typeof data?.rssMeta?.rankedAt === "string" ? data.rssMeta.rankedAt : null);
-    return nextItems as InboxItem[];
-  }, [selectedSourceId, viewMode]);
+      setRankReasons(
+        data?.rssMeta?.rankReasons &&
+          typeof data.rssMeta.rankReasons === "object" &&
+          !Array.isArray(data.rssMeta.rankReasons)
+          ? (data.rssMeta.rankReasons as Record<string, string>)
+          : {}
+      );
+      setRankedAt(typeof data?.rssMeta?.rankedAt === "string" ? data.rssMeta.rankedAt : null);
+      return nextItems as InboxItem[];
+    },
+    [selectedSourceId, viewMode]
+  );
 
   const syncRssFeeds = useCallback(async () => {
     if (syncingRef.current) return;
@@ -169,7 +175,9 @@ export default function RssInboxPage() {
   }, [loadRssInbox]);
 
   useEffect(() => {
-    loadRssInbox().catch(() => null).finally(() => setIsLoading(false));
+    loadRssInbox()
+      .catch(() => null)
+      .finally(() => setIsLoading(false));
   }, [loadRssInbox]);
 
   useEffect(() => {
@@ -222,7 +230,8 @@ export default function RssInboxPage() {
     fetch("/api/read-stats")
       .then((r) => r.json())
       .then((d) => {
-        if (d?.weeklyGoal !== undefined) setReadStreak({ streak: d.streak, weeklyCount: d.weeklyCount, weeklyGoal: d.weeklyGoal });
+        if (d?.weeklyGoal !== undefined)
+          setReadStreak({ streak: d.streak, weeklyCount: d.weeklyCount, weeklyGoal: d.weeklyGoal });
       })
       .catch(() => null);
   }, [session?.user?.email]);
@@ -235,7 +244,10 @@ export default function RssInboxPage() {
     saveMapToStorage("nr_saved_items_map", savedById);
   }, [savedById]);
 
-  const activeItems = useMemo(() => (isServerSearchActive ? searchItems : items), [isServerSearchActive, items, searchItems]);
+  const activeItems = useMemo(
+    () => (isServerSearchActive ? searchItems : items),
+    [isServerSearchActive, items, searchItems]
+  );
   const publications = useMemo(() => getPublications(activeItems), [activeItems]);
   const categories = useMemo(() => {
     const map = new Map<string, { key: string; count: number }>();
@@ -272,7 +284,10 @@ export default function RssInboxPage() {
     return enriched;
   }, [enriched, manualSyncedIdSet, rankReasons, recommendedIdSet, savedById, statusById, todayKey, viewMode]);
   const categoryFiltered = useMemo(
-    () => (selectedCategory ? viewFiltered.filter((it) => (it.category?.trim() || "uncategorized") === selectedCategory) : viewFiltered),
+    () =>
+      selectedCategory
+        ? viewFiltered.filter((it) => (it.category?.trim() || "uncategorized") === selectedCategory)
+        : viewFiltered,
     [selectedCategory, viewFiltered]
   );
   const filtered = useMemo(
@@ -373,7 +388,6 @@ export default function RssInboxPage() {
     }
   }, []);
 
-
   useFeedKeyboardNavigation({
     ordered,
     activeSelectedIndex,
@@ -421,7 +435,12 @@ export default function RssInboxPage() {
     if (session === null) router.replace("/sign-in");
   }, [session, router]);
 
-  if (!session) return <main style={{ maxWidth: 560, margin: "80px auto", padding: 20 }}><p>Loading...</p></main>;
+  if (!session)
+    return (
+      <main style={{ maxWidth: 560, margin: "80px auto", padding: 20 }}>
+        <p>Loading...</p>
+      </main>
+    );
 
   return (
     <main style={{ maxWidth: 768, margin: "44px auto", padding: "0 24px 20px" }}>
@@ -479,7 +498,17 @@ export default function RssInboxPage() {
                 title="Sync RSS feeds now"
                 style={{ gap: 6 }}
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
                   <path d="M23 4v6h-6" />
                   <path d="M1 20v-6h6" />
                   <path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10" />
@@ -490,21 +519,39 @@ export default function RssInboxPage() {
             }
           />
 
-          {loadError && <div style={{ margin: "-8px 0 14px", color: "var(--danger, #d33)", fontSize: 12 }}>{loadError}</div>}
-          {rssSyncNotice && <div style={{ margin: "-8px 0 14px", color: "var(--muted)", fontSize: 12 }}>{rssSyncNotice}</div>}
+          {loadError && (
+            <div style={{ margin: "-8px 0 14px", color: "var(--danger, #d33)", fontSize: 12 }}>{loadError}</div>
+          )}
+          {rssSyncNotice && (
+            <div style={{ margin: "-8px 0 14px", color: "var(--muted)", fontSize: 12 }}>{rssSyncNotice}</div>
+          )}
           {viewMode === "recommended" && rankedAt && (
             <div style={{ margin: "-8px 0 14px", color: "var(--muted)", fontSize: 12 }}>
               {`Last ranked ${formatRankedAgo(rankedAt)}.`}
             </div>
           )}
           {readStreak && (readStreak.streak > 0 || readStreak.weeklyCount > 0) && (
-            <div style={{ margin: "-8px 0 14px", fontSize: 12, color: "var(--muted)", display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div
+              style={{
+                margin: "-8px 0 14px",
+                fontSize: 12,
+                color: "var(--muted)",
+                display: "flex",
+                gap: 12,
+                flexWrap: "wrap",
+              }}
+            >
               {readStreak.streak > 0 && (
                 <span title={`${readStreak.streak}-day reading streak`}>
                   {readStreak.streak >= 7 ? "🔥" : "📖"} {readStreak.streak}d streak
                 </span>
               )}
-              <span style={{ color: readStreak.weeklyCount >= readStreak.weeklyGoal ? "var(--accent-blue, #2563eb)" : "var(--muted)" }}>
+              <span
+                style={{
+                  color:
+                    readStreak.weeklyCount >= readStreak.weeklyGoal ? "var(--accent-blue, #2563eb)" : "var(--muted)",
+                }}
+              >
                 {readStreak.weeklyCount}/{readStreak.weeklyGoal} days this week
               </span>
             </div>

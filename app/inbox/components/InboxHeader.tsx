@@ -74,8 +74,10 @@ export function InboxHeader({
           <div className="app-page-subtitle" style={{ marginTop: 4 }}>
             {isLoading ? (
               <span className="skeleton-inline" style={{ width: 140, height: 14 }} aria-label="Loading…" />
+            ) : mode === "rss" ? (
+              `${todayCount} RSS articles today`
             ) : (
-              mode === "rss" ? `${todayCount} RSS articles today` : `${todayCount} newsletters today`
+              `${todayCount} newsletters today`
             )}
           </div>
         </div>
@@ -134,11 +136,7 @@ export function InboxHeader({
                     {item.label}
                   </Link>
                 ))}
-                <button
-                  type="button"
-                  className="account-menu-link"
-                  onClick={() => signOut({ callbackUrl: "/" })}
-                >
+                <button type="button" className="account-menu-link" onClick={() => signOut({ callbackUrl: "/" })}>
                   Sign out
                 </button>
               </div>
@@ -164,9 +162,7 @@ export function InboxHeader({
           }}
         />
         {/* Card mode is a phone affordance, so the switch only appears there. */}
-        {uiMode && onUiModeChange && isMobileViewport && (
-          <UiModeToggle uiMode={uiMode} onChange={onUiModeChange} />
-        )}
+        {uiMode && onUiModeChange && isMobileViewport && <UiModeToggle uiMode={uiMode} onChange={onUiModeChange} />}
       </div>
 
       {showShortcuts && (

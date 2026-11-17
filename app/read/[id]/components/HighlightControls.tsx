@@ -19,13 +19,7 @@ export function SelectionBar({ onHighlight }: { onHighlight: (note?: string) => 
   if (noting) {
     return (
       <div className="hl-sheet" role="dialog" aria-label="Add a note">
-        <textarea
-          autoFocus
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="Your note…"
-          rows={3}
-        />
+        <textarea autoFocus value={note} onChange={(e) => setNote(e.target.value)} placeholder="Your note…" rows={3} />
         <div className="hl-sheet-actions">
           <button type="button" onClick={() => setNoting(false)}>
             Cancel

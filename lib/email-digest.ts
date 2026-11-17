@@ -11,7 +11,12 @@ export type DigestItem = {
  */
 export function getLocalDateKey(tz: string, now: Date = new Date()): string {
   try {
-    const formatter = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
     return formatter.format(now);
   } catch {
     // Invalid timezone — fall back to the UTC day key so the de-dupe guard

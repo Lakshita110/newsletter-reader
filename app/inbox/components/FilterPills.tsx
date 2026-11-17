@@ -63,7 +63,7 @@ export function InboxFilters({
 
     window.addEventListener("mousedown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
-  
+
     return () => {
       window.removeEventListener("mousedown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
@@ -86,15 +86,11 @@ export function InboxFilters({
   };
 
   const selectedPubLabel =
-    selectedPub == null
-      ? null
-      : publicationOptions.find((it) => it.key === selectedPub)?.label ?? "Source";
+    selectedPub == null ? null : (publicationOptions.find((it) => it.key === selectedPub)?.label ?? "Source");
   const selectedCategoryLabel =
-    selectedCategory == null
-      ? null
-      : categoryOptions?.find((it) => it.key === selectedCategory)?.label ?? "Category";
+    selectedCategory == null ? null : (categoryOptions?.find((it) => it.key === selectedCategory)?.label ?? "Category");
   const selectedDayLabel =
-    selectedDay == null ? null : dayOptions.find((it) => it.key === selectedDay)?.label ?? "Date";
+    selectedDay == null ? null : (dayOptions.find((it) => it.key === selectedDay)?.label ?? "Date");
 
   return (
     <section style={{ marginBottom: 14, borderBottom: "1px solid var(--faint)", paddingBottom: 12 }}>
@@ -231,4 +227,3 @@ export function InboxFilters({
 export function toDayOptions(days: { key: string }[]): Option[] {
   return days.map((d) => ({ key: d.key, label: formatDayPillLabel(d.key) }));
 }
-

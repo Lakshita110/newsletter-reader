@@ -14,7 +14,11 @@ function pickUrl(...candidates: (string | null)[]): string | null {
   return null;
 }
 
-type State = { kind: "idle" } | { kind: "saving" } | { kind: "saved"; title: string; id: string } | { kind: "error"; message: string };
+type State =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "saved"; title: string; id: string }
+  | { kind: "error"; message: string };
 
 function SaveInner() {
   const params = useSearchParams();
@@ -69,15 +73,14 @@ function SaveInner() {
       </form>
       {state.kind === "saved" && (
         <p style={{ marginTop: 16 }}>
-          ✓ Saved <strong>{state.title}</strong>.{" "}
-          <Link href={`/read/${encodeURIComponent(state.id)}`}>Read now</Link> ·{" "}
+          ✓ Saved <strong>{state.title}</strong>. <Link href={`/read/${encodeURIComponent(state.id)}`}>Read now</Link> ·{" "}
           <Link href="/today?tab=saved">Open Saved</Link>
         </p>
       )}
       {state.kind === "error" && (
         <p style={{ marginTop: 16, color: "var(--danger-text)" }}>
-          {state.message}. If it&rsquo;s a paywalled page, save it with the Shortcut or bookmarklet from a browser
-          where you&rsquo;re logged in (see Sources).
+          {state.message}. If it&rsquo;s a paywalled page, save it with the Shortcut or bookmarklet from a browser where
+          you&rsquo;re logged in (see Sources).
         </p>
       )}
       {status === "unauthenticated" && (

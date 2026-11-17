@@ -37,7 +37,6 @@ export function getDays(enriched: EnrichedInboxItem[]) {
   return [...map.values()].sort((a, b) => b.key.localeCompare(a.key)).slice(0, 4);
 }
 
-
 export type TodayWindowMode = "rolling24h" | "calendarDay" | "none";
 
 export type ViewModeFilterArgs = {
@@ -78,8 +77,7 @@ export function filterItems(
     if (selectedDay && it._dayKey !== selectedDay) return false;
     if (!query) return true;
 
-    const hay =
-      `${it.subject} ${it.from} ${it.publicationName} ${it.category ?? ""} ${it.snippet}`.toLowerCase();
+    const hay = `${it.subject} ${it.from} ${it.publicationName} ${it.category ?? ""} ${it.snippet}`.toLowerCase();
     return hay.includes(query);
   });
 }
@@ -129,11 +127,7 @@ export function getTodayStats(
   return { readToday, inProgressToday, totalToday: todayItems.length };
 }
 
-export function buildDailyEdition(
-  filtered: EnrichedInboxItem[],
-  maxItems: number,
-  showAllEarlier: boolean
-) {
+export function buildDailyEdition(filtered: EnrichedInboxItem[], maxItems: number, showAllEarlier: boolean) {
   const { todayKey, yesterdayKey } = getRelativeKeys();
   const sorted = [...filtered].sort((a, b) => {
     const ta = a._date?.getTime() ?? 0;
@@ -143,9 +137,7 @@ export function buildDailyEdition(
 
   const today = sorted.filter((it) => it._dayKey === todayKey);
   const yesterday = sorted.filter((it) => it._dayKey === yesterdayKey);
-  const earlier = sorted.filter(
-    (it) => it._dayKey !== todayKey && it._dayKey !== yesterdayKey
-  );
+  const earlier = sorted.filter((it) => it._dayKey !== todayKey && it._dayKey !== yesterdayKey);
 
   const earlierSlots = Math.max(0, maxItems - today.length - yesterday.length);
   const visibleEarlier = showAllEarlier ? earlier : earlier.slice(0, earlierSlots);

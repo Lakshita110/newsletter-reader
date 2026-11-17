@@ -24,12 +24,9 @@ export default function SignInPage() {
 
   return (
     <main style={{ maxWidth: 560, margin: "80px auto", padding: 20 }}>
-      <h1 style={{ fontSize: 28, margin: 0, letterSpacing: -0.4 }}>
-        Cluck&#39;s Feed
-      </h1>
+      <h1 style={{ fontSize: 28, margin: 0, letterSpacing: -0.4 }}>Cluck&#39;s Feed</h1>
       <p style={{ color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>
-        Your newsletters and RSS feeds, together in one calm,
-        keyboard-friendly reading inbox.
+        Your newsletters and RSS feeds, together in one calm, keyboard-friendly reading inbox.
       </p>
 
       <ul
@@ -44,9 +41,7 @@ export default function SignInPage() {
         {features.map((feature) => (
           <li key={feature.title}>
             <div style={{ fontSize: 15, fontWeight: 600 }}>{feature.title}</div>
-            <div style={{ color: "var(--muted)", marginTop: 2, lineHeight: 1.5 }}>
-              {feature.body}
-            </div>
+            <div style={{ color: "var(--muted)", marginTop: 2, lineHeight: 1.5 }}>{feature.body}</div>
           </li>
         ))}
       </ul>

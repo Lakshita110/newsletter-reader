@@ -33,11 +33,30 @@ function describeDigestLocalTime(tz: string): string {
 }
 
 const COMMON_TIMEZONES = [
-  "UTC", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
-  "America/Toronto", "America/Vancouver", "America/Sao_Paulo", "America/Argentina/Buenos_Aires",
-  "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Amsterdam", "Europe/Madrid",
-  "Europe/Rome", "Europe/Warsaw", "Europe/Istanbul", "Asia/Dubai", "Asia/Kolkata",
-  "Asia/Singapore", "Asia/Tokyo", "Asia/Shanghai", "Asia/Seoul", "Australia/Sydney",
+  "UTC",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Toronto",
+  "America/Vancouver",
+  "America/Sao_Paulo",
+  "America/Argentina/Buenos_Aires",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Berlin",
+  "Europe/Amsterdam",
+  "Europe/Madrid",
+  "Europe/Rome",
+  "Europe/Warsaw",
+  "Europe/Istanbul",
+  "Asia/Dubai",
+  "Asia/Kolkata",
+  "Asia/Singapore",
+  "Asia/Tokyo",
+  "Asia/Shanghai",
+  "Asia/Seoul",
+  "Australia/Sydney",
   "Pacific/Auckland",
 ];
 
@@ -93,7 +112,14 @@ export default function RecommendationSettingsPage() {
       const res = await fetch("/api/rss/recommendations-settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recommendationCap, recommendationPrompt, digestEnabled, digestEmail, digestTimezone, weeklyReadingGoal }),
+        body: JSON.stringify({
+          recommendationCap,
+          recommendationPrompt,
+          digestEnabled,
+          digestEmail,
+          digestTimezone,
+          weeklyReadingGoal,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -143,7 +169,15 @@ export default function RecommendationSettingsPage() {
   return (
     <main style={{ maxWidth: 600, margin: "44px auto", padding: "0 24px 40px" }}>
       <header style={{ borderBottom: "1px solid var(--faint)", paddingBottom: 14, marginBottom: 28 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
           <div>
             <h1 className="app-page-title settings-title">Recommendations</h1>
             <p className="app-page-subtitle settings-subtitle">
@@ -158,9 +192,7 @@ export default function RecommendationSettingsPage() {
 
       <div style={{ display: "grid", gap: 24 }}>
         <div style={{ display: "grid", gap: 8 }}>
-          <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-            Recommended article count
-          </label>
+          <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Recommended article count</label>
           <p style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>
             How many articles the AI selects for your recommended feed each day.
           </p>
@@ -242,7 +274,9 @@ export default function RecommendationSettingsPage() {
           </label>
           {digestEnabled && (
             <div style={{ display: "grid", gap: 6 }}>
-              <label htmlFor="digest-email" style={{ fontSize: 13, color: "var(--muted)" }}>Send digests to</label>
+              <label htmlFor="digest-email" style={{ fontSize: 13, color: "var(--muted)" }}>
+                Send digests to
+              </label>
               <input
                 id="digest-email"
                 type="email"
@@ -259,7 +293,9 @@ export default function RecommendationSettingsPage() {
           )}
           {digestEnabled && (
             <div style={{ display: "grid", gap: 6 }}>
-              <label htmlFor="digest-timezone" style={{ fontSize: 13, color: "var(--muted)" }}>Your timezone</label>
+              <label htmlFor="digest-timezone" style={{ fontSize: 13, color: "var(--muted)" }}>
+                Your timezone
+              </label>
               <select
                 id="digest-timezone"
                 value={digestTimezone}
@@ -268,7 +304,9 @@ export default function RecommendationSettingsPage() {
                 style={{ maxWidth: 280 }}
               >
                 {COMMON_TIMEZONES.map((tz) => (
-                  <option key={tz} value={tz}>{tz}</option>
+                  <option key={tz} value={tz}>
+                    {tz}
+                  </option>
                 ))}
               </select>
               <p style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>
@@ -288,7 +326,12 @@ export default function RecommendationSettingsPage() {
               {isSendingTest ? "Sending…" : "Send test email now"}
             </button>
             {testNotice && (
-              <span style={{ fontSize: 13, color: testNotice.kind === "error" ? "var(--danger-text, #c0392b)" : "var(--muted)" }}>
+              <span
+                style={{
+                  fontSize: 13,
+                  color: testNotice.kind === "error" ? "var(--danger-text, #c0392b)" : "var(--muted)",
+                }}
+              >
                 {testNotice.text}
               </span>
             )}
@@ -300,7 +343,9 @@ export default function RecommendationSettingsPage() {
             {isSaving ? "Saving…" : "Save settings"}
           </button>
           {notice && (
-            <span style={{ fontSize: 13, color: notice.kind === "error" ? "var(--danger-text, #c0392b)" : "var(--muted)" }}>
+            <span
+              style={{ fontSize: 13, color: notice.kind === "error" ? "var(--danger-text, #c0392b)" : "var(--muted)" }}
+            >
               {notice.text}
             </span>
           )}

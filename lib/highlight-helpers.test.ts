@@ -33,9 +33,33 @@ describe("highlightsToMarkdown", () => {
   it("groups by article with links, quotes, and notes", () => {
     const md = highlightsToMarkdown(
       [
-        { itemId: "a", itemTitle: "Old piece", publicationName: null, itemUrl: null, quote: "first", note: null, createdAt: "2026-11-01T00:00:00Z" },
-        { itemId: "b", itemTitle: "AI capex", publicationName: "Stratechery", itemUrl: "https://stratechery.com/x", quote: "later  line", note: "Compare with Pragmatic", createdAt: "2026-11-10T02:00:00Z" },
-        { itemId: "b", itemTitle: "AI capex", publicationName: "Stratechery", itemUrl: "https://stratechery.com/x", quote: "earlier line", note: null, createdAt: "2026-11-10T01:00:00Z" },
+        {
+          itemId: "a",
+          itemTitle: "Old piece",
+          publicationName: null,
+          itemUrl: null,
+          quote: "first",
+          note: null,
+          createdAt: "2026-11-01T00:00:00Z",
+        },
+        {
+          itemId: "b",
+          itemTitle: "AI capex",
+          publicationName: "Stratechery",
+          itemUrl: "https://stratechery.com/x",
+          quote: "later  line",
+          note: "Compare with Pragmatic",
+          createdAt: "2026-11-10T02:00:00Z",
+        },
+        {
+          itemId: "b",
+          itemTitle: "AI capex",
+          publicationName: "Stratechery",
+          itemUrl: "https://stratechery.com/x",
+          quote: "earlier line",
+          note: null,
+          createdAt: "2026-11-10T01:00:00Z",
+        },
       ],
       "Highlights this week"
     );

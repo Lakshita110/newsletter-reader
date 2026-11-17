@@ -38,8 +38,7 @@ const display = localFont({
 
 export const metadata: Metadata = {
   title: "Cluck's Feed",
-  description:
-    "A calm, focused way to read newsletters and RSS in one keyboard-friendly inbox.",
+  description: "A calm, focused way to read newsletters and RSS in one keyboard-friendly inbox.",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: "/icon.svg",
@@ -60,11 +59,7 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body suppressHydrationWarning className={`${sans.className} ${mono.variable} ${display.variable}`}>

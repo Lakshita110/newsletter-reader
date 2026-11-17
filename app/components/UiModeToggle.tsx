@@ -69,20 +69,10 @@ function getMobileViewportServerSnapshot(): boolean {
 }
 
 export function useIsMobileViewport(): boolean {
-  return useSyncExternalStore(
-    subscribeMobileViewport,
-    getMobileViewportSnapshot,
-    getMobileViewportServerSnapshot
-  );
+  return useSyncExternalStore(subscribeMobileViewport, getMobileViewportSnapshot, getMobileViewportServerSnapshot);
 }
 
-export function UiModeToggle({
-  uiMode,
-  onChange,
-}: {
-  uiMode: UiMode;
-  onChange: (mode: UiMode) => void;
-}) {
+export function UiModeToggle({ uiMode, onChange }: { uiMode: UiMode; onChange: (mode: UiMode) => void }) {
   return (
     <div className="ui-mode-toggle" role="group" aria-label="Feed layout">
       <button

@@ -43,11 +43,7 @@ type RssItemRow = {
 };
 
 /** Map a stored RssItem row to the FeedItem shape every feed endpoint returns. */
-export function toFeedItem(
-  item: RssItemRow,
-  source: { id: string; name: string },
-  category?: string | null
-): FeedItem {
+export function toFeedItem(item: RssItemRow, source: { id: string; name: string }, category?: string | null): FeedItem {
   return {
     id: `rss:${item.id}`,
     sourceId: source.id,
@@ -189,13 +185,8 @@ export async function buildRankingCandidates(params: {
           select: { messageExternalId: true },
         });
   const readIdSet = new Set(readRows.map((row) => row.messageExternalId));
-  const unreadCandidates = allCandidates.filter(
-    (candidate) => !readIdSet.has(candidate.feedItem.id)
-  );
-  const dedupedCandidates = dedupeByArticleKey(
-    unreadCandidates,
-    (candidate) => candidate.sortTimeMs
-  );
+  const unreadCandidates = allCandidates.filter((candidate) => !readIdSet.has(candidate.feedItem.id));
+  const dedupedCandidates = dedupeByArticleKey(unreadCandidates, (candidate) => candidate.sortTimeMs);
   const sortedFallback = [...dedupedCandidates].sort((a, b) => b.sortTimeMs - a.sortTimeMs);
 
   const aiItems: AiRankItem[] = sortedFallback.map((candidate) => ({

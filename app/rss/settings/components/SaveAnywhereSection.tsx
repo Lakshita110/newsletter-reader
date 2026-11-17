@@ -67,8 +67,8 @@ export default function SaveAnywhereSection() {
     <section style={{ marginBottom: 18, borderBottom: "1px solid var(--faint)", paddingBottom: 16 }}>
       <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>Save from anywhere</div>
       <p style={{ ...step, color: "var(--muted)" }}>
-        Links you save land in <Link href="/today?tab=saved">Saved</Link>, cleaned up for reading. For paywalled
-        sites, save from a browser where you&rsquo;re logged in: the page you can see is what gets saved.
+        Links you save land in <Link href="/today?tab=saved">Saved</Link>, cleaned up for reading. For paywalled sites,
+        save from a browser where you&rsquo;re logged in: the page you can see is what gets saved.
       </p>
       {error && <p style={{ ...step, color: "var(--danger-text)" }}>{error}</p>}
 
@@ -76,8 +76,8 @@ export default function SaveAnywhereSection() {
         <summary style={{ fontWeight: 600, fontSize: 14 }}>iPhone: Share sheet Shortcut (recommended)</summary>
         <ol style={{ paddingLeft: 18 }}>
           <li style={step}>
-            Shortcuts app → new shortcut → <em>Details</em> → turn on <strong>Show in Share Sheet</strong>, input
-            type Safari web pages and URLs.
+            Shortcuts app → new shortcut → <em>Details</em> → turn on <strong>Show in Share Sheet</strong>, input type
+            Safari web pages and URLs.
           </li>
           <li style={step}>
             Add <strong>Run JavaScript on Web Page</strong> with:
@@ -91,8 +91,8 @@ export default function SaveAnywhereSection() {
             <code>application/json</code>, Request Body <strong>File</strong> → <em>JavaScript Result</em>.
           </li>
           <li style={step}>
-            Optional: <strong>Show Notification</strong> with the result. From apps other than Safari (X, Substack),
-            the JavaScript step is skipped, so send the shared URL as the body instead; the server fetches it.
+            Optional: <strong>Show Notification</strong> with the result. From apps other than Safari (X, Substack), the
+            JavaScript step is skipped, so send the shared URL as the body instead; the server fetches it.
           </li>
         </ol>
       </details>
@@ -126,7 +126,8 @@ export default function SaveAnywhereSection() {
           type="button"
           className="filter-action-btn"
           onClick={() => {
-            if (window.confirm("Make a new save token? Your current Shortcut and bookmarklet will stop working.")) load(true);
+            if (window.confirm("Make a new save token? Your current Shortcut and bookmarklet will stop working."))
+              load(true);
           }}
         >
           make a new one

@@ -32,7 +32,11 @@ export async function GET() {
 
   const currentFeeds = subscriptions.map((s) => `${s.source.name} (${s.source.rssUrl})`).join("\n");
   const profileSummary = profile.preferenceSummary.join("; ") || "No strong preference signals yet";
-  const topPubs = profile.topPublications.slice(0, 6).map((p) => p.name).join(", ") || "none";
+  const topPubs =
+    profile.topPublications
+      .slice(0, 6)
+      .map((p) => p.name)
+      .join(", ") || "none";
 
   const prompt = `You are a feed curator. Based on this reader's profile, suggest 5 RSS feeds they would genuinely enjoy that they are NOT already subscribed to.
 

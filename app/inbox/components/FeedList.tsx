@@ -158,7 +158,9 @@ export function FeedList({
                             }}
                             style={{
                               ...actionButtonStyle,
-                              border: isSaved ? "1px solid color-mix(in oklab, var(--accent-blue) 55%, var(--faint))" : actionButtonStyle.border,
+                              border: isSaved
+                                ? "1px solid color-mix(in oklab, var(--accent-blue) 55%, var(--faint))"
+                                : actionButtonStyle.border,
                               background: isSaved ? "var(--surface-accent-soft)" : actionButtonStyle.background,
                               color: isSaved ? "var(--accent-blue)" : actionButtonStyle.color,
                             }}

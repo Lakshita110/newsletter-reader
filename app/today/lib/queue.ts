@@ -85,10 +85,5 @@ export function buildTodayQueue({
 
 /** Reading order used for "Done → next" inside the reader. */
 export function flattenQueue(queue: TodayQueue, includeSaved = false): InboxItem[] {
-  return [
-    ...queue.continue,
-    ...queue.newsletters,
-    ...queue.stories,
-    ...(includeSaved ? queue.saved : []),
-  ];
+  return [...queue.continue, ...queue.newsletters, ...queue.stories, ...(includeSaved ? queue.saved : [])];
 }

@@ -51,7 +51,8 @@ const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
 
 /** Tiny confirmation page for the bookmarklet, which opens in a new tab. */
 function htmlPage(title: string, detail: string, ok: boolean) {
-  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+  const esc = (s: string) =>
+    s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
   return new NextResponse(
     `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${ok ? "Saved" : "Not saved"}</title>
@@ -89,7 +90,10 @@ export async function POST(req: Request) {
       title: str(body.title),
       via: isForm ? "bookmarklet" : tokenUserId ? "shortcut" : "app",
     });
-    const detail = saved.wordCount > 0 ? `${Math.max(1, Math.round(saved.wordCount / 220))} min read` : "Saved (no article text found)";
+    const detail =
+      saved.wordCount > 0
+        ? `${Math.max(1, Math.round(saved.wordCount / 220))} min read`
+        : "Saved (no article text found)";
     return isForm ? htmlPage(saved.title, detail, true) : NextResponse.json({ ok: true, ...saved }, { headers: CORS });
   } catch (error) {
     const status = error instanceof SaveError ? error.status : 500;

@@ -82,8 +82,7 @@ async function generatePreferenceSummaryWithLlm(args: {
     .map((p) => `${p.name}(${p.score.toFixed(1)})`)
     .join(", ");
 
-  const prompt =
-    `Create a concise weekly reading-profile summary for RSS recommendations.
+  const prompt = `Create a concise weekly reading-profile summary for RSS recommendations.
 
 Stats:
 top_publications=${topPubs || "none"}

@@ -9,6 +9,9 @@ export const dynamic = "force-dynamic";
 export async function POST() {
   const auth = await getSessionUser();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const result = await syncNewsletters(auth.userId, (await getGmailAccessToken(auth.userId)) ?? undefined, { force: true, timeBudgetMs: 20000 });
+  const result = await syncNewsletters(auth.userId, (await getGmailAccessToken(auth.userId)) ?? undefined, {
+    force: true,
+    timeBudgetMs: 20000,
+  });
   return NextResponse.json(result);
 }

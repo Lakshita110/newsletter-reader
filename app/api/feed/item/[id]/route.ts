@@ -63,10 +63,7 @@ async function getStoredNewsletterItem(userId: string, id: string) {
 }
 
 async function getGmailItem(id: string, accessToken: string) {
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET
-  );
+  const oauth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
   oauth2Client.setCredentials({ access_token: accessToken });
   const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
@@ -77,9 +74,7 @@ async function getGmailItem(id: string, accessToken: string) {
   const from = getHeader(headers, "From");
   const date = getHeader(headers, "Date");
   const { html, text } = extractBodies(payload);
-  const extractedText = html
-    ? (await extractArticleContent(html)).text
-    : normalizeText(text ?? msg.data.snippet ?? "");
+  const extractedText = html ? (await extractArticleContent(html)).text : normalizeText(text ?? msg.data.snippet ?? "");
   const publication = parseFrom(from);
 
   return {
@@ -152,10 +147,7 @@ async function getRssItem(userId: string, rawId: string) {
   };
 }
 
-export async function GET(
-  _req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await getSessionUser();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -187,10 +179,7 @@ export async function GET(
   return NextResponse.json(data);
 }
 
-export async function DELETE(
-  _req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -199,10 +188,7 @@ export async function DELETE(
   const id = decodeItemId(rawId);
 
   if (!id.startsWith("rss:")) {
-    return NextResponse.json(
-      { error: "Only RSS items can be deleted from the local database" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Only RSS items can be deleted from the local database" }, { status: 400 });
   }
 
   const rssItemId = id.replace(/^rss:/, "");

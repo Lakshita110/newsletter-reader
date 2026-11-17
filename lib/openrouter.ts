@@ -77,9 +77,7 @@ export type OpenRouterChatResult =
     };
 
 /** OpenRouter may return message content as a string or as typed text parts. */
-export function contentToString(
-  content: string | Array<{ type?: string; text?: string }> | undefined
-): string {
+export function contentToString(content: string | Array<{ type?: string; text?: string }> | undefined): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
@@ -151,7 +149,9 @@ export async function openRouterChatWithFallback(args: {
   timeoutMs: number;
   temperature?: number;
   logTag: string;
-}): Promise<{ ok: true; content: string; model: string; finishReason?: string } | { ok: false; lastStatus: number | null }> {
+}): Promise<
+  { ok: true; content: string; model: string; finishReason?: string } | { ok: false; lastStatus: number | null }
+> {
   let lastStatus: number | null = null;
   for (const model of args.models) {
     const result = await openRouterChat({ ...args, model });

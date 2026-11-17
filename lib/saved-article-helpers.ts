@@ -1,6 +1,7 @@
 /** Pure helpers for "save any link", kept import-free for cheap tests. */
 
-const TRACKING_PARAM = /^(utm_[a-z]+|fbclid|gclid|mc_cid|mc_eid|ref|ref_src|cmpid|smid|sh|s|r|triedRedirect|publication_id|post_id|isFreemail|token)$/i;
+const TRACKING_PARAM =
+  /^(utm_[a-z]+|fbclid|gclid|mc_cid|mc_eid|ref|ref_src|cmpid|smid|sh|s|r|triedRedirect|publication_id|post_id|isFreemail|token)$/i;
 
 /** Drop tracking params and fragments so the same article saves once. */
 export function canonicalizeUrl(raw: string): string | null {

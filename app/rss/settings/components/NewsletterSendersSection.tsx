@@ -138,7 +138,9 @@ export default function NewsletterSendersSection() {
       {suggestions && (
         <div style={{ marginTop: 12 }}>
           {suggestions.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--muted)" }}>No new newsletter senders found in the last 30 days.</div>
+            <div style={{ fontSize: 13, color: "var(--muted)" }}>
+              No new newsletter senders found in the last 30 days.
+            </div>
           ) : (
             <>
               <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>

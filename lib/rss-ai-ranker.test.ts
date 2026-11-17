@@ -131,8 +131,7 @@ describe("rankItemsForDailyCap", () => {
           {
             finish_reason: "length",
             message: {
-              content:
-                '{"picks":[{"id":"rss:a","reason":"strong tech pick"},{"id":"rss:b","reason":"fresh cult',
+              content: '{"picks":[{"id":"rss:a","reason":"strong tech pick"},{"id":"rss:b","reason":"fresh cult',
             },
           },
         ],

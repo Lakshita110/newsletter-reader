@@ -26,9 +26,7 @@ export function ReaderContent({
           background: "var(--surface)",
         }}
       >
-        <p style={{ marginTop: 0, marginBottom: 0 }}>
-          This article is not available in-reader yet.
-        </p>
+        <p style={{ marginTop: 0, marginBottom: 0 }}>This article is not available in-reader yet.</p>
       </div>
     );
   }

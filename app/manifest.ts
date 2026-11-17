@@ -4,8 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Cluck's Feed",
     short_name: "Cluck's Feed",
-    description:
-      "Newsletters and news in one calm reading queue.",
+    description: "Newsletters and news in one calm reading queue.",
     start_url: "/today",
     scope: "/",
     orientation: "portrait",

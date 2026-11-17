@@ -42,11 +42,7 @@ export function CatchUpOlderButton({ count, onClick }: { count: number; onClick:
   );
 }
 
-export function OverflowSources({
-  entries,
-}: {
-  entries: { sourceId: string; sourceName: string; count: number }[];
-}) {
+export function OverflowSources({ entries }: { entries: { sourceId: string; sourceName: string; count: number }[] }) {
   if (entries.length === 0) return null;
 
   return (

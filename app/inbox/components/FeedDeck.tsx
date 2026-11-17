@@ -218,16 +218,7 @@ export function FeedDeck({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [
-    current,
-    onDelete,
-    onMarkRead,
-    onToggleRead,
-    onToggleSaved,
-    openExternal,
-    openItem,
-    ordered.length,
-  ]);
+  }, [current, onDelete, onMarkRead, onToggleRead, onToggleSaved, openExternal, openItem, ordered.length]);
 
   if (ordered.length === 0) {
     return (
