@@ -51,10 +51,13 @@ export default function TodayPage() {
     return {
       items: Array.isArray(raw.items) ? (raw.items as InboxItem[]) : null,
       recommendedIds: Array.isArray(raw.recommendedIds) ? (raw.recommendedIds as string[]) : [],
+      rankMeta: toRankMeta(raw.rankMeta),
     };
   });
   const [items, setItems] = useState<InboxItem[]>(cached.items ?? []);
   const [recommendedIds, setRecommendedIds] = useState<string[]>(cached.recommendedIds);
+  const [rankMeta, setRankMeta] = useState<RankMeta>(cached.rankMeta);
+  const [rankNow, setRankNow] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
   const [statusById, setStatusById] = useState<Record<string, FeedReadStatus>>(() =>
     readMapFromStorage<FeedReadStatus>("nr_read_status_map")
   );
@@ -78,9 +81,11 @@ export default function TodayPage() {
       const feed = await feedRes.json();
       const nextItems: InboxItem[] = Array.isArray(feed?.items) ? feed.items : [];
       const nextRecommended: string[] = Array.isArray(feed?.rssMeta?.recommendedIds) ? feed.rssMeta.recommendedIds : [];
+      const nextRankMeta = toRankMeta(feed?.rssMeta);
       setItems(nextItems);
       setRecommendedIds(nextRecommended);
-      saveMapToStorage("nr_today_cache", { items: nextItems, recommendedIds: nextRecommended });
+      setRankMeta(nextRankMeta);
+      saveMapToStorage("nr_today_cache", { items: nextItems, recommendedIds: nextRecommended, rankMeta: nextRankMeta });
       if (stateRes.ok) {
         const state = await stateRes.json();
         const nextStatus = toReadStatusMap(state);
@@ -198,6 +203,23 @@ export default function TodayPage() {
     window.localStorage.setItem("nr_reader_back", tab === "saved" ? "/today?tab=saved" : "/today");
   };
 
+  const runRankNow = () => {
+    setRankNow({ busy: true, error: null });
+    fetch("/api/rss/rank-now", { method: "POST" })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(typeof body?.error === "string" ? body.error : `Ranking failed (${res.status})`);
+        }
+        setRankNow({ busy: false, error: null });
+        return load();
+      })
+      .catch((err: unknown) => {
+        console.error("[today] rank now failed", err);
+        setRankNow({ busy: false, error: err instanceof Error ? err.message : "Ranking failed" });
+      });
+  };
+
   const totalToday = queue.continue.length + queue.newsletters.length + queue.stories.length;
 
   return (
@@ -249,6 +271,11 @@ export default function TodayPage() {
                         {statusById[item.id] === "in-progress" && <span className="today-dot" aria-label="In progress" />}
                       </div>
                       <div className="today-row-title">{item.subject || "(No subject)"}</div>
+                      {rankMeta.reasons[item.id] && (
+                        <div className="today-row-why">
+                          <span aria-hidden="true">✦</span> {rankMeta.reasons[item.id]}
+                        </div>
+                      )}
                       {item.coveredBy ? (
                         <div className="today-row-covered">
                           Covered in {item.coveredBy.publicationName}: {item.coveredBy.subject}
@@ -276,8 +303,12 @@ export default function TodayPage() {
         return (
           <section key={section} className="today-section">
             <h2 className="today-section-title">
-              {SECTION_LABELS[section]} <span>{list.length}</span>
+              {section === "stories" && recommendedIds.length > 0 ? "Picked for you" : SECTION_LABELS[section]}{" "}
+              <span>{list.length}</span>
             </h2>
+            {section === "stories" && (
+              <RankStatusLine meta={rankMeta} hasPicks={recommendedIds.length > 0} rankNow={rankNow} onRankNow={runRankNow} />
+            )}
             {rows}
           </section>
         );
@@ -314,5 +345,73 @@ export default function TodayPage() {
         <Link href="/rss/settings">Sources</Link>
       </nav>
     </main>
+  );
+}
+
+/** "2h ago", but a bare date for anything older than a week. */
+function agoLabel(iso: string): string {
+  const rel = relativeTime(iso);
+  return /^\d/.test(rel) ? `${rel} ago` : rel;
+}
+
+type RankMeta = {
+  reasons: Record<string, string>;
+  status: string | null;
+  model: string | null;
+  rankedAt: string | null;
+};
+
+function toRankMeta(raw: unknown): RankMeta {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const reasons: Record<string, string> = {};
+  if (r.rankReasons && typeof r.rankReasons === "object") {
+    for (const [k, v] of Object.entries(r.rankReasons as Record<string, unknown>)) {
+      if (typeof v === "string") reasons[k] = v;
+    }
+  }
+  // The cache stores the already-normalized shape under `reasons`.
+  if (r.reasons && typeof r.reasons === "object") {
+    for (const [k, v] of Object.entries(r.reasons as Record<string, unknown>)) {
+      if (typeof v === "string") reasons[k] = v;
+    }
+  }
+  const str = (v: unknown) => (typeof v === "string" ? v : null);
+  return {
+    reasons,
+    status: str(r.rankStatus) ?? str(r.status),
+    model: str(r.rankModel) ?? str(r.model),
+    rankedAt: str(r.rankedAt),
+  };
+}
+
+/**
+ * Says who picked the stories and when, or that nothing has been picked yet.
+ * Before this, a failed or missing ranking looked identical to a working one
+ * (stories just appeared newest-first), which is why ranking felt "not done".
+ */
+function RankStatusLine({
+  meta,
+  hasPicks,
+  rankNow,
+  onRankNow,
+}: {
+  meta: RankMeta;
+  hasPicks: boolean;
+  rankNow: { busy: boolean; error: string | null };
+  onRankNow: () => void;
+}) {
+  const ranked = hasPicks && meta.status === "AI_SUCCESS";
+  return (
+    <div className="today-rank-status">
+      <span>
+        {ranked
+          ? `Picked by ${meta.model ?? "AI"}${meta.rankedAt ? `, ${agoLabel(meta.rankedAt)}` : ""}`
+          : "Not ranked yet, showing newest first"}
+      </span>
+      <button type="button" onClick={onRankNow} disabled={rankNow.busy}>
+        {rankNow.busy ? "Ranking…" : ranked ? "Re-rank" : "Rank now"}
+      </button>
+      {rankNow.error && <span className="today-rank-error">{rankNow.error}</span>}
+    </div>
   );
 }

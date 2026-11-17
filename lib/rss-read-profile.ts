@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { RANKING_MODEL, openRouterChat } from "@/lib/openrouter";
+import { SMART_MODEL_CHAIN, openRouterChatWithFallback } from "@/lib/openrouter";
 import { weekKeyUtc } from "@/lib/rss-helpers";
 
 /**
@@ -100,9 +100,10 @@ Rules:
 - Mention themes, favored sources, depth/format preference, and recency tendency.
 - No markdown, no prose outside JSON.`;
 
-  const result = await openRouterChat({
+  const result = await openRouterChatWithFallback({
     apiKey,
-    model: RANKING_MODEL,
+    models: SMART_MODEL_CHAIN,
+    logTag: "rss-read-profile",
     maxTokens: 450,
     timeoutMs: 20000,
     temperature: 0.1,

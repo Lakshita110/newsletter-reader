@@ -38,6 +38,7 @@ describe("getLatestRankedIds", () => {
       rankReasons: {},
       status: null,
       rankedAt: null,
+      model: null,
     });
   });
 

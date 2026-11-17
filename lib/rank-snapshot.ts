@@ -136,6 +136,8 @@ export type RankedIdsResult = {
   rankReasons: Record<string, string>;
   status: RankSnapshotStatus | null;
   rankedAt: string | null;
+  /** Model that produced the snapshot; null for a deterministic fallback. */
+  model: string | null;
 };
 
 /**
@@ -152,7 +154,7 @@ export async function getLatestRankedIds(params: {
   const { userId, sortedFallback, cap } = params;
   const snapshot = await readMostRecentSnapshot(userId);
   if (!snapshot) {
-    return { selectedRankIds: null, recommendedRankIds: [], rankReasons: {}, status: null, rankedAt: null };
+    return { selectedRankIds: null, recommendedRankIds: [], rankReasons: {}, status: null, rankedAt: null, model: null };
   }
 
   const ids = idsFromSnapshotJson(snapshot.rankedItemIds);
@@ -169,5 +171,6 @@ export async function getLatestRankedIds(params: {
     rankReasons: reasons,
     status: snapshot.status,
     rankedAt: snapshot.updatedAt.toISOString(),
+    model: snapshot.model ?? null,
   };
 }
