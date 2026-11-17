@@ -2,6 +2,8 @@ import { RANKING_MODEL_CHAIN, openRouterChat } from "@/lib/openrouter";
 
 type RankItemInput = {
   id: string;
+  /** Absent means "article" (older callers and tests). */
+  kind?: "newsletter" | "article";
   title: string;
   snippet?: string | null;
   author?: string | null;
@@ -82,8 +84,10 @@ export function parsePicks(content: string): ParsedPick[] {
   // cut-off tail then loses only its final partial pick, and every pick that
   // does survive still has both fields.
   const out: ParsedPick[] = [];
-  const idFirst = /\{\s*"id"\s*:\s*(?:"(rss:[A-Za-z0-9_-]+)"|(\d+))\s*,\s*"reason"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/g;
-  const reasonFirst = /\{\s*"reason"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"id"\s*:\s*(?:"(rss:[A-Za-z0-9_-]+)"|(\d+))\s*\}/g;
+  const idFirst =
+    /\{\s*"id"\s*:\s*(?:"([A-Za-z0-9:_-]*[A-Za-z_:-][A-Za-z0-9:_-]*)"|(\d+))\s*,\s*"reason"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/g;
+  const reasonFirst =
+    /\{\s*"reason"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"id"\s*:\s*(?:"([A-Za-z0-9:_-]*[A-Za-z_:-][A-Za-z0-9:_-]*)"|(\d+))\s*\}/g;
   const unescape = (s: string) => s.replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
   let match: RegExpExecArray | null;
   while ((match = idFirst.exec(content)) !== null) {
@@ -110,7 +114,9 @@ function normalizeRankToken(token: string | number, byIndex: Map<number, string>
   if (typeof token === "number") return fromPosition(Math.floor(token));
 
   const trimmed = token.trim();
-  const embeddedId = trimmed.match(/\brss:[A-Za-z0-9_-]+\b/)?.[0];
+  // Models sometimes wrap the id ("id=rss:abc", "rss:abc (Stratechery)").
+  // RSS ids carry a prefix; newsletter ids are bare Gmail hex ids.
+  const embeddedId = trimmed.match(/\brss:[A-Za-z0-9_-]+\b/)?.[0] ?? trimmed.match(/^[0-9a-f]{16}\b/)?.[0];
   if (embeddedId) return embeddedId;
   if (/^\d+$/.test(trimmed)) return fromPosition(Number(trimmed));
 
@@ -214,6 +220,7 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
       const dateLine = item.publishedAtIso ? `published=${item.publishedAtIso.slice(0, 10)}` : null;
       return [
         `${index + 1}. id=${item.id}`,
+        `kind=${item.kind ?? "article"}`,
         `source=${item.sourceName?.trim() || "unknown"}`,
         `title=${item.title}`,
         `author=${item.author ?? "unknown"}`,
@@ -246,7 +253,7 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
   const targetUniqueSources = Math.min(uniqueSourceCount, Math.max(1, Math.min(req.cap, 8)));
   const pickCount = Math.min(req.cap, req.items.length);
 
-  const prompt = `Pick the best ${pickCount} RSS items for this user and order them best-to-worst.
+  const prompt = `Pick the best ${pickCount} items for this user's reading feed and order them best-to-worst.
 
 Context:
 day=${req.dayKey}
@@ -260,6 +267,9 @@ ${profileNotes}
 Interest guidance:
 ${interestGuidance}
 
+Newsletters vs articles:
+kind=newsletter items are paid or hand-picked subscriptions she chose to receive; rank a strong newsletter issue above an average article. kind=article items are from RSS feeds she follows. Both compete in the same single feed, so judge each on what it offers.
+
 Diversity guidance:
 Favor a varied set of publishers. Do not choose more than 1 article from the same source unless that source has a clearly stronger candidate than all others. Avoid selecting 3 or more items from the same publisher, and avoid publisher-heavy blocks such as multiple New Yorker stories in a row.
 
@@ -269,7 +279,7 @@ Aim for at least ${targetUniqueSources} distinct sources when possible, while st
 Quality guidance:
 Prefer original reporting and analysis over rewrites of press releases, listicles, and pieces whose snippet promises nothing specific. A reason must name what the reader gets from this particular piece (e.g. "inside look at TSMC's Arizona yields"), never a generic label like "relevant tech news".
 
-Return exactly one line of JSON only: {"picks":[{"id":"rss:xxx","reason":"<=10 words why"}, ...]}
+Return exactly one line of JSON only: {"picks":[{"id":"<id>","reason":"<=10 words why"}, ...]}
 Rules: order best-to-worst, exactly ${pickCount} picks, unique ids, every id must be from: ${validIds}. Every pick object must have both "id" and "reason" — never emit an id without its reason.
 
 Candidates:

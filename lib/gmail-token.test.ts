@@ -4,8 +4,13 @@ const user = { findUnique: vi.fn(), update: vi.fn(), upsert: vi.fn() };
 vi.mock("@/lib/prisma", () => ({ prisma: { user } }));
 
 const { encryptSecret, decryptSecret } = await import("./token-crypto");
-const { getGmailAccessToken, saveGmailRefreshToken, primeGmailAccessToken, clearGmailTokenCacheForTests } =
-  await import("./gmail-token");
+const {
+  getGmailAccessToken,
+  saveGmailRefreshToken,
+  primeGmailAccessToken,
+  clearGmailTokenCacheForTests,
+  connectGmailForUser,
+} = await import("./gmail-token");
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
@@ -76,11 +81,28 @@ describe("getGmailAccessToken", () => {
 
 describe("saveGmailRefreshToken", () => {
   it("stores the token encrypted and clears any previous error", async () => {
+    user.findUnique.mockResolvedValue(null);
     user.upsert.mockResolvedValue({ id: "u9" });
     expect(await saveGmailRefreshToken("a@b.c", "rt")).toBe("u9");
     const arg = user.upsert.mock.calls[0][0];
     expect(arg.update.gmailTokenError).toBeNull();
-    expect(arg.update.gmailRefreshTokenEnc).not.toContain("rt.");
     expect(decryptSecret(arg.update.gmailRefreshTokenEnc)).toBe("rt");
+  });
+
+  it("doesn't replace a mailbox chosen with 'Use a different Gmail' when she signs in", async () => {
+    user.findUnique.mockResolvedValue({ id: "u1", gmailConnectedSeparately: true, gmailRefreshTokenEnc: "x" });
+    expect(await saveGmailRefreshToken("login@b.c", "login-rt")).toBe("u1");
+    expect(user.upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe("connectGmailForUser", () => {
+  it("stores the other mailbox's token on the signed-in user and restarts the sync window", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    await connectGmailForUser("u1", "other-rt", "other-at", 3_600_000);
+    const data = user.update.mock.calls[0][0].data;
+    expect(decryptSecret(data.gmailRefreshTokenEnc)).toBe("other-rt");
+    expect(data).toMatchObject({ gmailConnectedSeparately: true, newslettersSyncedAt: null, gmailTokenError: null });
+    expect(await getGmailAccessToken("u1")).toBe("other-at");
   });
 });

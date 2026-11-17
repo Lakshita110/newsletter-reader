@@ -28,13 +28,47 @@ type GoogleTokenResponse = {
 
 /** Returns the user's id (accounts are created lazily, so this may create the row). */
 export async function saveGmailRefreshToken(email: string, refreshToken: string): Promise<string> {
+  const existing = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, gmailConnectedSeparately: true, gmailRefreshTokenEnc: true },
+  });
+  // If she chose another mailbox with "Use a different Gmail", signing in
+  // must not quietly switch newsletters back to the login account. Only an
+  // expired/removed separate connection falls back to the login mailbox.
+  if (existing?.gmailConnectedSeparately && existing.gmailRefreshTokenEnc) return existing.id;
   const row = await prisma.user.upsert({
     where: { email },
-    update: { gmailRefreshTokenEnc: encryptSecret(refreshToken), gmailTokenError: null },
+    update: {
+      gmailRefreshTokenEnc: encryptSecret(refreshToken),
+      gmailTokenError: null,
+      gmailConnectedSeparately: false,
+    },
     create: { email, gmailRefreshTokenEnc: encryptSecret(refreshToken) },
     select: { id: true },
   });
   return row.id;
+}
+
+/**
+ * Point this user's newsletter sync at a mailbox chosen via "Use a different
+ * Gmail". Resets the sync cursor so the new mailbox's last 30 days are read.
+ */
+export async function connectGmailForUser(
+  userId: string,
+  refreshToken: string,
+  accessToken: string,
+  expiresInMs: number
+): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      gmailRefreshTokenEnc: encryptSecret(refreshToken),
+      gmailTokenError: null,
+      gmailConnectedSeparately: true,
+      newslettersSyncedAt: null,
+    },
+  });
+  primeGmailAccessToken(userId, accessToken, Date.now() + expiresInMs);
 }
 
 /** Seed the cache with the access token Google returned at sign-in, so the first page load needs no refresh. */
@@ -107,12 +141,18 @@ export async function getGmailAccessToken(userId: string): Promise<string | null
   return accessToken;
 }
 
-export async function getGmailStatus(userId: string): Promise<{ connected: boolean; error: string | null }> {
+export async function getGmailStatus(
+  userId: string
+): Promise<{ connected: boolean; error: string | null; separate: boolean }> {
   const row = await prisma.user.findUnique({
     where: { id: userId },
-    select: { gmailRefreshTokenEnc: true, gmailTokenError: true },
+    select: { gmailRefreshTokenEnc: true, gmailTokenError: true, gmailConnectedSeparately: true },
   });
-  return { connected: Boolean(row?.gmailRefreshTokenEnc), error: row?.gmailTokenError ?? null };
+  return {
+    connected: Boolean(row?.gmailRefreshTokenEnc),
+    error: row?.gmailTokenError ?? null,
+    separate: Boolean(row?.gmailConnectedSeparately),
+  };
 }
 
 /** Test hook. */
