@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { InboxItem } from "@/app/inbox/types";
+import type { InboxItem } from "@/app/lib/feed-types";
 import { buildTodayQueue, flattenQueue, MAX_UNPICKED_STORIES } from "./queue";
 
 const now = new Date("2026-11-16T12:00:00Z");

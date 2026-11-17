@@ -1,15 +1,4 @@
-import type { FeedReadStatus } from "../types";
-
-export function isTypingTarget(target: EventTarget | null): boolean {
-  const node = target as HTMLElement | null;
-  if (!node) return false;
-  return node.tagName === "INPUT" || node.tagName === "TEXTAREA" || node.isContentEditable;
-}
-
-export function escapeSelectorValue(value: string): string {
-  if (typeof window !== "undefined" && window.CSS?.escape) return window.CSS.escape(value);
-  return value.replace(/["\\]/g, "\\$&");
-}
+import type { FeedReadStatus } from "./feed-types";
 
 export function readMapFromStorage<T>(key: string): Record<string, T> {
   if (typeof window === "undefined") return {};

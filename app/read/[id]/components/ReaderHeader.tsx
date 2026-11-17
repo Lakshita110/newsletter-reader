@@ -104,16 +104,7 @@ export function ReaderHeader({
         <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>{message.subject || "(No subject)"}</h1>
         {isRss ? (
           <>
-            <div style={{ opacity: 0.86, marginBottom: 4 }}>
-              Source:{" "}
-              {message.sourceId ? (
-                <Link href={`/source/${message.sourceId}`} style={{ color: "var(--link)" }}>
-                  {sourceName}
-                </Link>
-              ) : (
-                sourceName
-              )}
-            </div>
+            <div style={{ opacity: 0.86, marginBottom: 4 }}>Source: {sourceName}</div>
             {author && <div style={{ opacity: 0.72, marginBottom: 6 }}>By {author}</div>}
           </>
         ) : (

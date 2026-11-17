@@ -9,9 +9,9 @@ import { GmailBanner } from "./components/GmailBanner";
 import { faviconDomain } from "@/lib/lead-image";
 import { buildTodayQueue, flattenQueue, type QueueSection } from "./lib/queue";
 import { prefetchForOffline } from "./lib/offline";
-import { readMapFromStorage, saveMapToStorage, toReadStatusMap, toSavedMap } from "@/app/inbox/lib/client-utils";
-import { postReadState } from "@/app/inbox/lib/read-state";
-import type { FeedReadStatus, InboxItem } from "@/app/inbox/types";
+import { readMapFromStorage, saveMapToStorage, toReadStatusMap, toSavedMap } from "@/app/lib/client-utils";
+import { postReadState } from "@/app/lib/read-state";
+import type { FeedReadStatus, InboxItem } from "@/app/lib/feed-types";
 
 type Tab = "today" | "saved";
 type Undo = { item: InboxItem; kind: "done" | "save"; prevStatus?: FeedReadStatus; prevSaved?: boolean };

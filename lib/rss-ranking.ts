@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { RANKING_MODEL_CHAIN } from "@/lib/openrouter";
+import { SMART_MODEL_CHAIN } from "@/lib/openrouter";
 import { rankItemsForDailyCap } from "@/lib/rss-ai-ranker";
 import type { AiRankItem } from "@/lib/rss-candidates";
 import { type RssReadProfile, getUserRssReadProfile } from "@/lib/rss-read-profile";
@@ -16,7 +16,7 @@ export function buildRankInputFingerprint(
   // The lead ranking model is part of the input: when the chain is upgraded,
   // today's snapshot from the old model no longer counts as "unchanged", so
   // the next cron run re-ranks with the new one instead of waiting a day.
-  const payload = `${RANKING_MODEL_CHAIN[0]}|${dayKey}|${cap}|${prompt}|${items.map((item) => item.id).join(",")}`;
+  const payload = `${SMART_MODEL_CHAIN[0]}|${dayKey}|${cap}|${prompt}|${items.map((item) => item.id).join(",")}`;
   return createHash("sha256").update(payload).digest("hex");
 }
 

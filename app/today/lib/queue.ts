@@ -1,4 +1,4 @@
-import type { FeedReadStatus, InboxItem } from "@/app/inbox/types";
+import type { FeedReadStatus, InboxItem } from "@/app/lib/feed-types";
 
 export type QueueSection = "continue" | "feed" | "covered" | "saved";
 

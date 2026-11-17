@@ -10,7 +10,7 @@ import { useReadingProgress } from "./lib/useReadingProgress";
 import { useHighlights } from "./lib/useHighlights";
 import { SummaryCard } from "./components/SummaryCard";
 import { HighlightList, HighlightPaintStyle, SelectionBar } from "./components/HighlightControls";
-import { toReadStatusMap, toSavedMap } from "@/app/inbox/lib/client-utils";
+import { toReadStatusMap, toSavedMap } from "@/app/lib/client-utils";
 import { cleanHtml, countWords, sanitizeHtml, stripHtml, type ReadMessage } from "./lib/read-utils";
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -280,9 +280,7 @@ export default function ReadPage() {
     return () => controller.abort();
   }, [nav?.next?.id, nav?.prev?.id, router]);
 
-  const backHref =
-    storedBackHref ??
-    (msg?.sourceKind === "web" ? "/today?tab=saved" : msg?.sourceKind === "rss" ? "/inbox/rss" : "/inbox/newsletters");
+  const backHref = storedBackHref ?? (msg?.sourceKind === "web" ? "/today?tab=saved" : "/today");
   const progress = useReadingProgress(id, Boolean(msg));
   const articleRef = useRef<HTMLElement>(null);
   const highlightMeta = useMemo(
