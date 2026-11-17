@@ -282,11 +282,7 @@ export default function TodayPage() {
                       onClick={() => markDone(item)}
                       draggable={false}
                     >
-                      <RowBody
-                        item={item}
-                        reason={rankMeta.reasons[item.id]}
-                        inProgress={statusById[item.id] === "in-progress"}
-                      />
+                      <RowBody item={item} inProgress={statusById[item.id] === "in-progress"} />
                     </a>
                   ) : (
                     <Link
@@ -296,11 +292,7 @@ export default function TodayPage() {
                       // A native link drag would steal the pointer and cancel the swipe.
                       draggable={false}
                     >
-                      <RowBody
-                        item={item}
-                        reason={rankMeta.reasons[item.id]}
-                        inProgress={statusById[item.id] === "in-progress"}
-                      />
+                      <RowBody item={item} inProgress={statusById[item.id] === "in-progress"} />
                     </Link>
                   )}
                 </SwipeRow>
@@ -377,7 +369,6 @@ function agoLabel(iso: string): string {
 }
 
 type RankMeta = {
-  reasons: Record<string, string>;
   status: string | null;
   model: string | null;
   rankedAt: string | null;
@@ -385,21 +376,8 @@ type RankMeta = {
 
 function toRankMeta(raw: unknown): RankMeta {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const reasons: Record<string, string> = {};
-  if (r.rankReasons && typeof r.rankReasons === "object") {
-    for (const [k, v] of Object.entries(r.rankReasons as Record<string, unknown>)) {
-      if (typeof v === "string") reasons[k] = v;
-    }
-  }
-  // The cache stores the already-normalized shape under `reasons`.
-  if (r.reasons && typeof r.reasons === "object") {
-    for (const [k, v] of Object.entries(r.reasons as Record<string, unknown>)) {
-      if (typeof v === "string") reasons[k] = v;
-    }
-  }
   const str = (v: unknown) => (typeof v === "string" ? v : null);
   return {
-    reasons,
     status: str(r.rankStatus) ?? str(r.status),
     model: str(r.rankModel) ?? str(r.model),
     rankedAt: str(r.rankedAt),
@@ -468,7 +446,7 @@ function opensOriginal(item: InboxItem, tab: string): item is InboxItem & { exte
   return tab === "today" && item.sourceKind === "rss" && Boolean(item.externalUrl);
 }
 
-function RowBody({ item, reason, inProgress }: { item: InboxItem; reason?: string; inProgress: boolean }) {
+function RowBody({ item, inProgress }: { item: InboxItem; inProgress: boolean }) {
   return (
     <>
       {item.imageUrl && (
@@ -490,11 +468,6 @@ function RowBody({ item, reason, inProgress }: { item: InboxItem; reason?: strin
         {inProgress && <span className="today-dot" aria-label="In progress" />}
       </div>
       <div className="today-row-title">{item.subject || "(No subject)"}</div>
-      {reason && (
-        <div className="today-row-why">
-          <span aria-hidden="true">✦</span> {reason}
-        </div>
-      )}
       {item.coveredBy ? (
         <div className="today-row-covered">
           Covered in {item.coveredBy.publicationName}: {item.coveredBy.subject}

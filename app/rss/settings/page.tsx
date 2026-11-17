@@ -142,14 +142,6 @@ export default function RssSettingsPage() {
       setNotice("RSS URL is required.");
       return;
     }
-    if (!trimmedName) {
-      setNotice("Name is required.");
-      return;
-    }
-    if (!category.trim()) {
-      setNotice("Category is required.");
-      return;
-    }
 
     setIsAdding(true);
     setNotice(null);
@@ -168,7 +160,7 @@ export default function RssSettingsPage() {
       setName("");
       setRssUrl("");
       setCategory("");
-      setNotice("Feed added.");
+      setNotice(`Added "${data?.name ?? trimmedName}".`);
       await loadFeeds();
     } finally {
       setIsAdding(false);
@@ -300,17 +292,17 @@ export default function RssSettingsPage() {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Feed name"
+            placeholder="Name (optional)"
             className="settings-input"
           />
           <input
             value={rssUrl}
             onChange={(e) => setRssUrl(e.target.value)}
-            placeholder="https://example.com/feed.xml"
+            placeholder="Feed URL, Substack link, or Substack name"
             className="settings-input"
           />
           <select value={category} onChange={(e) => setCategory(e.target.value)} className="filter-select">
-            <option value="">Category</option>
+            <option value="">Category (optional)</option>
             {RSS_CATEGORY_OPTIONS.map((opt) => (
               <option key={opt} value={opt}>
                 {getRssCategoryLabel(opt)}

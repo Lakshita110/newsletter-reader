@@ -1275,12 +1275,6 @@ body:has(.feed-deck) {
   background: var(--bg);
   color: var(--text);
 }
-.today-row-why {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--accent-blue);
-  line-height: 1.35;
-}
 .today-rank-status {
   display: flex;
   flex-wrap: wrap;
