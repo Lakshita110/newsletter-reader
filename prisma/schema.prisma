@@ -118,12 +118,17 @@ model RssItem {
   snippet      String?
   htmlRaw      String?   @db.Text
   textExtracted String?  @db.Text
+  /// Full-text search vector, a Postgres GENERATED column (see the baseline
+  /// migration). Declared only so schema/migration drift checks agree with
+  /// the database; read it with $queryRaw (app/api/search/route.ts).
+  searchVector Unsupported("tsvector")? @default(dbgenerated("to_tsvector('english'::regconfig, ((((COALESCE(title, ''::text) || ' '::text) || COALESCE(snippet, ''::text)) || ' '::text) || COALESCE(\"textExtracted\", ''::text)))"))
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   source       RssSource @relation(fields: [rssSourceId], references: [id], onDelete: Cascade)
 
   @@unique([rssSourceId, externalId])
   @@index([rssSourceId, publishedAt])
+  @@index([searchVector], type: Gin)
 }
 
 model UserRssDailyRankSnapshot {

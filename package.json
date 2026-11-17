@@ -10,7 +10,12 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:check": "node scripts/check-migrations.mjs",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
@@ -37,6 +42,7 @@
     "@types/react": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "prettier": "3.6.2",
     "prisma": "^6.4.1",
     "tailwindcss": "^4.2.1",
     "typescript": "^5",

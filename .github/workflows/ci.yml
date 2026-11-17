@@ -3,12 +3,28 @@ name: CI
 on:
   push:
     branches: [master]
+  # Also on PRs into other branches, so a stacked PR gets checked before it
+  # is retargeted to master.
   pull_request:
-    branches: [master]
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # Throwaway database for the migration check only. Nothing else in CI
+    # touches a database.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: shadow
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -24,12 +40,22 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Formatting
+        run: npm run format:check
+
       # Typecheck the whole project; catches breakages the linter misses.
       - name: Typecheck
         run: npx tsc --noEmit
 
       - name: Test
         run: npm run test
+
+      # schema.prisma must be exactly what the migrations build, because
+      # production only ever changes through `migrate deploy`.
+      - name: Migrations match schema
+        run: npm run db:check
+        env:
+          SHADOW_DATABASE_URL: "postgresql://ci:ci@localhost:5432/shadow"
 
       # Catches route-level wiring the unit tests can't (a broken build
       # otherwise passes CI). No DB is needed: pages that touch Prisma are
