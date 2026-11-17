@@ -2,10 +2,7 @@ import type { InboxItem } from "../types";
 
 type ReadContext = { title: string; sourceKind: "gmail" | "rss" | "web"; publicationName: string };
 
-export function buildContextById(
-  items: InboxItem[],
-  fallbackKind: "gmail" | "rss"
-): Record<string, ReadContext> {
+export function buildContextById(items: InboxItem[], fallbackKind: "gmail" | "rss"): Record<string, ReadContext> {
   const next: Record<string, ReadContext> = {};
   for (const item of items) {
     next[item.id] = {

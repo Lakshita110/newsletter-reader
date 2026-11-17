@@ -18,10 +18,8 @@ const STRONG_LIST_HEADERS = [
 
 const NEWSLETTER_TERMS =
   /\b(newsletter|digest|roundup|weekly|monthly|daily|edition|issue|briefing|bulletin|curated|top stories)\b/i;
-const FOOTER_TERMS =
-  /\b(unsubscribe|manage preferences|email preferences|view in browser|why did i get this)\b/i;
-const FROM_AUTOMATION_TERMS =
-  /\b(no[\s._-]?reply|newsletter|digest|updates?|bulletin|mail|team|hello)\b/i;
+const FOOTER_TERMS = /\b(unsubscribe|manage preferences|email preferences|view in browser|why did i get this)\b/i;
+const FROM_AUTOMATION_TERMS = /\b(no[\s._-]?reply|newsletter|digest|updates?|bulletin|mail|team|hello)\b/i;
 const TRANSACTIONAL_TERMS =
   /\b(password reset|verification code|security alert|receipt|invoice|order|tracking|one[- ]time code|otp)\b/i;
 const REPLY_SUBJECT_TERMS = /^(re|fwd):/i;
@@ -29,14 +27,8 @@ const PERSONAL_SNIPPET_TERMS =
   /\b(sent from my iphone|let me know|see you|thanks[,!]?|call me|on \w{3}, \w{3,9} \d{1,2})\b/i;
 const PERSONAL_MAILBOX_DOMAINS = /@(gmail\.com|outlook\.com|hotmail\.com|yahoo\.com|icloud\.com)$/i;
 
-export function getHeader(
-  headers: gmail_v1.Schema$MessagePartHeader[] | undefined,
-  name: string
-): string {
-  return (
-    headers?.find((header) => header.name?.toLowerCase() === name.toLowerCase())
-      ?.value ?? ""
-  );
+export function getHeader(headers: gmail_v1.Schema$MessagePartHeader[] | undefined, name: string): string {
+  return headers?.find((header) => header.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
 }
 
 export function classifyNewsletter(

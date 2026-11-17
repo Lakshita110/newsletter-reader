@@ -48,10 +48,14 @@ describe("getOrCreateSummary", () => {
   });
 
   it("falls through the model chain and caches the first success", async () => {
-    chat.mockResolvedValueOnce({ ok: false, status: 429, errorBody: "rate" }).mockResolvedValueOnce({ ok: true, content: " - point\n**Why it matters:** x " });
+    chat
+      .mockResolvedValueOnce({ ok: false, status: 429, errorBody: "rate" })
+      .mockResolvedValueOnce({ ok: true, content: " - point\n**Why it matters:** x " });
     const result = await getOrCreateSummary("u", "g1");
     expect(result).toEqual({ summary: "- point\n**Why it matters:** x", model: "model-b", cached: false });
-    expect(db.itemSummary.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ itemId: "g1", model: "model-b" }) }));
+    expect(db.itemSummary.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ itemId: "g1", model: "model-b" }) })
+    );
   });
 
   it("refuses without an API key, for missing items, and for very short items", async () => {

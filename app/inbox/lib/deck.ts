@@ -37,11 +37,7 @@ export function actionForSwipe(direction: SwipeDirection, id: string): DeckActio
  * should snap back. The dominant axis wins so a sloppy diagonal drag still
  * does the thing the user mostly meant.
  */
-export function resolveSwipe(
-  dx: number,
-  dy: number,
-  opts: { distanceThreshold?: number } = {}
-): SwipeDirection | null {
+export function resolveSwipe(dx: number, dy: number, opts: { distanceThreshold?: number } = {}): SwipeDirection | null {
   const threshold = opts.distanceThreshold ?? SWIPE_DISTANCE_THRESHOLD;
   const absX = Math.abs(dx);
   const absY = Math.abs(dy);

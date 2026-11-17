@@ -21,11 +21,7 @@ describe("contentToString", () => {
 
   it("joins typed text parts, leaving a blank line for non-text parts", () => {
     expect(
-      contentToString([
-        { type: "text", text: "line one" },
-        { type: "image" },
-        { type: "text", text: "line two" },
-      ])
+      contentToString([{ type: "text", text: "line one" }, { type: "image" }, { type: "text", text: "line two" }])
     ).toBe("line one\n\nline two");
   });
 
@@ -95,8 +91,12 @@ describe("openRouterChatWithFallback", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response("gone", { status: 404 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "  " } }] }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 }));
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ choices: [{ message: { content: "  " } }] }), { status: 200 })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 })
+      );
     vi.stubGlobal("fetch", fetchMock);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = await openRouterChatWithFallback({
@@ -135,7 +135,9 @@ describe("reasoningFor", () => {
   });
 
   it("is sent in the request body only for GPT-5 models", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: "x" } }] }), { status: 200 }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: "x" } }] }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     const base = { apiKey: "k", messages: [{ role: "user" as const, content: "hi" }], maxTokens: 10, timeoutMs: 1000 };
     await openRouterChat({ ...base, model: "openai/gpt-5-mini" });

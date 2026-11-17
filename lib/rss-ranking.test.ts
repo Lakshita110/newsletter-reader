@@ -86,12 +86,7 @@ describe("diversityTrim", () => {
 
   it("honors RSS_MAX_PER_SOURCE even if it leaves the feed short of cap", () => {
     vi.stubEnv("RSS_MAX_PER_SOURCE", "1");
-    const items = [
-      item("a1", "Source A"),
-      item("a2", "Source A"),
-      item("b1", "Source B"),
-      item("b2", "Source B"),
-    ];
+    const items = [item("a1", "Source A"), item("a2", "Source A"), item("b1", "Source B"), item("b2", "Source B")];
     // Cap asks for 3, but a hard 1-per-source allowance across 2 sources can
     // only ever produce 2 — the trim must respect the env cap over filling
     // the requested cap.

@@ -46,7 +46,15 @@ export async function POST(req: Request) {
     // The reader marks the item in_progress on open, so this is rare (e.g. a
     // race on first load); create rather than drop the position.
     await prisma.messageReadStat.create({
-      data: { userId, messageExternalId: messageId, maxScrollPct: pct, totalSecondsRead: seconds, firstOpenedAt: new Date(), lastOpenedAt: new Date(), openCount: 1 },
+      data: {
+        userId,
+        messageExternalId: messageId,
+        maxScrollPct: pct,
+        totalSecondsRead: seconds,
+        firstOpenedAt: new Date(),
+        lastOpenedAt: new Date(),
+        openCount: 1,
+      },
     });
   } else {
     await prisma.messageReadStat.update({

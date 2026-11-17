@@ -37,7 +37,8 @@ export async function POST() {
       {
         ok: false,
         reason: result.reason,
-        error: "No recommended articles are ranked for today yet — open the RSS inbox once to trigger ranking, then try again.",
+        error:
+          "No recommended articles are ranked for today yet — open the RSS inbox once to trigger ranking, then try again.",
       },
       { status: 200 }
     );

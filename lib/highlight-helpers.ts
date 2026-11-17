@@ -96,9 +96,7 @@ export function highlightsToMarkdown(highlights: ExportHighlight[], heading?: st
     groups.set(h.itemId, list);
   }
   const time = (h: ExportHighlight) => new Date(h.createdAt).getTime();
-  const ordered = [...groups.values()].sort(
-    (a, b) => Math.max(...b.map(time)) - Math.max(...a.map(time))
-  );
+  const ordered = [...groups.values()].sort((a, b) => Math.max(...b.map(time)) - Math.max(...a.map(time)));
 
   const lines: string[] = [];
   if (heading) lines.push(`# ${heading}`, "");

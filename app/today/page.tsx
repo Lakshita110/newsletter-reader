@@ -200,7 +200,10 @@ export default function TodayPage() {
 
   const rememberQueueForReader = () => {
     // The reader uses these for "Done → next" and for its back button.
-    window.localStorage.setItem("nr_ordered_items", JSON.stringify(ordered.map((i) => ({ id: i.id, subject: i.subject }))));
+    window.localStorage.setItem(
+      "nr_ordered_items",
+      JSON.stringify(ordered.map((i) => ({ id: i.id, subject: i.subject })))
+    );
     window.localStorage.setItem("nr_reader_back", tab === "saved" ? "/today?tab=saved" : "/today");
   };
 
@@ -239,7 +242,12 @@ export default function TodayPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Link href="/save" className="today-icon-btn" aria-label="Save a link" style={{ display: "grid", placeItems: "center", textDecoration: "none" }}>
+          <Link
+            href="/save"
+            className="today-icon-btn"
+            aria-label="Save a link"
+            style={{ display: "grid", placeItems: "center", textDecoration: "none" }}
+          >
             +
           </Link>
           <button type="button" className="today-icon-btn" onClick={() => load()} aria-label="Refresh">
@@ -255,41 +263,44 @@ export default function TodayPage() {
         const list = queue[section];
         if (list.length === 0) return null;
         const rows = (
-            <ul className="today-list">
-              {list.map((item) => (
-                <li key={item.id}>
-                  <SwipeRow
-                    onDone={() => markDone(item)}
-                    onSave={() => toggleSave(item)}
-                    saveLabel={savedById[item.id] ? "Unsave" : "Save"}
+          <ul className="today-list">
+            {list.map((item) => (
+              <li key={item.id}>
+                <SwipeRow
+                  onDone={() => markDone(item)}
+                  onSave={() => toggleSave(item)}
+                  saveLabel={savedById[item.id] ? "Unsave" : "Save"}
+                >
+                  <Link
+                    href={`/read/${encodeURIComponent(item.id)}`}
+                    className="today-row"
+                    onClick={rememberQueueForReader}
+                    // A native link drag would steal the pointer and cancel the swipe.
+                    draggable={false}
                   >
-                    <Link href={`/read/${encodeURIComponent(item.id)}`} className="today-row"
-                      onClick={rememberQueueForReader}
-                      // A native link drag would steal the pointer and cancel the swipe.
-                      draggable={false}>
-                      <div className="today-row-meta">
-                        <span className="today-row-pub">{item.publicationName}</span>
-                        <span>{relativeTime(item.date)}</span>
-                        {statusById[item.id] === "in-progress" && <span className="today-dot" aria-label="In progress" />}
+                    <div className="today-row-meta">
+                      <span className="today-row-pub">{item.publicationName}</span>
+                      <span>{relativeTime(item.date)}</span>
+                      {statusById[item.id] === "in-progress" && <span className="today-dot" aria-label="In progress" />}
+                    </div>
+                    <div className="today-row-title">{item.subject || "(No subject)"}</div>
+                    {rankMeta.reasons[item.id] && (
+                      <div className="today-row-why">
+                        <span aria-hidden="true">✦</span> {rankMeta.reasons[item.id]}
                       </div>
-                      <div className="today-row-title">{item.subject || "(No subject)"}</div>
-                      {rankMeta.reasons[item.id] && (
-                        <div className="today-row-why">
-                          <span aria-hidden="true">✦</span> {rankMeta.reasons[item.id]}
-                        </div>
-                      )}
-                      {item.coveredBy ? (
-                        <div className="today-row-covered">
-                          Covered in {item.coveredBy.publicationName}: {item.coveredBy.subject}
-                        </div>
-                      ) : (
-                        item.snippet && <div className="today-row-snippet">{item.snippet}</div>
-                      )}
-                    </Link>
-                  </SwipeRow>
-                </li>
-              ))}
-            </ul>
+                    )}
+                    {item.coveredBy ? (
+                      <div className="today-row-covered">
+                        Covered in {item.coveredBy.publicationName}: {item.coveredBy.subject}
+                      </div>
+                    ) : (
+                      item.snippet && <div className="today-row-snippet">{item.snippet}</div>
+                    )}
+                  </Link>
+                </SwipeRow>
+              </li>
+            ))}
+          </ul>
         );
         if (section === "covered") {
           // Folded by default: these overlap with something you're already reading.
@@ -309,7 +320,12 @@ export default function TodayPage() {
               <span>{list.length}</span>
             </h2>
             {section === "stories" && (
-              <RankStatusLine meta={rankMeta} hasPicks={recommendedIds.length > 0} rankNow={rankNow} onRankNow={runRankNow} />
+              <RankStatusLine
+                meta={rankMeta}
+                hasPicks={recommendedIds.length > 0}
+                rankNow={rankNow}
+                onRankNow={runRankNow}
+              />
             )}
             {rows}
           </section>

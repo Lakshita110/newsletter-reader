@@ -1,11 +1,6 @@
 import nodemailer from "nodemailer";
 import { prisma } from "@/lib/prisma";
-import {
-  buildEmailHtml,
-  getDigestSubject,
-  getLocalDateKey,
-  normalizeDigestEmail,
-} from "@/lib/email-digest";
+import { buildEmailHtml, getDigestSubject, getLocalDateKey, normalizeDigestEmail } from "@/lib/email-digest";
 
 export type DigestUser = {
   id: string;

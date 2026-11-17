@@ -57,8 +57,14 @@ export async function PATCH(req: Request) {
   const body = await req.json().catch(() => ({}));
   const has = (k: string) => Object.prototype.hasOwnProperty.call(body, k);
 
-  if (!has("recommendationCap") && !has("recommendationPrompt") &&
-      !has("digestEnabled") && !has("digestEmail") && !has("digestTimezone") && !has("weeklyReadingGoal")) {
+  if (
+    !has("recommendationCap") &&
+    !has("recommendationPrompt") &&
+    !has("digestEnabled") &&
+    !has("digestEmail") &&
+    !has("digestTimezone") &&
+    !has("weeklyReadingGoal")
+  ) {
     return NextResponse.json({ error: "No settings provided" }, { status: 400 });
   }
 

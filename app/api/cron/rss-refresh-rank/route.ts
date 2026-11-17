@@ -30,9 +30,7 @@ export async function GET(req: Request) {
       `[rss-refresh-rank][${requestId}] starting sync day="${dayKey}" activeSources=${activeSources.length}`
     );
 
-    const syncResults = await Promise.allSettled(
-      activeSources.map((row) => syncRssSource(row.rssSourceId))
-    );
+    const syncResults = await Promise.allSettled(activeSources.map((row) => syncRssSource(row.rssSourceId)));
 
     let syncedSources = 0;
     let syncInserted = 0;
@@ -61,9 +59,7 @@ export async function GET(req: Request) {
       select: { userId: true },
       distinct: ["userId"],
     });
-    console.info(
-      `[rss-refresh-rank][${requestId}] starting ranking day="${dayKey}" activeUsers=${activeUsers.length}`
-    );
+    console.info(`[rss-refresh-rank][${requestId}] starting ranking day="${dayKey}" activeUsers=${activeUsers.length}`);
 
     let rankedUsers = 0;
     let skippedUsers = 0;
@@ -110,10 +106,7 @@ export async function GET(req: Request) {
       rankSummaries: rankSummaries.slice(0, 20),
     });
   } catch (error) {
-    console.error(
-      `[rss-refresh-rank][${requestId}] fatal error`,
-      error
-    );
+    console.error(`[rss-refresh-rank][${requestId}] fatal error`, error);
     return NextResponse.json({ error: "Cron execution failed" }, { status: 500 });
   }
 }

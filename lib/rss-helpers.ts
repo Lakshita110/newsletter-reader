@@ -12,7 +12,7 @@ export function weekKeyUtc(value: Date | null): string {
   const dayNum = date.getUTCDay() || 7;
   date.setUTCDate(date.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
   return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
 }
 
@@ -36,13 +36,13 @@ export function getRssDailyTargetCap(totalCandidates: number, preferredCap?: num
   const defaultRaw = Number(process.env.RSS_DAILY_TARGET_DEFAULT ?? DAILY_TARGET_DEFAULT);
 
   const minCap = Number.isFinite(minRaw) ? Math.max(1, Math.floor(minRaw)) : DAILY_TARGET_MIN_DEFAULT;
-  const maxCap = Number.isFinite(maxRaw) ? Math.max(minCap, Math.floor(maxRaw)) : Math.max(minCap, DAILY_TARGET_MAX_DEFAULT);
+  const maxCap = Number.isFinite(maxRaw)
+    ? Math.max(minCap, Math.floor(maxRaw))
+    : Math.max(minCap, DAILY_TARGET_MAX_DEFAULT);
   const envDefaultCap = Number.isFinite(defaultRaw)
     ? Math.min(maxCap, Math.max(minCap, Math.floor(defaultRaw)))
     : Math.min(maxCap, Math.max(minCap, DAILY_TARGET_DEFAULT));
-  const preferred = Number.isFinite(preferredCap as number)
-    ? Math.floor(preferredCap as number)
-    : envDefaultCap;
+  const preferred = Number.isFinite(preferredCap as number) ? Math.floor(preferredCap as number) : envDefaultCap;
   const defaultCap = Math.min(maxCap, Math.max(minCap, preferred));
 
   if (!Number.isFinite(totalCandidates) || totalCandidates <= 0) return 0;
@@ -105,10 +105,7 @@ export function buildRssArticleDedupKey(args: {
   return `text:${title}|${snippet}`;
 }
 
-export function dedupeByArticleKey<T extends { dedupKey: string }>(
-  items: T[],
-  sortTimeMs: (item: T) => number
-): T[] {
+export function dedupeByArticleKey<T extends { dedupKey: string }>(items: T[], sortTimeMs: (item: T) => number): T[] {
   const dedupedByKey = new Map<string, T>();
   for (const item of items) {
     const prev = dedupedByKey.get(item.dedupKey);

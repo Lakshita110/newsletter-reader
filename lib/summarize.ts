@@ -7,7 +7,10 @@ import { WEB_ID_PREFIX } from "@/lib/saved-articles";
 const MAX_INPUT_CHARS = 14000;
 
 export class SummaryError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
     super(message);
   }
 }
@@ -19,11 +22,16 @@ async function getItemText(userId: string, itemId: string): Promise<{ title: str
     return row ? { title: row.title, text: row.text ?? htmlToPlainText(row.html ?? "") } : null;
   }
   if (itemId.startsWith("rss:")) {
-    const row = await prisma.rssItem.findUnique({ where: { id: itemId.slice(4) }, include: { source: { include: { subscriptions: { where: { userId, isActive: true } } } } } });
+    const row = await prisma.rssItem.findUnique({
+      where: { id: itemId.slice(4) },
+      include: { source: { include: { subscriptions: { where: { userId, isActive: true } } } } },
+    });
     if (!row || row.source.subscriptions.length === 0) return null;
     return { title: row.title, text: row.textExtracted ?? htmlToPlainText(row.htmlRaw ?? row.snippet ?? "") };
   }
-  const issue = await prisma.newsletterIssue.findUnique({ where: { userId_gmailMessageId: { userId, gmailMessageId: itemId } } });
+  const issue = await prisma.newsletterIssue.findUnique({
+    where: { userId_gmailMessageId: { userId, gmailMessageId: itemId } },
+  });
   return issue ? { title: issue.subject, text: issue.text ?? htmlToPlainText(issue.html ?? "") } : null;
 }
 
@@ -82,7 +90,10 @@ export async function getOrCreateSummary(userId: string, itemId: string) {
       });
       return { summary, model, cached: false };
     }
-    console.warn(`[summarize] ${model} failed`, result.ok ? "empty" : `${result.status} ${result.errorBody.slice(0, 200)}`);
+    console.warn(
+      `[summarize] ${model} failed`,
+      result.ok ? "empty" : `${result.status} ${result.errorBody.slice(0, 200)}`
+    );
   }
   throw new SummaryError("The summary service is unavailable right now", 502);
 }

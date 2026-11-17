@@ -4,9 +4,8 @@ const user = { findUnique: vi.fn(), update: vi.fn(), upsert: vi.fn() };
 vi.mock("@/lib/prisma", () => ({ prisma: { user } }));
 
 const { encryptSecret, decryptSecret } = await import("./token-crypto");
-const { getGmailAccessToken, saveGmailRefreshToken, primeGmailAccessToken, clearGmailTokenCacheForTests } = await import(
-  "./gmail-token"
-);
+const { getGmailAccessToken, saveGmailRefreshToken, primeGmailAccessToken, clearGmailTokenCacheForTests } =
+  await import("./gmail-token");
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 

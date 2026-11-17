@@ -6,10 +6,7 @@ import { getRssLookbackCutoff, getRssLookbackDays } from "@/lib/rss-helpers";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(
-  _req: Request,
-  { params }: { params: Promise<{ sourceId: string }> }
-) {
+export async function GET(_req: Request, { params }: { params: Promise<{ sourceId: string }> }) {
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

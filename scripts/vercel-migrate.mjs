@@ -40,7 +40,9 @@ function run(args) {
 }
 
 if (process.env.VERCEL_ENV !== "production") {
-  console.log(`[vercel-migrate] VERCEL_ENV=${process.env.VERCEL_ENV ?? "unset"}: skipping migrations (production only).`);
+  console.log(
+    `[vercel-migrate] VERCEL_ENV=${process.env.VERCEL_ENV ?? "unset"}: skipping migrations (production only).`
+  );
   process.exit(0);
 }
 
@@ -50,7 +52,9 @@ if (!result.ok && result.output.includes("P3005")) {
     .filter((d) => d.isDirectory() && d.name < FIRST_NEW_MIGRATION)
     .map((d) => d.name)
     .sort();
-  console.log(`[vercel-migrate] P3005: database has no migration history. Baselining ${legacy.length} existing migrations.`);
+  console.log(
+    `[vercel-migrate] P3005: database has no migration history. Baselining ${legacy.length} existing migrations.`
+  );
   for (const name of legacy) {
     const resolved = run(["migrate", "resolve", "--applied", name]);
     if (!resolved.ok) {

@@ -4,12 +4,7 @@ import { classifyNewsletter, getHeader } from "@/lib/newsletter-classifier";
 import { parseFrom, normalizePublicationKey } from "@/lib/from-header";
 import { extractBodies } from "@/lib/gmail-body";
 import type { FeedItem } from "@/lib/rss-candidates";
-import {
-  buildInboxQuery,
-  buildSenderQuery,
-  extractWebUrl,
-  syncWindowStart,
-} from "@/lib/newsletter-sync-helpers";
+import { buildInboxQuery, buildSenderQuery, extractWebUrl, syncWindowStart } from "@/lib/newsletter-sync-helpers";
 
 /** Don't hit Gmail more than once per this interval per user. */
 const MIN_SYNC_INTERVAL_MS = 2 * 60 * 1000;
@@ -26,10 +21,7 @@ export type NewsletterSyncResult = {
 };
 
 function gmailClient(accessToken: string) {
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET
-  );
+  const oauth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
   oauth2Client.setCredentials({ access_token: accessToken });
   return google.gmail({ version: "v1", auth: oauth2Client });
 }
@@ -74,11 +66,7 @@ export async function syncNewsletters(
     where: { id: userId },
     select: { newslettersSyncedAt: true },
   });
-  if (
-    !force &&
-    user.newslettersSyncedAt &&
-    startedAt - user.newslettersSyncedAt.getTime() < MIN_SYNC_INTERVAL_MS
-  ) {
+  if (!force && user.newslettersSyncedAt && startedAt - user.newslettersSyncedAt.getTime() < MIN_SYNC_INTERVAL_MS) {
     return { status: "skipped-recent", added: 0 };
   }
 
@@ -89,7 +77,10 @@ export async function syncNewsletters(
   const useSenderList = senders.length > 0;
   const windowStart = syncWindowStart(user.newslettersSyncedAt);
   const q = useSenderList
-    ? buildSenderQuery(senders.map((s) => s.email), windowStart)
+    ? buildSenderQuery(
+        senders.map((s) => s.email),
+        windowStart
+      )
     : buildInboxQuery(windowStart);
 
   const gmail = gmailClient(accessToken);

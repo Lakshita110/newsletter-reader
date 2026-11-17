@@ -37,10 +37,7 @@ async function getReadabilityDeps() {
   }
 
   try {
-    const [readabilityModule, jsdomModule] = await Promise.all([
-      import("@mozilla/readability"),
-      import("jsdom"),
-    ]);
+    const [readabilityModule, jsdomModule] = await Promise.all([import("@mozilla/readability"), import("jsdom")]);
     readabilityCtor = readabilityModule.Readability;
     jsdomCtor = jsdomModule.JSDOM;
   } catch {

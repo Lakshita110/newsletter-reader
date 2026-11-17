@@ -6,10 +6,7 @@ export function InboxModeTabs({ mode }: { mode: "newsletters" | "rss" }) {
       <Link href="/today" className="inbox-tab">
         Today
       </Link>
-      <Link
-        href="/inbox/newsletters"
-        className={mode === "newsletters" ? "inbox-tab active" : "inbox-tab"}
-      >
+      <Link href="/inbox/newsletters" className={mode === "newsletters" ? "inbox-tab active" : "inbox-tab"}>
         Newsletters
       </Link>
       <Link href="/inbox/rss" className={mode === "rss" ? "inbox-tab active" : "inbox-tab"}>

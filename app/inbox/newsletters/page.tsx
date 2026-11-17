@@ -105,10 +105,7 @@ export default function NewslettersInboxPage() {
     [viewFiltered, q, selectedPub, selectedDay]
   );
 
-  const dailyEdition = useMemo(
-    () => buildDailyEdition(filtered, 30, showAllEarlier),
-    [filtered, showAllEarlier]
-  );
+  const dailyEdition = useMemo(() => buildDailyEdition(filtered, 30, showAllEarlier), [filtered, showAllEarlier]);
   const grouped = useMemo(
     () => (selectedDay ? groupItemsByDay(filtered) : dailyEdition.grouped),
     [dailyEdition.grouped, filtered, selectedDay]
@@ -215,7 +212,12 @@ export default function NewslettersInboxPage() {
     if (session === null) router.replace("/sign-in");
   }, [session, router]);
 
-  if (!session) return <main style={{ maxWidth: 560, margin: "80px auto", padding: 20 }}><p>Loading...</p></main>;
+  if (!session)
+    return (
+      <main style={{ maxWidth: 560, margin: "80px auto", padding: 20 }}>
+        <p>Loading...</p>
+      </main>
+    );
 
   return (
     <main style={{ maxWidth: 768, margin: "44px auto", padding: "0 24px 20px" }}>
@@ -255,7 +257,9 @@ export default function NewslettersInboxPage() {
         </>
       )}
 
-      {loadError && <div style={{ margin: "-8px 0 14px", color: "var(--danger, #d33)", fontSize: 12 }}>{loadError}</div>}
+      {loadError && (
+        <div style={{ margin: "-8px 0 14px", color: "var(--danger, #d33)", fontSize: 12 }}>{loadError}</div>
+      )}
 
       {viewMode === "all" && !selectedDay && uiMode === "list" && (
         <ShowEarlierButton

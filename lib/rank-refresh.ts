@@ -18,11 +18,7 @@ import {
  * demand), so both follow the same skip-if-unchanged and
  * never-clobber-a-good-ranking rules.
  */
-export async function refreshTodaySnapshotForUser(
-  userId: string,
-  dayKey: string,
-  source: RankSnapshotSource = "CRON"
-) {
+export async function refreshTodaySnapshotForUser(userId: string, dayKey: string, source: RankSnapshotSource = "CRON") {
   const userSettings = await prisma.user.findUnique({
     where: { id: userId },
     select: { rssRecommendationPrompt: true },
@@ -90,9 +86,7 @@ export async function refreshTodaySnapshotForUser(
     source,
     model: ranking.model,
     inputFingerprint: ranking.inputFingerprint,
-    expiresAt: isDegraded
-      ? new Date(Date.now() + FALLBACK_SNAPSHOT_TTL_MS)
-      : rankSnapshotExpiryUtc(dayKey),
+    expiresAt: isDegraded ? new Date(Date.now() + FALLBACK_SNAPSHOT_TTL_MS) : rankSnapshotExpiryUtc(dayKey),
   });
 
   return {

@@ -23,7 +23,9 @@ describe("buildTodayQueue", () => {
   it("folds stories a newsletter already covered", () => {
     const q = buildTodayQueue({
       items: [
-        item("r-a", "rss", daysAgo(0), { coveredBy: { byId: "g1", publicationName: "Stratechery", subject: "x", matched: ["Nvidia", "China"] } }),
+        item("r-a", "rss", daysAgo(0), {
+          coveredBy: { byId: "g1", publicationName: "Stratechery", subject: "x", matched: ["Nvidia", "China"] },
+        }),
         item("r-b", "rss", daysAgo(0)),
       ],
       statusById: {},

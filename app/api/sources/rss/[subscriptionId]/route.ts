@@ -6,10 +6,7 @@ import { getSessionUserId } from "@/lib/session-user";
 
 export const dynamic = "force-dynamic";
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: Promise<{ subscriptionId: string }> }
-) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ subscriptionId: string }> }) {
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -70,10 +67,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
-  _req: Request,
-  { params }: { params: Promise<{ subscriptionId: string }> }
-) {
+export async function DELETE(_req: Request, { params }: { params: Promise<{ subscriptionId: string }> }) {
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

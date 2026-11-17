@@ -42,8 +42,8 @@ export function useReadingProgress(id: string | undefined, ready: boolean) {
         navigator.sendBeacon("/api/progress", new Blob([body], { type: "application/json" }));
         return;
       }
-      fetch("/api/progress", { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(
-        (error) => console.warn("[reader] progress report failed", error)
+      fetch("/api/progress", { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch((error) =>
+        console.warn("[reader] progress report failed", error)
       );
     },
     [id]

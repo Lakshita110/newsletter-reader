@@ -36,9 +36,7 @@ export async function GET(req: Request) {
   if (!q) return NextResponse.json({ items: [] });
 
   const likeQuery = `%${q}%`;
-  const sourceFilter = sourceId
-    ? Prisma.sql`AND ri."rssSourceId" = ${sourceId}`
-    : Prisma.sql``;
+  const sourceFilter = sourceId ? Prisma.sql`AND ri."rssSourceId" = ${sourceId}` : Prisma.sql``;
   let rows: SearchRow[] = [];
   try {
     rows = await prisma.$queryRaw<SearchRow[]>`

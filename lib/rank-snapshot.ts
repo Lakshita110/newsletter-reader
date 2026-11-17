@@ -154,20 +154,21 @@ export async function getLatestRankedIds(params: {
   const { userId, sortedFallback, cap } = params;
   const snapshot = await readMostRecentSnapshot(userId);
   if (!snapshot) {
-    return { selectedRankIds: null, recommendedRankIds: [], rankReasons: {}, status: null, rankedAt: null, model: null };
+    return {
+      selectedRankIds: null,
+      recommendedRankIds: [],
+      rankReasons: {},
+      status: null,
+      rankedAt: null,
+      model: null,
+    };
   }
 
   const ids = idsFromSnapshotJson(snapshot.rankedItemIds);
   const reasons = snapshotRankReasons(snapshot);
   return {
     selectedRankIds: ids,
-    recommendedRankIds: deriveRecommendedRankIds(
-      ids,
-      reasons,
-      snapshot.status === "AI_SUCCESS",
-      sortedFallback,
-      cap
-    ),
+    recommendedRankIds: deriveRecommendedRankIds(ids, reasons, snapshot.status === "AI_SUCCESS", sortedFallback, cap),
     rankReasons: reasons,
     status: snapshot.status,
     rankedAt: snapshot.updatedAt.toISOString(),

@@ -8,7 +8,9 @@ const findUnique = vi.fn();
 vi.mock("@/lib/prisma", () => ({ prisma: { user: { findUnique: (...args: unknown[]) => findUnique(...args) } } }));
 
 const buildRankingCandidates = vi.fn();
-vi.mock("@/lib/rss-candidates", () => ({ buildRankingCandidates: (...args: unknown[]) => buildRankingCandidates(...args) }));
+vi.mock("@/lib/rss-candidates", () => ({
+  buildRankingCandidates: (...args: unknown[]) => buildRankingCandidates(...args),
+}));
 
 const computeDailyRankedSelection = vi.fn();
 vi.mock("@/lib/rss-ranking", async () => {

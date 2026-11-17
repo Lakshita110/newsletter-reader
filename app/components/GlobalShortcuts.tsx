@@ -5,11 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { isTypingTarget } from "@/app/inbox/lib/client-utils";
 
 function inferInboxPath(pathname: string): string {
-  if (
-    pathname.startsWith("/rss") ||
-    pathname.startsWith("/source/") ||
-    pathname.startsWith("/inbox/rss")
-  ) {
+  if (pathname.startsWith("/rss") || pathname.startsWith("/source/") || pathname.startsWith("/inbox/rss")) {
     return "/inbox/rss";
   }
   return "/inbox/newsletters";

@@ -72,7 +72,8 @@ export function useHighlights(containerRef: RefObject<HTMLElement | null>, meta:
   // Paint (and repaint after the article or view changes).
   useEffect(() => {
     const container = containerRef.current;
-    const registry = typeof CSS !== "undefined" ? (CSS as unknown as { highlights?: Map<string, unknown> }).highlights : undefined;
+    const registry =
+      typeof CSS !== "undefined" ? (CSS as unknown as { highlights?: Map<string, unknown> }).highlights : undefined;
     const HighlightCtor = (globalThis as unknown as { Highlight?: new (...r: Range[]) => unknown }).Highlight;
     if (!container || !registry || !HighlightCtor) return;
     const raf = requestAnimationFrame(() => {

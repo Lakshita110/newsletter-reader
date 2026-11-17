@@ -82,10 +82,7 @@ export async function POST(req: Request) {
     ? body.messageIds.filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
     : [];
   const state: ReadStateUpdate =
-    body?.state === "read" ||
-    body?.state === "unread" ||
-    body?.state === "saved" ||
-    body?.state === "unsaved"
+    body?.state === "read" || body?.state === "unread" || body?.state === "saved" || body?.state === "unsaved"
       ? body.state
       : "in_progress";
   const singleMetadata =

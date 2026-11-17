@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildEmailHtml,
-  getDigestSubject,
-  getLocalDateKey,
-  type DigestItem,
-} from "./email-digest";
+import { buildEmailHtml, getDigestSubject, getLocalDateKey, type DigestItem } from "./email-digest";
 
 const sampleItems: DigestItem[] = [
   {
@@ -66,8 +61,8 @@ describe("buildEmailHtml", () => {
 
   it("escapes HTML-significant characters in untrusted fields", () => {
     const out = buildEmailHtml(
-      [{ title: "A <b>bold</b> & \"quoted\" title", sourceName: "News & Co", snippet: "1 < 2 & 3", externalUrl: null }],
-      new Date(),
+      [{ title: 'A <b>bold</b> & "quoted" title', sourceName: "News & Co", snippet: "1 < 2 & 3", externalUrl: null }],
+      new Date()
     );
     // The raw tag must not survive into the markup.
     expect(out).not.toContain("<b>bold</b>");
@@ -79,7 +74,7 @@ describe("buildEmailHtml", () => {
   it("does not link non-http(s) urls", () => {
     const out = buildEmailHtml(
       [{ title: "sneaky", sourceName: "src", snippet: "", externalUrl: "javascript:alert(1)" }],
-      new Date(),
+      new Date()
     );
     expect(out).not.toContain("javascript:");
     // Title renders as plain text, not wrapped in an anchor.
@@ -110,10 +105,7 @@ describe("buildEmailHtml", () => {
 
   it("truncates long snippets to 160 chars plus an ellipsis", () => {
     const longSnippet = "x".repeat(500);
-    const out = buildEmailHtml(
-      [{ title: "t", sourceName: "s", snippet: longSnippet, externalUrl: null }],
-      new Date(),
-    );
+    const out = buildEmailHtml([{ title: "t", sourceName: "s", snippet: longSnippet, externalUrl: null }], new Date());
     expect(out).toContain(`${"x".repeat(160)}…`);
     expect(out).not.toContain("x".repeat(161));
   });

@@ -9,7 +9,10 @@ const MAX_HTML_BYTES = 6 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 12000;
 
 export class SaveError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
     super(message);
   }
 }
@@ -145,7 +148,16 @@ export async function getSavedArticleFeed(userId: string, limit = 300): Promise<
     where: { userId },
     orderBy: { createdAt: "desc" },
     take: limit,
-    select: { id: true, url: true, title: true, siteName: true, author: true, excerpt: true, imageUrl: true, createdAt: true },
+    select: {
+      id: true,
+      url: true,
+      title: true,
+      siteName: true,
+      author: true,
+      excerpt: true,
+      imageUrl: true,
+      createdAt: true,
+    },
   });
   return rows.map((row) => ({
     id: `${WEB_ID_PREFIX}${row.id}`,

@@ -11,13 +11,7 @@ import { useHighlights } from "./lib/useHighlights";
 import { SummaryCard } from "./components/SummaryCard";
 import { HighlightList, HighlightPaintStyle, SelectionBar } from "./components/HighlightControls";
 import { toReadStatusMap, toSavedMap } from "@/app/inbox/lib/client-utils";
-import {
-  cleanHtml,
-  countWords,
-  sanitizeHtml,
-  stripHtml,
-  type ReadMessage,
-} from "./lib/read-utils";
+import { cleanHtml, countWords, sanitizeHtml, stripHtml, type ReadMessage } from "./lib/read-utils";
 
 function isTypingTarget(target: EventTarget | null): boolean {
   const node = target as HTMLElement | null;
@@ -86,10 +80,7 @@ export default function ReadPage() {
   );
   const [fontSize, cycleFontSize] = useReaderFontSize();
 
-  const fetchMessage = async (
-    messageId: string,
-    options?: { signal?: AbortSignal }
-  ): Promise<ReadMessage | null> => {
+  const fetchMessage = async (messageId: string, options?: { signal?: AbortSignal }): Promise<ReadMessage | null> => {
     const cached = prefetchedByIdRef.current[messageId];
     if (cached) return cached;
     const res = await fetch(`/api/feed/item/${encodeURIComponent(messageId)}`, {
@@ -415,12 +406,7 @@ export default function ReadPage() {
       <SummaryCard key={id} itemId={id} minutes={readingMinutes} />
 
       <article className="reader-content-shell" ref={articleRef}>
-        <ReaderContent
-          message={msg}
-          view={activeView}
-          sanitized={sanitized}
-          cleanedHtml={cleanedHtml}
-        />
+        <ReaderContent message={msg} view={activeView} sanitized={sanitized} cleanedHtml={cleanedHtml} />
       </article>
 
       <HighlightPaintStyle />

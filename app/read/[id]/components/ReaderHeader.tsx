@@ -49,10 +49,7 @@ export function ReaderHeader({
     textDecoration: "none",
   };
 
-  const actionPillStyle = (
-    kind: "primary" | "neutral" | "link",
-    active = false
-  ): React.CSSProperties => {
+  const actionPillStyle = (kind: "primary" | "neutral" | "link", active = false): React.CSSProperties => {
     if (kind === "primary") {
       return {
         ...basePill,
@@ -86,7 +83,9 @@ export function ReaderHeader({
 
   return (
     <>
-      <div style={{ marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+      <div
+        style={{ marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}
+      >
         <Link
           href={backHref}
           style={{
@@ -102,9 +101,7 @@ export function ReaderHeader({
         <ThemeToggle />
       </div>
       <header style={{ marginBottom: 18 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>
-          {message.subject || "(No subject)"}
-        </h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>{message.subject || "(No subject)"}</h1>
         {isRss ? (
           <>
             <div style={{ opacity: 0.86, marginBottom: 4 }}>
@@ -123,9 +120,7 @@ export function ReaderHeader({
           <div style={{ opacity: 0.8, marginBottom: 6 }}>{message.from}</div>
         )}
         <div style={{ opacity: 0.6, marginBottom: 12 }}>{formatDateTime(message.date)}</div>
-        {readingMinutes !== null && (
-          <div style={{ opacity: 0.6, marginBottom: 12 }}>{readingMinutes} min read</div>
-        )}
+        {readingMinutes !== null && <div style={{ opacity: 0.6, marginBottom: 12 }}>{readingMinutes} min read</div>}
 
         <div
           style={{
@@ -168,19 +163,11 @@ export function ReaderHeader({
           {/* On phones the bottom toolbar has these actions within thumb reach. */}
           <div className="reader-header-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {externalUrl && (
-              <a
-                href={externalUrl}
-                target="_blank"
-                rel="noreferrer"
-                style={actionPillStyle("link")}
-              >
+              <a href={externalUrl} target="_blank" rel="noreferrer" style={actionPillStyle("link")}>
                 Open full article
               </a>
             )}
-            <button
-              onClick={onToggleSaved}
-              style={actionPillStyle("link", isSaved)}
-            >
+            <button onClick={onToggleSaved} style={actionPillStyle("link", isSaved)}>
               {isSaved ? "Saved" : "Save for later"}
             </button>
             <button

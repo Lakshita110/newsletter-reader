@@ -34,7 +34,8 @@ export default function HighlightsPage() {
     return () => controller.abort();
   }, [range]);
 
-  const heading = range === "week" ? "Highlights: past week" : range === "month" ? "Highlights: past 30 days" : "All highlights";
+  const heading =
+    range === "week" ? "Highlights: past week" : range === "month" ? "Highlights: past 30 days" : "All highlights";
   const markdown = useMemo(() => (rows && rows.length ? highlightsToMarkdown(rows, heading) : ""), [rows, heading]);
   const groups = useMemo(() => {
     const map = new Map<string, Row[]>();
@@ -62,14 +63,22 @@ export default function HighlightsPage() {
         <div>
           <h1 className="today-title">Highlights</h1>
           <p className="today-subtitle">
-            {rows === null ? "Loading…" : `${rows.length} from ${groups.length} article${groups.length === 1 ? "" : "s"}`}
+            {rows === null
+              ? "Loading…"
+              : `${rows.length} from ${groups.length} article${groups.length === 1 ? "" : "s"}`}
           </p>
         </div>
       </header>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {(["week", "month", "all"] as Range[]).map((r) => (
-          <button key={r} type="button" className={`filter-action-btn${range === r ? " active" : ""}`} onClick={() => setRange(r)} aria-pressed={range === r}>
+          <button
+            key={r}
+            type="button"
+            className={`filter-action-btn${range === r ? " active" : ""}`}
+            onClick={() => setRange(r)}
+            aria-pressed={range === r}
+          >
             {r === "week" ? "This week" : r === "month" ? "30 days" : "All"}
           </button>
         ))}

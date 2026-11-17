@@ -4,13 +4,22 @@ import { Fragment, useState } from "react";
 
 /** Render the model's tiny Markdown subset (bullets + **bold**) without innerHTML. */
 function renderInline(text: string) {
-  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    part.startsWith("**") && part.endsWith("**") ? <strong key={i}>{part.slice(2, -2)}</strong> : <Fragment key={i}>{part}</Fragment>
-  );
+  return text
+    .split(/(\*\*[^*]+\*\*)/g)
+    .map((part, i) =>
+      part.startsWith("**") && part.endsWith("**") ? (
+        <strong key={i}>{part.slice(2, -2)}</strong>
+      ) : (
+        <Fragment key={i}>{part}</Fragment>
+      )
+    );
 }
 
 function SummaryBody({ summary }: { summary: string }) {
-  const lines = summary.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = summary
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   const bullets = lines.filter((l) => /^[-*•]\s+/.test(l)).map((l) => l.replace(/^[-*•]\s+/, ""));
   const rest = lines.filter((l) => !/^[-*•]\s+/.test(l));
   return (
@@ -34,7 +43,9 @@ function SummaryBody({ summary }: { summary: string }) {
  * until tapped; the result is cached server-side per article.
  */
 export function SummaryCard({ itemId, minutes }: { itemId: string; minutes: number | null }) {
-  const [state, setState] = useState<{ kind: "idle" | "loading" } | { kind: "done"; summary: string } | { kind: "error"; message: string }>({
+  const [state, setState] = useState<
+    { kind: "idle" | "loading" } | { kind: "done"; summary: string } | { kind: "error"; message: string }
+  >({
     kind: "idle",
   });
   if (minutes !== null && minutes < 4) return null;

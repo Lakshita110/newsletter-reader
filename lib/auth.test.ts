@@ -14,7 +14,9 @@ afterEach(() => vi.clearAllMocks());
 
 describe("auth options", () => {
   it("doesn't force Google's consent screen on every sign-in, and keeps sessions for a year", () => {
-    const provider = authOptions.providers[0] as unknown as { options: { authorization: { params: Record<string, string> } } };
+    const provider = authOptions.providers[0] as unknown as {
+      options: { authorization: { params: Record<string, string> } };
+    };
     expect(provider.options.authorization.params.prompt).toBeUndefined();
     expect(provider.options.authorization.params.access_type).toBe("offline");
     expect(authOptions.session?.maxAge).toBe(365 * 24 * 60 * 60);
@@ -25,7 +27,14 @@ describe("jwt callback", () => {
   it("stores a refresh token server-side and keeps Google tokens out of the cookie", async () => {
     const token = await jwt({
       token: { email: "a@b.c", sub: "g1" },
-      account: { provider: "google", type: "oauth", providerAccountId: "g1", refresh_token: "rt", access_token: "at", expires_at: 2_000_000_000 },
+      account: {
+        provider: "google",
+        type: "oauth",
+        providerAccountId: "g1",
+        refresh_token: "rt",
+        access_token: "at",
+        expires_at: 2_000_000_000,
+      },
     });
     expect(saveGmailRefreshToken).toHaveBeenCalledWith("a@b.c", "rt");
     expect(primeGmailAccessToken).toHaveBeenCalledWith("u1", "at", 2_000_000_000_000);

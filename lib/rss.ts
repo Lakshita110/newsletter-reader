@@ -1,11 +1,7 @@
 import crypto from "crypto";
 import Parser from "rss-parser";
 import { prisma } from "@/lib/prisma";
-import {
-  extractImageUrlFromHtml,
-  getRssLookbackCutoff,
-  getRssLookbackDays,
-} from "@/lib/rss-helpers";
+import { extractImageUrlFromHtml, getRssLookbackCutoff, getRssLookbackDays } from "@/lib/rss-helpers";
 
 const parser = new Parser({
   customFields: {
@@ -97,11 +93,7 @@ export async function syncRssSource(rssSourceId: string) {
   const allItems = feed.items ?? [];
   const storageCutoff = getRssLookbackCutoff(getRssLookbackDays());
   const items = allItems.filter((item) => {
-    const publishedAt = item.isoDate
-      ? new Date(item.isoDate)
-      : item.pubDate
-      ? new Date(item.pubDate)
-      : null;
+    const publishedAt = item.isoDate ? new Date(item.isoDate) : item.pubDate ? new Date(item.pubDate) : null;
     if (!publishedAt || Number.isNaN(publishedAt.getTime())) {
       return true;
     }
@@ -168,15 +160,11 @@ export async function syncRssSource(rssSourceId: string) {
       typeof anyItem["content:encoded"] === "string"
         ? (anyItem["content:encoded"] as string)
         : typeof item.content === "string"
-        ? item.content
-        : undefined;
+          ? item.content
+          : undefined;
     const imageUrl = extractRssImageUrl(anyItem, html || null);
     const snippet = (item.contentSnippet ?? item.content ?? "").toString().slice(0, 500).trim();
-    const publishedAt = item.isoDate
-      ? new Date(item.isoDate)
-      : item.pubDate
-      ? new Date(item.pubDate)
-      : null;
+    const publishedAt = item.isoDate ? new Date(item.isoDate) : item.pubDate ? new Date(item.pubDate) : null;
 
     if (existingSet.has(externalId)) {
       updated += 1;
@@ -188,9 +176,7 @@ export async function syncRssSource(rssSourceId: string) {
       externalId,
       title: item.title?.trim() || "(Untitled)",
       author:
-        (Array.isArray(anyItem.dcCreator)
-          ? anyItem.dcCreator?.find((x) => typeof x === "string")
-          : undefined) ??
+        (Array.isArray(anyItem.dcCreator) ? anyItem.dcCreator?.find((x) => typeof x === "string") : undefined) ??
         item.creator ??
         anyItem.author ??
         null,
@@ -247,4 +233,3 @@ export async function syncRssSource(rssSourceId: string) {
 
   return { inserted, updated, insertedItemIds: insertedRows.map((row) => row.id) };
 }
-

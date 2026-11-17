@@ -112,7 +112,10 @@ export default function RssSettingsPage() {
         body: JSON.stringify({ name: s.name, rssUrl: s.rssUrl, siteUrl: s.siteUrl, category: s.category }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setNotice(data?.error || "Could not add feed."); return; }
+      if (!res.ok) {
+        setNotice(data?.error || "Could not add feed.");
+        return;
+      }
       setSuggestions((prev) => prev.filter((f) => f.rssUrl !== s.rssUrl));
       setNotice(`Added "${s.name}".`);
       await loadFeeds();
@@ -279,9 +282,7 @@ export default function RssSettingsPage() {
         >
           <div>
             <h1 className="app-page-title settings-title">Sources</h1>
-            <p className="app-page-subtitle settings-subtitle">
-              Newsletters and RSS feeds that land in your reader.
-            </p>
+            <p className="app-page-subtitle settings-subtitle">Newsletters and RSS feeds that land in your reader.</p>
           </div>
           <Link href="/today" className="back-link-muted">
             Back to Today
@@ -479,12 +480,7 @@ export default function RssSettingsPage() {
       <section style={{ marginTop: 28, borderTop: "1px solid var(--faint)", paddingTop: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
           <div style={{ fontSize: 13, color: "var(--muted)" }}>Suggested for you</div>
-          <button
-            type="button"
-            onClick={loadSuggestions}
-            disabled={isSuggesting}
-            className="filter-action-btn"
-          >
+          <button type="button" onClick={loadSuggestions} disabled={isSuggesting} className="filter-action-btn">
             {isSuggesting ? "Finding feeds…" : suggestions.length > 0 ? "Refresh" : "Find feeds"}
           </button>
         </div>

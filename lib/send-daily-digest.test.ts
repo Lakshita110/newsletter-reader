@@ -63,7 +63,13 @@ describe("sendDigestForUser", () => {
     vi.useFakeTimers().setSystemTime(new Date("2026-07-01T12:00:00Z"));
     findFirstMock.mockResolvedValue({ rankedItemIds: ["rss:abc123"] });
     findManyMock.mockResolvedValue([
-      { id: "abc123", title: "A test article", snippet: "snippet", link: "https://example.com/a", source: { name: "Test Source" } },
+      {
+        id: "abc123",
+        title: "A test article",
+        snippet: "snippet",
+        link: "https://example.com/a",
+        source: { name: "Test Source" },
+      },
     ]);
     const transporter = makeTransporter();
 
@@ -76,9 +82,7 @@ describe("sendDigestForUser", () => {
 
     expect(result).toEqual({ status: "sent", itemCount: 1, sentTo: "reader@example.com" });
     expect(transporter.sendMail).toHaveBeenCalledTimes(1);
-    expect(transporter.sendMail).toHaveBeenCalledWith(
-      expect.objectContaining({ to: "reader@example.com" })
-    );
+    expect(transporter.sendMail).toHaveBeenCalledWith(expect.objectContaining({ to: "reader@example.com" }));
     expect(updateMock).toHaveBeenCalledWith({
       where: { id: "user-1" },
       data: { digestLastSentAt: expect.any(Date) },
@@ -88,7 +92,13 @@ describe("sendDigestForUser", () => {
   it("sends to the configured digestEmail override instead of the account email", async () => {
     findFirstMock.mockResolvedValue({ rankedItemIds: ["rss:abc123"] });
     findManyMock.mockResolvedValue([
-      { id: "abc123", title: "A test article", snippet: "s", link: "https://example.com/a", source: { name: "Test Source" } },
+      {
+        id: "abc123",
+        title: "A test article",
+        snippet: "s",
+        link: "https://example.com/a",
+        source: { name: "Test Source" },
+      },
     ]);
     const transporter = makeTransporter();
 
@@ -100,9 +110,7 @@ describe("sendDigestForUser", () => {
     });
 
     expect(result).toEqual({ status: "sent", itemCount: 1, sentTo: "elsewhere@example.com" });
-    expect(transporter.sendMail).toHaveBeenCalledWith(
-      expect.objectContaining({ to: "elsewhere@example.com" })
-    );
+    expect(transporter.sendMail).toHaveBeenCalledWith(expect.objectContaining({ to: "elsewhere@example.com" }));
   });
 
   it("skips when there's no rank snapshot for today, even when forced", async () => {
