@@ -1185,6 +1185,23 @@ body:has(.feed-deck) {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.today-gmail-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.today-gmail-banner button {
+  flex-shrink: 0;
+  font: inherit;
+  font-weight: 600;
+  min-height: 32px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--faint);
+  background: var(--bg);
+  color: var(--text);
+}
 .today-row-why {
   margin-top: 4px;
   font-size: 13px;

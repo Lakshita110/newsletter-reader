@@ -37,6 +37,11 @@ model User {
   newsletterIssues         NewsletterIssue[]
   newslettersSyncedAt      DateTime?
   saveToken                String?                   @unique
+  /// Google refresh token for Gmail sync, AES-GCM encrypted (lib/token-crypto.ts).
+  /// Kept server-side so the app login and Gmail access are independent.
+  gmailRefreshTokenEnc     String?
+  /// Why Gmail access last failed (e.g. invalid_grant); null when connected.
+  gmailTokenError          String?
   savedArticles            SavedArticle[]
   highlights               Highlight[]
   itemSummaries            ItemSummary[]

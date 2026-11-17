@@ -52,7 +52,7 @@ export default function SignInPage() {
       </ul>
 
       <button
-        onClick={() => signIn("google", { callbackUrl: "/inbox" })}
+        onClick={() => signIn("google", { callbackUrl: "/today" })}
         style={{
           marginTop: 24,
           padding: "10px 12px",
