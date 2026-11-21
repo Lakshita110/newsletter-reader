@@ -4,9 +4,8 @@ const upsert = vi.fn().mockResolvedValue({ id: "u1" });
 const findUnique = vi.fn();
 const findFirst = vi.fn();
 vi.mock("@/lib/prisma", () => ({ prisma: { user: { upsert, findUnique, findFirst } } }));
-const saveGmailRefreshToken = vi.fn().mockResolvedValue("u1");
-const primeGmailAccessToken = vi.fn();
-vi.mock("@/lib/gmail-token", () => ({ saveGmailRefreshToken, primeGmailAccessToken }));
+const saveLoginGmailToken = vi.fn().mockResolvedValue("u1");
+vi.mock("@/lib/gmail-token", () => ({ saveLoginGmailToken }));
 
 const { authOptions, isAllowedToSignIn } = await import("./auth");
 type JwtArgs = Parameters<NonNullable<NonNullable<typeof authOptions.callbacks>["jwt"]>>[0];
@@ -38,8 +37,7 @@ describe("jwt callback", () => {
         expires_at: 2_000_000_000,
       },
     });
-    expect(saveGmailRefreshToken).toHaveBeenCalledWith("a@b.c", "rt");
-    expect(primeGmailAccessToken).toHaveBeenCalledWith("u1", "at", 2_000_000_000_000);
+    expect(saveLoginGmailToken).toHaveBeenCalledWith("a@b.c", "rt");
     expect(token).not.toHaveProperty("refreshToken");
     expect(token).not.toHaveProperty("accessToken");
   });
@@ -49,7 +47,7 @@ describe("jwt callback", () => {
       token: { email: "a@b.c" },
       account: { provider: "google", type: "oauth", providerAccountId: "g1", access_token: "at" },
     });
-    expect(saveGmailRefreshToken).not.toHaveBeenCalled();
+    expect(saveLoginGmailToken).not.toHaveBeenCalled();
     expect(upsert).toHaveBeenCalled();
   });
 
@@ -57,14 +55,14 @@ describe("jwt callback", () => {
     const token = await jwt({
       token: { email: "a@b.c", refreshToken: "legacy", accessToken: "x", accessTokenExpires: 1, error: "e" },
     });
-    expect(saveGmailRefreshToken).toHaveBeenCalledWith("a@b.c", "legacy");
+    expect(saveLoginGmailToken).toHaveBeenCalledWith("a@b.c", "legacy");
     expect(token).toEqual({ email: "a@b.c" });
   });
 
   it("is a no-op on ordinary requests", async () => {
     const token = await jwt({ token: { email: "a@b.c", sub: "g1" } });
     expect(token).toEqual({ email: "a@b.c", sub: "g1" });
-    expect(saveGmailRefreshToken).not.toHaveBeenCalled();
+    expect(saveLoginGmailToken).not.toHaveBeenCalled();
   });
 });
 

@@ -677,6 +677,7 @@ button.filter-select {
   justify-content: space-between;
   gap: 12px;
 }
+.today-gmail-banner a,
 .today-gmail-banner button {
   flex-shrink: 0;
   font: inherit;

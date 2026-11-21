@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getRssCategoryLabel, RSS_CATEGORY_OPTIONS } from "@/lib/rss-categories";
 import RankingSection from "./components/RankingSection";
+import MailboxesSection from "./components/MailboxesSection";
 import NewsletterSendersSection from "./components/NewsletterSendersSection";
 import SaveAnywhereSection from "./components/SaveAnywhereSection";
 
@@ -284,6 +285,8 @@ export default function RssSettingsPage() {
       </header>
 
       <RankingSection />
+
+      <MailboxesSection />
 
       <NewsletterSendersSection />
 

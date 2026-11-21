@@ -4,13 +4,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // sync decisions: throttle, sender-list vs classifier mode, dedupe, and
 // resume-after-time-budget.
 const db = {
-  user: { findUniqueOrThrow: vi.fn(), update: vi.fn() },
+  gmailAccount: { findMany: vi.fn(), update: vi.fn() },
   newsletterSender: { findMany: vi.fn() },
   newsletterIssue: { findMany: vi.fn(), createMany: vi.fn(), update: vi.fn() },
 };
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
+const getGmailAccessToken = vi.fn();
+vi.mock("@/lib/gmail-token", () => ({ getGmailAccessToken: (id: string) => getGmailAccessToken(id) }));
 
-const gmail = { users: { messages: { list: vi.fn(), get: vi.fn() } } };
+const gmail = { users: { getProfile: vi.fn(), messages: { list: vi.fn(), get: vi.fn() } } };
 vi.mock("googleapis", () => ({
   google: {
     auth: {
@@ -22,7 +24,14 @@ vi.mock("googleapis", () => ({
   },
 }));
 
-const { syncNewsletters } = await import("./newsletter-sync");
+const { syncNewsletters, syncAllMailboxes } = await import("./newsletter-sync");
+
+const mailbox = (overrides: Partial<{ id: string; email: string | null; syncedAt: Date | null }> = {}) => ({
+  id: "g1",
+  email: "me@gmail.com",
+  syncedAt: null,
+  ...overrides,
+});
 
 const b64 = (s: string) => Buffer.from(s).toString("base64url");
 
@@ -48,23 +57,24 @@ function message(id: string, from: string, { listHeader = true } = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  db.user.findUniqueOrThrow.mockResolvedValue({ newslettersSyncedAt: null });
   db.newsletterIssue.findMany.mockResolvedValue([]);
   db.newsletterIssue.createMany.mockImplementation(async ({ data }) => ({ count: data.length }));
   db.newsletterSender.findMany.mockResolvedValue([]);
 });
 
 describe("syncNewsletters", () => {
-  it("does nothing without a token", async () => {
-    expect(await syncNewsletters("u1", undefined)).toEqual({ status: "no-token", added: 0 });
-    expect(gmail.users.messages.list).not.toHaveBeenCalled();
+  it("is throttled right after a sync unless forced", async () => {
+    const recent = mailbox({ syncedAt: new Date() });
+    expect((await syncNewsletters("u1", recent, "tok")).status).toBe("skipped-recent");
+    gmail.users.messages.list.mockResolvedValue({ data: { messages: [] } });
+    expect((await syncNewsletters("u1", recent, "tok", { force: true })).status).toBe("synced");
   });
 
-  it("is throttled right after a sync unless forced", async () => {
-    db.user.findUniqueOrThrow.mockResolvedValue({ newslettersSyncedAt: new Date() });
-    expect((await syncNewsletters("u1", "tok")).status).toBe("skipped-recent");
+  it("records the address of a carried-over mailbox that has none yet", async () => {
+    gmail.users.getProfile.mockResolvedValue({ data: { emailAddress: "News@Gmail.com" } });
     gmail.users.messages.list.mockResolvedValue({ data: { messages: [] } });
-    expect((await syncNewsletters("u1", "tok", { force: true })).status).toBe("synced");
+    await syncNewsletters("u1", mailbox({ email: null }), "tok");
+    expect(db.gmailAccount.update).toHaveBeenCalledWith({ where: { id: "g1" }, data: { email: "news@gmail.com" } });
   });
 
   it("with a sender list: searches all mail for those senders and trusts them without the classifier", async () => {
@@ -75,7 +85,7 @@ describe("syncNewsletters", () => {
     );
     db.newsletterIssue.findMany.mockResolvedValue([{ gmailMessageId: "m1" }]); // m1 already stored
 
-    const result = await syncNewsletters("u1", "tok");
+    const result = await syncNewsletters("u1", mailbox(), "tok");
 
     const q = gmail.users.messages.list.mock.calls[0][0].q as string;
     expect(q).toContain("from:pub@substack.com");
@@ -91,7 +101,7 @@ describe("syncNewsletters", () => {
       text: null, // extracted from HTML lazily on first open
     });
     expect(result).toEqual({ status: "synced", added: 1 });
-    expect(db.user.update).toHaveBeenCalled();
+    expect(db.gmailAccount.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "g1" } }));
   });
 
   it("without a sender list: inbox plus platforms, and drops what the classifier rejects", async () => {
@@ -101,7 +111,7 @@ describe("syncNewsletters", () => {
         ? message(id, "Daily <hello@news.com>")
         : message(id, "Friend <friend@gmail.com>", { listHeader: false })
     );
-    const result = await syncNewsletters("u1", "tok");
+    const result = await syncNewsletters("u1", mailbox(), "tok");
     expect(gmail.users.messages.list.mock.calls[0][0].q).toContain("in:inbox");
     expect(
       db.newsletterIssue.createMany.mock.calls[0][0].data.map((r: { gmailMessageId: string }) => r.gmailMessageId)
@@ -115,7 +125,7 @@ describe("syncNewsletters", () => {
     gmail.users.messages.get.mockImplementation(async ({ id }) =>
       message(id, "Derek Thompson <derekthompson@substack.com>", { listHeader: false })
     );
-    const result = await syncNewsletters("u1", "tok");
+    const result = await syncNewsletters("u1", mailbox(), "tok");
     expect(gmail.users.messages.list.mock.calls[0][0].q).toContain("from:substack.com");
     expect(result.added).toBe(1);
   });
@@ -128,14 +138,34 @@ describe("syncNewsletters", () => {
       await new Promise((r) => setTimeout(r, 15));
       return message(id, "Pub <pub@substack.com>");
     });
-    const result = await syncNewsletters("u1", "tok", { timeBudgetMs: 5 });
+    const result = await syncNewsletters("u1", mailbox(), "tok", { timeBudgetMs: 5 });
     expect(result.status).toBe("partial");
     expect(result.added).toBe(8); // one concurrent batch
-    expect(db.user.update).not.toHaveBeenCalled();
+    expect(db.gmailAccount.update).not.toHaveBeenCalled();
   });
 
   it("reports Gmail auth failures instead of throwing", async () => {
     gmail.users.messages.list.mockRejectedValue({ response: { status: 401 } });
-    expect((await syncNewsletters("u1", "tok")).status).toBe("auth-error");
+    expect((await syncNewsletters("u1", mailbox(), "tok")).status).toBe("auth-error");
+  });
+});
+
+describe("syncAllMailboxes", () => {
+  it("syncs each mailbox on its own, skipping disconnected ones and surviving a failure", async () => {
+    db.gmailAccount.findMany.mockResolvedValue([
+      mailbox({ id: "a", email: "a@gmail.com" }),
+      mailbox({ id: "b", email: "b@gmail.com" }),
+      mailbox({ id: "c", email: "c@gmail.com" }),
+    ]);
+    getGmailAccessToken.mockImplementation(async (id: string) => (id === "b" ? null : `tok-${id}`));
+    gmail.users.messages.list
+      .mockRejectedValueOnce(new Error("boom")) // mailbox a
+      .mockResolvedValueOnce({ data: { messages: [] } }); // mailbox c
+    const results = await syncAllMailboxes("u1");
+    expect(results.map((r) => [r.accountId, r.status])).toEqual([
+      ["a", "error"],
+      ["b", "no-token"],
+      ["c", "synced"],
+    ]);
   });
 });

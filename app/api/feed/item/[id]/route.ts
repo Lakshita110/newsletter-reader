@@ -1,12 +1,7 @@
-import { google } from "googleapis";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { extractArticleContent, normalizeText } from "@/lib/article-extract";
-import { parseFrom } from "@/lib/from-header";
-import { getHeader } from "@/lib/newsletter-classifier";
-import { extractBodies } from "@/lib/gmail-body";
 import { getSessionUser, getSessionUserId } from "@/lib/session-user";
-import { getGmailAccessToken } from "@/lib/gmail-token";
 import { getSavedArticleItem, WEB_ID_PREFIX } from "@/lib/saved-articles";
 
 export const dynamic = "force-dynamic";
@@ -59,38 +54,6 @@ async function getStoredNewsletterItem(userId: string, id: string) {
     externalUrl: issue.webUrl,
     sourceKind: "gmail" as const,
     publicationName: issue.fromName,
-  };
-}
-
-async function getGmailItem(id: string, accessToken: string) {
-  const oauth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
-  oauth2Client.setCredentials({ access_token: accessToken });
-  const gmail = google.gmail({ version: "v1", auth: oauth2Client });
-
-  const msg = await gmail.users.messages.get({ userId: "me", id, format: "full" });
-  const payload = msg.data.payload;
-  const headers = payload?.headers;
-  const subject = getHeader(headers, "Subject");
-  const from = getHeader(headers, "From");
-  const date = getHeader(headers, "Date");
-  const { html, text } = extractBodies(payload);
-  const extractedText = html ? (await extractArticleContent(html)).text : normalizeText(text ?? msg.data.snippet ?? "");
-  const publication = parseFrom(from);
-
-  return {
-    id: msg.data.id,
-    threadId: msg.data.threadId,
-    subject,
-    from,
-    date,
-    snippet: msg.data.snippet,
-    hasHtml: Boolean(html),
-    hasText: Boolean(extractedText),
-    html,
-    text: extractedText,
-    externalUrl: null,
-    sourceKind: "gmail" as const,
-    publicationName: publication.name,
   };
 }
 
@@ -170,13 +133,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const stored = await getStoredNewsletterItem(auth.userId, id);
   if (stored) return NextResponse.json(stored);
 
-  const accessToken = await getGmailAccessToken(auth.userId);
-  if (!accessToken) {
-    return NextResponse.json({ error: "Gmail isn't connected" }, { status: 401 });
-  }
-
-  const data = await getGmailItem(id, accessToken);
-  return NextResponse.json(data);
+  // Every newsletter in the feed is stored at sync time, so an id that isn't
+  // stored is unknown rather than something to fetch live from Gmail.
+  return NextResponse.json({ error: "Not found" }, { status: 404 });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {

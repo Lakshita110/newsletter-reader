@@ -1,25 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { signIn } from "next-auth/react";
 
-type Status = { connected: boolean; error: string | null };
+type Account = { id: string; email: string | null; connected: boolean };
 
 /**
- * Shown only when new newsletters can't be pulled from Gmail. It replaces the
- * old behaviour of bouncing the whole app back to Google: everything already
- * stored stays readable, and reconnecting is one deliberate tap.
+ * Shown only when a mailbox can't be read, so its new newsletters aren't
+ * coming in. Everything already stored stays readable; reconnecting is one
+ * deliberate tap through Google's account picker.
  */
 export function GmailBanner({ enabled }: { enabled: boolean }) {
-  const [status, setStatus] = useState<Status | null>(null);
+  const [accounts, setAccounts] = useState<Account[] | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
     fetch("/api/gmail/status")
       .then((res) => (res.ok ? res.json() : null))
-      .then((body: Status | null) => {
-        if (!cancelled && body) setStatus(body);
+      .then((body: { accounts: Account[] } | null) => {
+        if (!cancelled && body) setAccounts(body.accounts);
       })
       .catch((err: unknown) => console.error("[today] gmail status check failed", err));
     return () => {
@@ -27,22 +26,17 @@ export function GmailBanner({ enabled }: { enabled: boolean }) {
     };
   }, [enabled]);
 
-  if (!status || status.connected) return null;
+  if (!accounts) return null;
+  const expired = accounts.filter((a) => !a.connected);
+  if (accounts.length > 0 && expired.length === 0) return null;
   return (
     <div className="today-banner today-gmail-banner">
       <span>
-        {status.error
-          ? "Gmail access expired, so new newsletters aren't coming in."
-          : "Connect Gmail to pull in your newsletters."}
+        {accounts.length === 0
+          ? "Connect Gmail to pull in your newsletters."
+          : `Access to ${expired.map((a) => a.email ?? "a mailbox").join(", ")} expired, so its new newsletters aren't coming in.`}
       </span>
-      <button
-        type="button"
-        // Consent is required here: it's the only way Google issues the
-        // refresh token that keeps Gmail syncing without further sign-ins.
-        onClick={() => signIn("google", { callbackUrl: "/today" }, { prompt: "consent" })}
-      >
-        {status.error ? "Reconnect" : "Connect"}
-      </button>
+      <a href="/api/gmail/connect">{accounts.length === 0 ? "Connect" : "Reconnect"}</a>
     </div>
   );
 }

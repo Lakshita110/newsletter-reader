@@ -1,7 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getGmailAccessToken } from "@/lib/gmail-token";
 
 export type SessionUser = {
   userId: string;
@@ -29,18 +28,4 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 /** Shorthand for the many routes that only need the user id. */
 export async function getSessionUserId(): Promise<string | null> {
   return (await getSessionUser())?.userId ?? null;
-}
-
-export type SessionUserWithAccessToken = SessionUser & { accessToken: string };
-
-/**
- * Like getSessionUser, but for the routes that call the Gmail API and need
- * a usable access token — returns null (routes answer that with a 401) when
- * signed in but Gmail isn't connected.
- */
-export async function getSessionUserWithAccessToken(): Promise<SessionUserWithAccessToken | null> {
-  const user = await getSessionUser();
-  if (!user) return null;
-  const accessToken = await getGmailAccessToken(user.userId);
-  return accessToken ? { ...user, accessToken } : null;
 }

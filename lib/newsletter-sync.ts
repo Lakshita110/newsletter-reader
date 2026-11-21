@@ -5,6 +5,7 @@ import { parseFrom, normalizePublicationKey } from "@/lib/from-header";
 import { extractBodies } from "@/lib/gmail-body";
 import type { FeedItem } from "@/lib/rss-candidates";
 import { pickLeadImage } from "@/lib/lead-image";
+import { getGmailAccessToken } from "@/lib/gmail-token";
 import {
   buildInboxQuery,
   buildSenderQuery,
@@ -13,7 +14,7 @@ import {
   syncWindowStart,
 } from "@/lib/newsletter-sync-helpers";
 
-/** Don't hit Gmail more than once per this interval per user. */
+/** Don't hit Gmail more than once per this interval per mailbox. */
 const MIN_SYNC_INTERVAL_MS = 2 * 60 * 1000;
 /** Cap on message ids considered per sync; the rest are picked up next time. */
 const MAX_IDS_PER_SYNC = 300;
@@ -23,7 +24,14 @@ const INBOX_ISSUE_LIMIT = 200;
 const INBOX_ISSUE_DAYS = 90;
 
 export type NewsletterSyncResult = {
-  status: "synced" | "partial" | "skipped-recent" | "no-token" | "auth-error";
+  status: "synced" | "partial" | "skipped-recent" | "auth-error";
+  added: number;
+};
+
+export type MailboxSyncResult = {
+  accountId: string;
+  email: string | null;
+  status: NewsletterSyncResult["status"] | "no-token" | "error";
   added: number;
 };
 
@@ -50,7 +58,39 @@ async function listMessageIds(gmail: gmail_v1.Gmail, q: string): Promise<string[
 }
 
 /**
- * Copy new newsletter emails from Gmail into NewsletterIssue.
+ * Sync every connected mailbox for this user. Each mailbox is independent: a
+ * disconnected or failing one is reported in its own result and doesn't stop
+ * the others.
+ */
+export async function syncAllMailboxes(
+  userId: string,
+  opts: { timeBudgetMs?: number; force?: boolean } = {}
+): Promise<MailboxSyncResult[]> {
+  const accounts = await prisma.gmailAccount.findMany({
+    where: { userId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, email: true, syncedAt: true },
+  });
+  const results: MailboxSyncResult[] = [];
+  for (const account of accounts) {
+    const accessToken = await getGmailAccessToken(account.id);
+    if (!accessToken) {
+      results.push({ accountId: account.id, email: account.email, status: "no-token", added: 0 });
+      continue;
+    }
+    try {
+      const result = await syncNewsletters(userId, account, accessToken, opts);
+      results.push({ accountId: account.id, email: account.email, ...result });
+    } catch (error) {
+      console.error(`[newsletter-sync] mailbox ${account.id} failed`, error);
+      results.push({ accountId: account.id, email: account.email, status: "error", added: 0 });
+    }
+  }
+  return results;
+}
+
+/**
+ * Copy new newsletter emails from one mailbox into NewsletterIssue.
  *
  * Why store instead of reading Gmail live (the old behavior): the live path
  * only saw the last few days of the INBOX label, so anything archived,
@@ -58,22 +98,17 @@ async function listMessageIds(gmail: gmail_v1.Gmail, q: string): Promise<string[
  * load cost one Gmail call per message.
  *
  * Runs incrementally and within a time budget: if the budget runs out we
- * keep what was stored and leave `newslettersSyncedAt` alone, so the next
+ * keep what was stored and leave the mailbox's `syncedAt` alone, so the next
  * call resumes (already-stored ids are skipped).
  */
 export async function syncNewsletters(
   userId: string,
-  accessToken: string | undefined,
+  account: { id: string; email: string | null; syncedAt: Date | null },
+  accessToken: string,
   { timeBudgetMs = 8000, force = false }: { timeBudgetMs?: number; force?: boolean } = {}
 ): Promise<NewsletterSyncResult> {
-  if (!accessToken) return { status: "no-token", added: 0 };
   const startedAt = Date.now();
-
-  const user = await prisma.user.findUniqueOrThrow({
-    where: { id: userId },
-    select: { newslettersSyncedAt: true },
-  });
-  if (!force && user.newslettersSyncedAt && startedAt - user.newslettersSyncedAt.getTime() < MIN_SYNC_INTERVAL_MS) {
+  if (!force && account.syncedAt && startedAt - account.syncedAt.getTime() < MIN_SYNC_INTERVAL_MS) {
     return { status: "skipped-recent", added: 0 };
   }
 
@@ -82,7 +117,7 @@ export async function syncNewsletters(
     select: { email: true },
   });
   const useSenderList = senders.length > 0;
-  const windowStart = syncWindowStart(user.newslettersSyncedAt);
+  const windowStart = syncWindowStart(account.syncedAt);
   const q = useSenderList
     ? buildSenderQuery(
         senders.map((s) => s.email),
@@ -93,11 +128,22 @@ export async function syncNewsletters(
   const gmail = gmailClient(accessToken);
   let ids: string[];
   try {
+    // A mailbox carried over from the single-mailbox days has no address
+    // recorded yet; Settings needs it to tell mailboxes apart.
+    if (!account.email) {
+      const profile = await gmail.users.getProfile({ userId: "me" });
+      if (profile.data.emailAddress) {
+        await prisma.gmailAccount.update({
+          where: { id: account.id },
+          data: { email: profile.data.emailAddress.toLowerCase() },
+        });
+      }
+    }
     ids = await listMessageIds(gmail, q);
   } catch (error) {
     const status = httpStatusOf(error);
     if (status === 401 || status === 403) {
-      console.warn(`[newsletter-sync] Gmail auth error (${status}) for user ${userId}`);
+      console.warn(`[newsletter-sync] Gmail auth error (${status}) for mailbox ${account.id}`);
       return { status: "auth-error", added: 0 };
     }
     throw error;
@@ -133,9 +179,9 @@ export async function syncNewsletters(
     console.info(`[newsletter-sync] partial: added=${added} remaining=${pending.length - added}`);
     return { status: "partial", added };
   }
-  await prisma.user.update({
-    where: { id: userId },
-    data: { newslettersSyncedAt: new Date(startedAt) },
+  await prisma.gmailAccount.update({
+    where: { id: account.id },
+    data: { syncedAt: new Date(startedAt) },
   });
   await backfillLeadImages(userId);
   return { status: "synced", added };
@@ -218,14 +264,24 @@ export async function getStoredNewsletterFeed(userId: string): Promise<FeedItem[
  * Rank senders seen in recent inbox mail that look like newsletters, so the
  * settings page can offer one-tap "add" instead of typing addresses.
  */
-export async function suggestNewsletterSenders(accessToken: string, lookbackDays = 30) {
-  const gmail = gmailClient(accessToken);
+export async function suggestNewsletterSenders(accessTokens: string[], lookbackDays = 30) {
+  const counts = new Map<string, { email: string; name: string; count: number; lastSubject: string }>();
+  for (const accessToken of accessTokens) {
+    await countNewsletterSenders(gmailClient(accessToken), lookbackDays, counts);
+  }
+  return [...counts.values()].sort((a, b) => b.count - a.count);
+}
+
+async function countNewsletterSenders(
+  gmail: gmail_v1.Gmail,
+  lookbackDays: number,
+  counts: Map<string, { email: string; name: string; count: number; lastSubject: string }>
+) {
   const list = await gmail.users.messages.list({
     userId: "me",
     q: `newer_than:${lookbackDays}d -in:chats -in:spam -in:trash -category:promotions`,
     maxResults: 200,
   });
-  const counts = new Map<string, { email: string; name: string; count: number; lastSubject: string }>();
   const ids = (list.data.messages ?? []).map((m) => m.id).filter((id): id is string => Boolean(id));
   for (let i = 0; i < ids.length; i += FETCH_CONCURRENCY) {
     const batch = await Promise.all(
@@ -251,7 +307,6 @@ export async function suggestNewsletterSenders(accessToken: string, lookbackDays
       counts.set(email, prev);
     }
   }
-  return [...counts.values()].sort((a, b) => b.count - a.count);
 }
 
 /**
