@@ -1,7 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { prisma } from "@/lib/prisma";
-import { primeGmailAccessToken, saveGmailRefreshToken } from "@/lib/gmail-token";
+import { saveLoginGmailToken } from "@/lib/gmail-token";
 
 /**
  * Sign-in is just "who are you". Gmail access is handled separately in
@@ -64,12 +64,8 @@ export const authOptions: NextAuthOptions = {
       if (account && email) {
         // Present only when Google showed the consent screen (first sign-in
         // or "Reconnect Gmail"); otherwise the stored one stays in use.
-        const userId = account.refresh_token
-          ? await saveGmailRefreshToken(email, account.refresh_token)
-          : (await prisma.user.upsert({ where: { email }, update: {}, create: { email }, select: { id: true } })).id;
-        if (account.access_token) {
-          primeGmailAccessToken(userId, account.access_token, (account.expires_at ?? Date.now() / 1000 + 3600) * 1000);
-        }
+        if (account.refresh_token) await saveLoginGmailToken(email, account.refresh_token);
+        else await prisma.user.upsert({ where: { email }, update: {}, create: { email } });
         return { name: token.name, email, picture: token.picture, sub: token.sub };
       }
 
@@ -77,7 +73,7 @@ export const authOptions: NextAuthOptions = {
       // JWT. Move the refresh token to the DB once and slim the cookie, so
       // nobody has to sign in again because of the switch.
       if (token.refreshToken && email) {
-        await saveGmailRefreshToken(email, token.refreshToken);
+        await saveLoginGmailToken(email, token.refreshToken);
         const { refreshToken: _r, accessToken: _a, accessTokenExpires: _e, error: _err, ...rest } = token;
         return rest;
       }

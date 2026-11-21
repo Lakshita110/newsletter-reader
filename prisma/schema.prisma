@@ -35,16 +35,15 @@ model User {
   rssReadProfileSnapshot   UserRssReadProfileSnapshot?
   newsletterSenders        NewsletterSender[]
   newsletterIssues         NewsletterIssue[]
+  /// Deprecated: per-mailbox cursor now lives on GmailAccount.syncedAt.
   newslettersSyncedAt      DateTime?
   saveToken                String?                   @unique
-  /// Google refresh token for Gmail sync, AES-GCM encrypted (lib/token-crypto.ts).
-  /// Kept server-side so the app login and Gmail access are independent.
+  /// Deprecated: copied into GmailAccount by 20261121000000_gmail_accounts and
+  /// no longer read. Kept until a cleanup migration drops them.
   gmailRefreshTokenEnc     String?
-  /// Why Gmail access last failed (e.g. invalid_grant); null when connected.
   gmailTokenError          String?
-  /// True when the Gmail mailbox was chosen with "Use a different Gmail"
-  /// rather than being the sign-in account; sign-in then leaves it alone.
   gmailConnectedSeparately Boolean                   @default(false)
+  gmailAccounts            GmailAccount[]
   savedArticles            SavedArticle[]
   highlights               Highlight[]
   itemSummaries            ItemSummary[]
@@ -271,4 +270,25 @@ model ItemSummary {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, itemId])
+}
+
+/// A Gmail mailbox newsletters are read from. Any number per user: the
+/// sign-in account and any other inbox connected with "Add a Gmail account".
+model GmailAccount {
+  id              String    @id @default(cuid())
+  userId          String
+  /// From the Gmail profile. Null only for a mailbox carried over from the
+  /// single-mailbox days until its first sync looks it up.
+  email           String?
+  /// Google refresh token, AES-GCM encrypted (lib/token-crypto.ts).
+  refreshTokenEnc String?
+  /// Why access last failed (e.g. invalid_grant); null when connected.
+  tokenError      String?
+  /// Newsletter sync cursor for this mailbox.
+  syncedAt        DateTime?
+  createdAt       DateTime  @default(now())
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, email])
+  @@index([userId])
 }

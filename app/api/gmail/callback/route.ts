@@ -2,15 +2,17 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getSessionUserId } from "@/lib/session-user";
 import { STATE_COOKIE, appBaseUrl, redirectUri, statesMatch } from "@/lib/gmail-connect";
-import { connectGmailForUser } from "@/lib/gmail-token";
+import { google } from "googleapis";
+import { connectGmailAccount } from "@/lib/gmail-token";
 
 export const dynamic = "force-dynamic";
 
 type TokenResponse = { access_token?: string; refresh_token?: string; expires_in?: number; error?: string };
 
 /**
- * Google redirects back here with a code. Exchange it and store the refresh
- * token on the *signed-in* user, whichever Google account was picked.
+ * Google redirects back here with a code. Exchange it and add the picked
+ * mailbox to the *signed-in* user's accounts (or refresh it if it's already
+ * there), whichever Google account was picked.
  */
 export async function GET(req: Request) {
   const base = appBaseUrl(req.url);
@@ -51,6 +53,18 @@ export async function GET(req: Request) {
     return done("error");
   }
 
-  await connectGmailForUser(userId, data.refresh_token, data.access_token, (data.expires_in ?? 3600) * 1000);
+  const auth = new google.auth.OAuth2();
+  auth.setCredentials({ access_token: data.access_token });
+  const profile = await google
+    .gmail({ version: "v1", auth })
+    .users.getProfile({ userId: "me" })
+    .catch((error) => {
+      console.error("[gmail-connect] could not read the new mailbox's address", error);
+      return null;
+    });
+  const email = profile?.data.emailAddress?.toLowerCase();
+  if (!email) return done("error");
+
+  await connectGmailAccount(userId, email, data.refresh_token, data.access_token, (data.expires_in ?? 3600) * 1000);
   return done("connected");
 }

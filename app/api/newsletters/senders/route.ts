@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     ),
     // A new sender list changes what "already synced" means: rewind so the
     // next sync backfills the full first-sync window for the new senders.
-    prisma.user.update({ where: { id: userId }, data: { newslettersSyncedAt: null } }),
+    prisma.gmailAccount.updateMany({ where: { userId }, data: { syncedAt: null } }),
   ]);
   return NextResponse.json({ ok: true, added: emails });
 }

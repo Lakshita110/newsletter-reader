@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { highlightsToMarkdown, type ExportHighlight } from "@/lib/highlight-helpers";
+import { AppNav } from "@/app/components/AppNav";
 
 type Row = ExportHighlight & { id: string };
 type Range = "week" | "month" | "all";
@@ -115,14 +116,7 @@ export default function HighlightsPage() {
         );
       })}
 
-      <nav className="today-tabbar" aria-label="Sections">
-        <Link href="/today">Today</Link>
-        <Link href="/today?tab=saved">Saved</Link>
-        <Link href="/highlights" className="active">
-          Highlights
-        </Link>
-        <Link href="/settings">Settings</Link>
-      </nav>
+      <AppNav active="highlights" />
     </main>
   );
 }

@@ -24,24 +24,26 @@ const build = (items: InboxItem[], extra: Partial<Parameters<typeof buildTodayQu
   buildTodayQueue({ items, statusById: {}, savedById: {}, recommendedIds: [], now, ...extra });
 
 describe("buildTodayQueue", () => {
-  it("puts newsletters and stories in one feed: ranked picks first, then the rest newest first", () => {
+  it("puts newsletters first (newest first), then stories in ranked order, then unpicked stories", () => {
     const q = build(
       [
         item("story-new", "rss", hoursAgo(1)),
         item("nl-new", "gmail", hoursAgo(2)),
         item("story-picked", "rss", hoursAgo(9)),
-        item("nl-picked", "gmail", daysAgo(3)),
+        item("nl-older", "gmail", daysAgo(3)),
       ],
-      { recommendedIds: ["nl-picked", "story-picked"] }
+      { recommendedIds: ["story-picked"] }
     );
-    expect(q.feed.map((i) => i.id)).toEqual(["nl-picked", "story-picked", "story-new", "nl-new"]);
+    expect(q.newsletters.map((i) => i.id)).toEqual(["nl-new", "nl-older"]);
+    expect(q.stories.map((i) => i.id)).toEqual(["story-picked", "story-new"]);
+    expect(flattenQueue(q).map((i) => i.id)).toEqual(["nl-new", "nl-older", "story-picked", "story-new"]);
   });
 
-  it("keeps in-progress above the feed, saved in its own list, and drops read, old and overflow items", () => {
+  it("keeps in-progress above everything, saved in its own list, and drops read, old and overflow items", () => {
     const q = build(
       [
         item("n-new", "gmail", daysAgo(0)),
-        item("n-old", "gmail", daysAgo(20)),
+        item("n-old", "gmail", daysAgo(10)),
         item("n-read", "gmail", daysAgo(1)),
         item("n-progress", "gmail", daysAgo(3)),
         item("n-saved", "gmail", daysAgo(40)),
@@ -54,23 +56,22 @@ describe("buildTodayQueue", () => {
       }
     );
     expect(q.continue.map((i) => i.id)).toEqual(["n-progress"]);
-    expect(q.feed.map((i) => i.id).sort()).toEqual(["n-new", "r-1"]);
+    expect(q.newsletters.map((i) => i.id)).toEqual(["n-new"]);
+    expect(q.stories.map((i) => i.id)).toEqual(["r-1"]);
     expect(q.saved.map((i) => i.id)).toEqual(["n-saved"]);
   });
 
-  it("a ranked pick is shown even if it's an older newsletter or an overflow story", () => {
-    const q = build([item("old-nl", "gmail", daysAgo(20)), item("ov", "rss", daysAgo(0), { isOverflow: true })], {
-      recommendedIds: ["ov", "old-nl"],
-    });
-    expect(q.feed.map((i) => i.id)).toEqual(["ov", "old-nl"]);
+  it("a ranked story is shown even if it was marked overflow", () => {
+    const q = build([item("ov", "rss", daysAgo(0), { isOverflow: true })], { recommendedIds: ["ov"] });
+    expect(q.stories.map((i) => i.id)).toEqual(["ov"]);
   });
 
-  it("caps unpicked stories but never hides newsletters", () => {
+  it("caps unpicked stories but never hides recent newsletters", () => {
     const stories = Array.from({ length: MAX_UNPICKED_STORIES + 5 }, (_, i) => item(`r${i}`, "rss", hoursAgo(i)));
-    const newsletters = Array.from({ length: 15 }, (_, i) => item(`n${i}`, "gmail", daysAgo(i / 2)));
+    const newsletters = Array.from({ length: 12 }, (_, i) => item(`n${i}`, "gmail", daysAgo(i / 2)));
     const q = build([...stories, ...newsletters]);
-    expect(q.feed.filter((i) => i.sourceKind === "rss")).toHaveLength(MAX_UNPICKED_STORIES);
-    expect(q.feed.filter((i) => i.sourceKind === "gmail")).toHaveLength(15);
+    expect(q.stories).toHaveLength(MAX_UNPICKED_STORIES);
+    expect(q.newsletters).toHaveLength(12);
   });
 
   it("folds stories a newsletter already covered", () => {
@@ -80,15 +81,8 @@ describe("buildTodayQueue", () => {
       }),
       item("r-b", "rss", daysAgo(0)),
     ]);
-    expect(q.feed.map((i) => i.id)).toEqual(["r-b"]);
+    expect(q.stories.map((i) => i.id)).toEqual(["r-b"]);
     expect(q.covered.map((i) => i.id)).toEqual(["r-a"]);
     expect(flattenQueue(q).map((i) => i.id)).toEqual(["r-b"]);
-  });
-
-  it("flattens in reading order without saved by default", () => {
-    const q = build([item("a", "gmail", daysAgo(0)), item("b", "rss", daysAgo(0.5)), item("c", "gmail", daysAgo(1))], {
-      statusById: { c: "in-progress" },
-    });
-    expect(flattenQueue(q).map((i) => i.id)).toEqual(["c", "a", "b"]);
   });
 });

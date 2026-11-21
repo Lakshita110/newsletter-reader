@@ -4,8 +4,7 @@ import { syncRssSource } from "@/lib/rss";
 import { dayKeyUtc } from "@/lib/rss-helpers";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { refreshTodaySnapshotForUser } from "@/lib/rank-refresh";
-import { getGmailAccessToken } from "@/lib/gmail-token";
-import { syncNewsletters } from "@/lib/newsletter-sync";
+import { syncAllMailboxes } from "@/lib/newsletter-sync";
 
 export { refreshTodaySnapshotForUser };
 
@@ -61,19 +60,18 @@ export async function GET(req: Request) {
     // Newsletters are part of the one ranked feed, so pull new issues before
     // ranking. Gmail tokens live server-side now, so this works while she's
     // away and the morning feed already includes overnight newsletters.
-    const gmailUsers = await prisma.user.findMany({
-      where: { gmailRefreshTokenEnc: { not: null } },
-      select: { id: true },
-    });
+    const gmailUsers = (
+      await prisma.gmailAccount.findMany({
+        where: { refreshTokenEnc: { not: null } },
+        select: { userId: true },
+        distinct: ["userId"],
+      })
+    ).map((row) => ({ id: row.userId }));
     for (const { id } of gmailUsers) {
-      try {
-        const token = await getGmailAccessToken(id);
-        const result = await syncNewsletters(id, token ?? undefined, { force: true, timeBudgetMs: 10_000 });
+      for (const result of await syncAllMailboxes(id, { force: true, timeBudgetMs: 10_000 })) {
         console.info(
-          `[rss-refresh-rank][${requestId}] newsletters userId="${id}" status=${result.status} added=${result.added}`
+          `[rss-refresh-rank][${requestId}] newsletters userId="${id}" mailbox="${result.accountId}" status=${result.status} added=${result.added}`
         );
-      } catch (error) {
-        console.error(`[rss-refresh-rank][${requestId}] newsletter sync failed userId="${id}"`, error);
       }
     }
 

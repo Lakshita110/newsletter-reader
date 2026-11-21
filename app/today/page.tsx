@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { SwipeRow } from "./components/SwipeRow";
+import { AppNav } from "@/app/components/AppNav";
 import { GmailBanner } from "./components/GmailBanner";
 import { faviconDomain } from "@/lib/lead-image";
 import { buildTodayQueue, flattenQueue, type QueueSection } from "./lib/queue";
@@ -18,7 +19,8 @@ type Undo = { item: InboxItem; kind: "done" | "save"; prevStatus?: FeedReadStatu
 
 const SECTION_LABELS: Record<QueueSection, string> = {
   continue: "Continue reading",
-  feed: "Your feed",
+  newsletters: "Newsletters",
+  stories: "Top stories",
   covered: "Already in your newsletters",
   saved: "Saved for later",
 };
@@ -114,7 +116,7 @@ export default function TodayPage() {
     [items, statusById, savedById, recommendedIds]
   );
   const ordered = useMemo(() => (tab === "saved" ? queue.saved : flattenQueue(queue)), [queue, tab]);
-  const sections: QueueSection[] = tab === "saved" ? ["saved"] : ["continue", "feed", "covered"];
+  const sections: QueueSection[] = tab === "saved" ? ["saved"] : ["continue", "newsletters", "stories", "covered"];
 
   // Make the top of the queue readable offline.
   const orderedIds = ordered.map((i) => i.id).join(",");
@@ -224,7 +226,7 @@ export default function TodayPage() {
       });
   };
 
-  const totalToday = queue.continue.length + queue.feed.length;
+  const totalToday = queue.continue.length + queue.newsletters.length + queue.stories.length;
 
   return (
     <main className="today-shell">
@@ -296,6 +298,15 @@ export default function TodayPage() {
                     </Link>
                   )}
                 </SwipeRow>
+                {/* Mouse users get buttons instead of a swipe; CSS only shows them on hover-capable pointers. */}
+                <div className="today-row-actions">
+                  <button type="button" onClick={() => toggleSave(item)}>
+                    {savedById[item.id] ? "Unsave" : "Save"}
+                  </button>
+                  <button type="button" onClick={() => markDone(item)}>
+                    Done
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -312,11 +323,11 @@ export default function TodayPage() {
           );
         }
         return (
-          <section key={section} className="today-section">
+          <section key={section} className={`today-section today-section-${section}`}>
             <h2 className="today-section-title">
               {SECTION_LABELS[section]} <span>{list.length}</span>
             </h2>
-            {section === "feed" && (
+            {section === "stories" && (
               <RankStatusLine
                 meta={rankMeta}
                 hasPicks={recommendedIds.length > 0}
@@ -331,9 +342,7 @@ export default function TodayPage() {
 
       {!isLoading && ordered.length === 0 && (
         <div className="today-empty">
-          {tab === "saved"
-            ? "Swipe right on anything to keep it here."
-            : "Nothing left. Browse everything in the full inboxes below."}
+          {tab === "saved" ? "Swipe right on anything to keep it here." : "Nothing left for today."}
         </div>
       )}
 
@@ -348,16 +357,7 @@ export default function TodayPage() {
         </div>
       )}
 
-      <nav className="today-tabbar" aria-label="Sections">
-        <button type="button" className={tab === "today" ? "active" : ""} onClick={() => setTab("today")}>
-          Today
-        </button>
-        <button type="button" className={tab === "saved" ? "active" : ""} onClick={() => setTab("saved")}>
-          Saved
-        </button>
-        <Link href="/highlights">Highlights</Link>
-        <Link href="/settings">Settings</Link>
-      </nav>
+      <AppNav active={tab} onTab={setTab} />
     </main>
   );
 }

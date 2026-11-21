@@ -1,34 +1,24 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildRankingCandidates } from "@/lib/rss-candidates";
-import { getStoredNewsletterFeed, syncNewsletters } from "@/lib/newsletter-sync";
+import { getStoredNewsletterFeed, syncAllMailboxes } from "@/lib/newsletter-sync";
 import { getSavedArticleFeed } from "@/lib/saved-articles";
 import { findCoverage, htmlToPlainText, type CoverageSource } from "@/lib/coverage";
 import type { FeedItem } from "@/lib/rss-candidates";
 import { getSessionUser } from "@/lib/session-user";
 import { getLatestRankedIds, selectRankedIds } from "@/lib/rank-snapshot";
 import { modelLabel } from "@/lib/openrouter";
-import { getGmailAccessToken } from "@/lib/gmail-token";
 
 export const dynamic = "force-dynamic";
 
-async function getUserAndToken() {
+async function getUser() {
   const sessionUser = await getSessionUser();
   if (!sessionUser) return null;
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: sessionUser.userId },
     select: { rssRecommendationCap: true },
   });
-  return {
-    userId: sessionUser.userId,
-    // May be undefined if the Gmail token is missing/expired — that's fine,
-    // syncNewsletters() handles a missing token on its own (stored issues
-    // still render). RSS items don't
-    // need it at all, so the whole route shouldn't 401 just because Gmail
-    // access is unavailable.
-    accessToken: (await getGmailAccessToken(sessionUser.userId)) ?? undefined,
-    recommendationCap: user.rssRecommendationCap,
-  };
+  return { userId: sessionUser.userId, recommendationCap: user.rssRecommendationCap };
 }
 
 /**
@@ -79,12 +69,10 @@ async function getRankedFeed(userId: string, recommendationCap: number | null) {
  * failure must not blank the inbox, but it is logged loudly rather than
  * swallowed.
  */
-async function getNewsletterItems(userId: string, accessToken: string | undefined) {
-  try {
-    await syncNewsletters(userId, accessToken);
-  } catch (error) {
-    console.error("[rss-inbox] newsletter sync failed; serving stored issues", error);
-  }
+async function getNewsletterItems(userId: string) {
+  // Each mailbox is throttled and isolated inside syncAllMailboxes; a failure
+  // there is logged per mailbox and stored issues are still served.
+  await syncAllMailboxes(userId);
   return getStoredNewsletterFeed(userId);
 }
 
@@ -120,11 +108,11 @@ async function markCoveredStories(userId: string, items: FeedItem[]) {
 }
 
 export async function GET() {
-  const auth = await getUserAndToken();
+  const auth = await getUser();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const [gmailItems, ranked, webItems] = await Promise.all([
-    getNewsletterItems(auth.userId, auth.accessToken),
+    getNewsletterItems(auth.userId),
     getRankedFeed(auth.userId, auth.recommendationCap),
     getSavedArticleFeed(auth.userId),
   ]);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { fetchFeedTitle, normalizeUrl, syncRssSource } from "@/lib/rss";
 import { resolveFeedUrl } from "@/lib/feed-url";
+import { discoverFeedCandidates } from "@/lib/feed-discovery";
 import { parseRssCategoryInput } from "@/lib/rss-categories";
 import { getSessionUserId } from "@/lib/session-user";
 
@@ -34,6 +35,38 @@ export async function GET() {
   );
 }
 
+/** Max candidate URLs tried per add, so a site with no feed fails in seconds. */
+const MAX_FEED_ATTEMPTS = 5;
+
+async function findWorkingFeed(url: string): Promise<{ url: string; title: string } | null> {
+  try {
+    return { url, title: await fetchFeedTitle(url) };
+  } catch {
+    // Not a feed itself; maybe a website that has one.
+  }
+  const candidates = await discoverFeedCandidates(url, fetchPageHtml);
+  for (const candidate of candidates.slice(0, MAX_FEED_ATTEMPTS)) {
+    try {
+      const feedUrl = normalizeUrl(candidate);
+      return { url: feedUrl, title: await fetchFeedTitle(feedUrl) };
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  console.warn("[sources/rss] no working feed found", url);
+  return null;
+}
+
+async function fetchPageHtml(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000), headers: { Accept: "text/html" } });
+    return res.ok ? await res.text() : null;
+  } catch (err) {
+    console.warn("[sources/rss] page fetch failed", url, err);
+    return null;
+  }
+}
+
 export async function POST(req: Request) {
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -53,29 +86,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing rssUrl" }, { status: 400 });
   }
 
-  // Fetch the feed before saving it: a typo should fail here with a clear
-  // message, not turn into a silently failing source. This also supplies the
-  // name when none was typed.
+  // Find a feed that actually parses before saving: a typo should fail here
+  // with a clear message, not turn into a silently failing source. If what
+  // she pasted is a website rather than a feed, look for the site's feed.
+  // The feed's title supplies the name when none was typed.
   let name = typeof body?.name === "string" ? body.name.trim() : "";
-  try {
-    const title = await fetchFeedTitle(normalized);
-    if (!name) name = title;
-  } catch (err) {
-    console.warn("[sources/rss] feed check failed", normalized, err);
-    return NextResponse.json({ error: `Couldn't read a feed at ${normalized}` }, { status: 400 });
+  const found = await findWorkingFeed(normalized);
+  if (!found) {
+    return NextResponse.json({ error: `Couldn't find a feed at ${normalized}` }, { status: 400 });
   }
+  const feedUrl = found.url;
+  if (!name) name = found.title;
 
   const source = await prisma.rssSource.upsert({
-    where: { normalizedUrl: normalized },
+    where: { normalizedUrl: feedUrl },
     update: {
       name,
       siteUrl: siteUrl || undefined,
-      rssUrl: normalized,
+      rssUrl: feedUrl,
     },
     create: {
       name,
-      rssUrl: normalized,
-      normalizedUrl: normalized,
+      rssUrl: feedUrl,
+      normalizedUrl: feedUrl,
       siteUrl: siteUrl || null,
     },
   });

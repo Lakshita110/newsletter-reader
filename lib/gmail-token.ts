@@ -2,20 +2,18 @@ import { prisma } from "@/lib/prisma";
 import { decryptSecret, encryptSecret } from "@/lib/token-crypto";
 
 /**
- * Gmail access, decoupled from the app login.
+ * Gmail access for newsletter sync, one GmailAccount row per mailbox.
  *
- * Before: the Google refresh token lived only inside the NextAuth JWT cookie,
- * so (a) every sign-in had to force Google's consent screen to be sure a new
- * refresh token was issued, and (b) whenever that token stopped working the
- * whole app redirected back to Google. Now the refresh token is stored
- * (encrypted) on the User row the first time Google hands it over. Signing in
- * only proves who you are, and losing Gmail access just means "reconnect
- * Gmail" for new newsletters while everything already stored keeps working.
+ * Sign-in and Gmail are independent: signing in only proves who you are, and
+ * each mailbox keeps its own encrypted refresh token. Losing access to one
+ * mailbox (revoked, or Google's 7-day expiry for apps in Testing mode) marks
+ * just that account for reconnecting; the others and everything already
+ * stored keep working.
  */
 
 type CachedToken = { accessToken: string; expiresAt: number };
-// Per server instance. Saves a Google round-trip on every request; access
-// tokens last an hour, so a cold instance costs one extra refresh at most.
+// Per server instance, keyed by GmailAccount id. Saves a Google round-trip on
+// every request; access tokens last an hour.
 const accessTokenCache = new Map<string, CachedToken>();
 
 type GoogleTokenResponse = {
@@ -26,85 +24,95 @@ type GoogleTokenResponse = {
   error_description?: string;
 };
 
-/** Returns the user's id (accounts are created lazily, so this may create the row). */
-export async function saveGmailRefreshToken(email: string, refreshToken: string): Promise<string> {
-  const existing = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, gmailConnectedSeparately: true, gmailRefreshTokenEnc: true },
-  });
-  // If she chose another mailbox with "Use a different Gmail", signing in
-  // must not quietly switch newsletters back to the login account. Only an
-  // expired/removed separate connection falls back to the login mailbox.
-  if (existing?.gmailConnectedSeparately && existing.gmailRefreshTokenEnc) return existing.id;
-  const row = await prisma.user.upsert({
-    where: { email },
-    update: {
-      gmailRefreshTokenEnc: encryptSecret(refreshToken),
-      gmailTokenError: null,
-      gmailConnectedSeparately: false,
-    },
-    create: { email, gmailRefreshTokenEnc: encryptSecret(refreshToken) },
-    select: { id: true },
-  });
-  return row.id;
+export type GmailAccountStatus = { id: string; email: string | null; connected: boolean; error: string | null };
+
+/**
+ * Called on sign-in when Google returned a refresh token. Creates the user if
+ * needed, and connects the sign-in mailbox only when it is already one of
+ * her mailboxes or she has none yet, so removing it in Settings sticks.
+ * Returns the user's id.
+ */
+export async function saveLoginGmailToken(email: string, refreshToken: string): Promise<string> {
+  const user = await prisma.user.upsert({ where: { email }, update: {}, create: { email }, select: { id: true } });
+  const accounts = await prisma.gmailAccount.findMany({ where: { userId: user.id }, select: { email: true } });
+  if (accounts.length === 0 || accounts.some((a) => a.email === email)) {
+    await prisma.gmailAccount.upsert({
+      where: { userId_email: { userId: user.id, email } },
+      update: { refreshTokenEnc: encryptSecret(refreshToken), tokenError: null },
+      create: { userId: user.id, email, refreshTokenEnc: encryptSecret(refreshToken) },
+    });
+  }
+  return user.id;
 }
 
 /**
- * Point this user's newsletter sync at a mailbox chosen via "Use a different
- * Gmail". Resets the sync cursor so the new mailbox's last 30 days are read.
+ * Add (or reconnect) a mailbox chosen with "Add a Gmail account". Resets its
+ * sync cursor so the mailbox's last 30 days are read.
  */
-export async function connectGmailForUser(
+export async function connectGmailAccount(
   userId: string,
+  email: string,
   refreshToken: string,
   accessToken: string,
   expiresInMs: number
 ): Promise<void> {
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      gmailRefreshTokenEnc: encryptSecret(refreshToken),
-      gmailTokenError: null,
-      gmailConnectedSeparately: true,
-      newslettersSyncedAt: null,
-    },
+  const account = await prisma.gmailAccount.upsert({
+    where: { userId_email: { userId, email } },
+    update: { refreshTokenEnc: encryptSecret(refreshToken), tokenError: null, syncedAt: null },
+    create: { userId, email, refreshTokenEnc: encryptSecret(refreshToken) },
+    select: { id: true },
   });
-  primeGmailAccessToken(userId, accessToken, Date.now() + expiresInMs);
+  accessTokenCache.set(account.id, { accessToken, expiresAt: Date.now() + expiresInMs });
 }
 
-/** Seed the cache with the access token Google returned at sign-in, so the first page load needs no refresh. */
-export function primeGmailAccessToken(userId: string, accessToken: string, expiresAtMs: number) {
-  accessTokenCache.set(userId, { accessToken, expiresAt: expiresAtMs });
+export async function removeGmailAccount(userId: string, accountId: string): Promise<boolean> {
+  accessTokenCache.delete(accountId);
+  const res = await prisma.gmailAccount.deleteMany({ where: { id: accountId, userId } });
+  return res.count > 0;
 }
 
-async function markDisconnected(userId: string, reason: string) {
-  accessTokenCache.delete(userId);
-  await prisma.user.update({
-    where: { id: userId },
-    data: { gmailRefreshTokenEnc: null, gmailTokenError: reason },
+export async function listGmailAccounts(userId: string): Promise<GmailAccountStatus[]> {
+  const rows = await prisma.gmailAccount.findMany({
+    where: { userId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, email: true, refreshTokenEnc: true, tokenError: true },
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    email: row.email,
+    connected: Boolean(row.refreshTokenEnc),
+    error: row.tokenError,
+  }));
+}
+
+async function markDisconnected(accountId: string, reason: string) {
+  accessTokenCache.delete(accountId);
+  await prisma.gmailAccount.update({
+    where: { id: accountId },
+    data: { refreshTokenEnc: null, tokenError: reason },
   });
 }
 
 /**
- * A usable Gmail access token for this user, or null when Gmail isn't
- * connected (never connected, revoked, or expired). Null is an expected state
- * the UI turns into a "Reconnect Gmail" prompt, so failures are logged and
- * recorded on the user rather than thrown.
+ * A usable access token for this mailbox, or null when it isn't connected
+ * (revoked or expired). Null is an expected state the UI turns into a
+ * "Reconnect" prompt, so failures are logged and recorded rather than thrown.
  */
-export async function getGmailAccessToken(userId: string): Promise<string | null> {
-  const cached = accessTokenCache.get(userId);
+export async function getGmailAccessToken(accountId: string): Promise<string | null> {
+  const cached = accessTokenCache.get(accountId);
   if (cached && cached.expiresAt - 60_000 > Date.now()) return cached.accessToken;
 
-  const row = await prisma.user.findUnique({ where: { id: userId }, select: { gmailRefreshTokenEnc: true } });
-  if (!row?.gmailRefreshTokenEnc) return null;
+  const row = await prisma.gmailAccount.findUnique({ where: { id: accountId }, select: { refreshTokenEnc: true } });
+  if (!row?.refreshTokenEnc) return null;
 
   let refreshToken: string;
   try {
-    refreshToken = decryptSecret(row.gmailRefreshTokenEnc);
+    refreshToken = decryptSecret(row.refreshTokenEnc);
   } catch (error) {
     // Most likely NEXTAUTH_SECRET was rotated. The stored token is useless
     // now, so drop it and ask for a reconnect instead of failing forever.
-    console.error(`[gmail-token] cannot decrypt stored refresh token for user ${userId}`, error);
-    await markDisconnected(userId, "undecryptable");
+    console.error(`[gmail-token] cannot decrypt stored refresh token for account ${accountId}`, error);
+    await markDisconnected(accountId, "undecryptable");
     return null;
   }
 
@@ -122,37 +130,23 @@ export async function getGmailAccessToken(userId: string): Promise<string | null
 
   if (!res.ok || !data.access_token) {
     console.warn(
-      `[gmail-token] refresh failed for user ${userId}: status=${res.status} error=${data.error ?? "unknown"} ${data.error_description ?? ""}`
+      `[gmail-token] refresh failed for account ${accountId}: status=${res.status} error=${data.error ?? "unknown"} ${data.error_description ?? ""}`
     );
     // invalid_grant = revoked, or expired (Google expires refresh tokens after
     // 7 days while the OAuth app is in Testing mode). Retrying won't help.
-    if (data.error === "invalid_grant") await markDisconnected(userId, "invalid_grant");
+    if (data.error === "invalid_grant") await markDisconnected(accountId, "invalid_grant");
     return null;
   }
 
   if (data.refresh_token && data.refresh_token !== refreshToken) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { gmailRefreshTokenEnc: encryptSecret(data.refresh_token) },
+    await prisma.gmailAccount.update({
+      where: { id: accountId },
+      data: { refreshTokenEnc: encryptSecret(data.refresh_token) },
     });
   }
   const accessToken = data.access_token;
-  accessTokenCache.set(userId, { accessToken, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 });
+  accessTokenCache.set(accountId, { accessToken, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 });
   return accessToken;
-}
-
-export async function getGmailStatus(
-  userId: string
-): Promise<{ connected: boolean; error: string | null; separate: boolean }> {
-  const row = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { gmailRefreshTokenEnc: true, gmailTokenError: true, gmailConnectedSeparately: true },
-  });
-  return {
-    connected: Boolean(row?.gmailRefreshTokenEnc),
-    error: row?.gmailTokenError ?? null,
-    separate: Boolean(row?.gmailConnectedSeparately),
-  };
 }
 
 /** Test hook. */

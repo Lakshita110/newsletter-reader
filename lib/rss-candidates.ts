@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { normalizeRssCategory } from "@/lib/rss-categories";
+import { countSourceCoverage } from "@/lib/story-buzz";
 import {
   buildRssArticleDedupKey,
   dedupeByArticleKey,
@@ -83,17 +84,17 @@ export type RankingCandidate = {
 /** The compact item shape handed to the AI ranker / eval / snapshot. */
 export type AiRankItem = {
   id: string;
-  /** Newsletters are subscriptions she chose; the ranker weighs them accordingly. */
-  kind: "newsletter" | "article";
   title: string;
   snippet: string;
   author: string | null;
   sourceName: string;
   publishedAtIso: string;
+  /** How many of her other sources run the same story today (lib/story-buzz.ts). */
+  coverage?: number;
 };
 
 export type RankingCandidateSet = {
-  /** Every candidate before read-filtering/dedupe — the inbox `visible` list. */
+  /** Every RSS candidate before read-filtering/dedupe — the inbox `visible` list. */
   allCandidates: RankingCandidate[];
   /** Unread, deduped, recency sorted — the ranking input pool. */
   sortedFallback: RankingCandidate[];
@@ -168,43 +169,46 @@ export async function buildRankingCandidates(params: {
     }
   }
 
-  // One feed: unread newsletter issues compete in the same ranking as RSS
-  // stories, instead of living in a separate always-shown list.
-  allCandidates.push(...(await newsletterCandidates(userId, now)));
-
   const candidateIds = allCandidates.map((candidate) => candidate.feedItem.id);
-  const readRows =
+  const [readRows, newsletterKeys] = await Promise.all([
     candidateIds.length === 0
       ? []
-      : await prisma.messageReadStat.findMany({
+      : prisma.messageReadStat.findMany({
           where: {
             userId,
             messageExternalId: { in: candidateIds },
             OR: [{ completedAt: { not: null } }, { completionPct: { gte: 99 } }],
           },
           select: { messageExternalId: true },
-        });
+        }),
+    newsletterDedupKeys(userId, now),
+  ]);
   const readIdSet = new Set(readRows.map((row) => row.messageExternalId));
-  const unreadCandidates = allCandidates.filter((candidate) => !readIdSet.has(candidate.feedItem.id));
-  // When a Substack arrives both by email and through its RSS feed, keep the
-  // email copy: it has the full (including paid) post, the feed often doesn't.
-  const newsletterKeys = new Set(
-    unreadCandidates.filter((c) => c.feedItem.sourceKind === "gmail").map((c) => c.dedupKey)
+  // Newsletters aren't ranked (Today always shows them first), but a Substack
+  // that also arrives through its RSS feed must not show up twice: keep the
+  // email copy, which has the full (including paid) post.
+  const unreadCandidates = allCandidates.filter(
+    (candidate) => !readIdSet.has(candidate.feedItem.id) && !newsletterKeys.has(candidate.dedupKey)
   );
-  const withoutDuplicateStories = unreadCandidates.filter(
-    (c) => c.feedItem.sourceKind === "gmail" || !newsletterKeys.has(c.dedupKey)
-  );
-  const dedupedCandidates = dedupeByArticleKey(withoutDuplicateStories, (candidate) => candidate.sortTimeMs);
+  const dedupedCandidates = dedupeByArticleKey(unreadCandidates, (candidate) => candidate.sortTimeMs);
   const sortedFallback = [...dedupedCandidates].sort((a, b) => b.sortTimeMs - a.sortTimeMs);
 
+  const coverage = countSourceCoverage(
+    sortedFallback.map((c) => ({
+      id: c.feedItem.id,
+      sourceName: c.sourceName,
+      title: c.item.title,
+      snippet: c.item.snippet,
+    }))
+  );
   const aiItems: AiRankItem[] = sortedFallback.map((candidate) => ({
     id: candidate.feedItem.id,
-    kind: candidate.feedItem.sourceKind === "gmail" ? "newsletter" : "article",
     title: candidate.item.title,
     snippet: candidate.item.snippet ?? "",
     author: candidate.item.author ?? null,
     sourceName: candidate.sourceName,
     publishedAtIso: (candidate.item.publishedAt ?? candidate.item.createdAt).toISOString(),
+    coverage: coverage.get(candidate.feedItem.id) ?? 0,
   }));
 
   const totalCap = getRssDailyTargetCap(sortedFallback.length, recommendationCap);
@@ -212,60 +216,17 @@ export async function buildRankingCandidates(params: {
   return { allCandidates, sortedFallback, aiItems, totalCap };
 }
 
-/**
- * Newsletters stay rankable for longer than RSS's 24h window: an issue from a
- * few days ago that she hasn't read is still worth her time, a news story
- * usually isn't.
- */
-export const NEWSLETTER_CANDIDATE_DAYS = 7;
+/** Newsletter issues this recent are checked for RSS duplicates of the same post. */
+const NEWSLETTER_DEDUP_DAYS = 7;
 
-async function newsletterCandidates(userId: string, now: Date): Promise<RankingCandidate[]> {
-  const since = new Date(now.getTime() - NEWSLETTER_CANDIDATE_DAYS * 24 * 60 * 60 * 1000);
+async function newsletterDedupKeys(userId: string, now: Date): Promise<Set<string>> {
   const issues = await prisma.newsletterIssue.findMany({
-    where: { userId, receivedAt: { gte: since } },
-    orderBy: { receivedAt: "desc" },
-    take: 100,
-    select: {
-      gmailMessageId: true,
-      fromEmail: true,
-      fromName: true,
-      publicationKey: true,
-      subject: true,
-      snippet: true,
-      receivedAt: true,
-      webUrl: true,
-      imageUrl: true,
+    where: {
+      userId,
+      receivedAt: { gte: new Date(now.getTime() - NEWSLETTER_DEDUP_DAYS * 86_400_000) },
+      webUrl: { not: null },
     },
+    select: { webUrl: true },
   });
-  return issues.map((issue) => ({
-    sourceId: `newsletter:${issue.publicationKey}`,
-    sourceName: issue.fromName,
-    // Keyed by the post's web URL when we have one, so the same post from the
-    // publication's RSS feed collapses into this email copy (see above).
-    dedupKey: issue.webUrl
-      ? buildRssArticleDedupKey({ externalUrl: issue.webUrl })
-      : `newsletter:${issue.gmailMessageId}`,
-    item: {
-      title: issue.subject,
-      snippet: issue.snippet,
-      author: issue.fromName,
-      publishedAt: issue.receivedAt,
-      createdAt: issue.receivedAt,
-    },
-    feedItem: {
-      // Bare Gmail id, matching read/save state and the reader route.
-      id: issue.gmailMessageId,
-      sourceKind: "gmail",
-      subject: issue.subject,
-      from: `${issue.fromName} <${issue.fromEmail}>`,
-      date: issue.receivedAt.toISOString(),
-      snippet: issue.snippet ?? "",
-      publicationName: issue.fromName,
-      publicationKey: issue.publicationKey,
-      isOverflow: false,
-      externalUrl: issue.webUrl ?? undefined,
-      imageUrl: issue.imageUrl || undefined,
-    },
-    sortTimeMs: issue.receivedAt.getTime(),
-  }));
+  return new Set(issues.map((issue) => buildRssArticleDedupKey({ externalUrl: issue.webUrl })));
 }
