@@ -7,16 +7,19 @@ import { type RssReadProfile, getUserRssReadProfile } from "@/lib/rss-read-profi
 /** Same shape the candidate builder emits; aliased so the two can't drift. */
 export type RankingItem = AiRankItem;
 
+/** Bump when the ranking prompt or its inputs change meaningfully. */
+const RANKER_VERSION = "2026-11-21-big-news";
+
 export function buildRankInputFingerprint(
   dayKey: string,
   cap: number,
   prompt: string,
   items: Array<{ id: string }>
 ): string {
-  // The lead ranking model is part of the input: when the chain is upgraded,
-  // today's snapshot from the old model no longer counts as "unchanged", so
-  // the next cron run re-ranks with the new one instead of waiting a day.
-  const payload = `${SMART_MODEL_CHAIN[0]}|${dayKey}|${cap}|${prompt}|${items.map((item) => item.id).join(",")}`;
+  // The lead ranking model and the ranker version are part of the input:
+  // when either changes, today's snapshot no longer counts as "unchanged", so
+  // the next cron run re-ranks instead of waiting a day.
+  const payload = `${RANKER_VERSION}|${SMART_MODEL_CHAIN[0]}|${dayKey}|${cap}|${prompt}|${items.map((item) => item.id).join(",")}`;
   return createHash("sha256").update(payload).digest("hex");
 }
 

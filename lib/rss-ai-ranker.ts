@@ -2,8 +2,8 @@ import { SMART_MODEL_CHAIN, openRouterChat } from "@/lib/openrouter";
 
 type RankItemInput = {
   id: string;
-  /** Absent means "article" (older callers and tests). */
-  kind?: "newsletter" | "article";
+  /** Other sources running the same story today (lib/story-buzz.ts). */
+  coverage?: number;
   title: string;
   snippet?: string | null;
   author?: string | null;
@@ -37,8 +37,12 @@ type RankCacheEntry = {
   reason: string;
 };
 
+// Tuned to her: she reads FT/WSJ/NYT/Economist for the day's news and
+// Stratechery/Pragmatic Engineer for tech. The old default ("include culture
+// coverage, avoid politics") filled the top with oddities while the day's
+// market sell-off and NATO news sat lower down.
 const DEFAULT_INTEREST_PROMPT =
-  "Prioritize personal relevance, quality, diversity, novelty, and recency. Avoid near-duplicates and politics-only lists. Include culture coverage, at least 1 strong tech item, and 1-2 deeper pieces when available.";
+  "Lead with the day's most important news, the way a front page would: markets and the economy, geopolitics and wars, major policy, and big moves in tech and AI. Then strong analysis on tech, AI, startups and business. Lifestyle, culture and quirky features only if exceptional.";
 
 const rankCache = new Map<string, RankCacheEntry>();
 const inFlightRankings = new Map<string, Promise<RankResult | null>>();
@@ -115,8 +119,7 @@ function normalizeRankToken(token: string | number, byIndex: Map<number, string>
 
   const trimmed = token.trim();
   // Models sometimes wrap the id ("id=rss:abc", "rss:abc (Stratechery)").
-  // RSS ids carry a prefix; newsletter ids are bare Gmail hex ids.
-  const embeddedId = trimmed.match(/\brss:[A-Za-z0-9_-]+\b/)?.[0] ?? trimmed.match(/^[0-9a-f]{16}\b/)?.[0];
+  const embeddedId = trimmed.match(/\brss:[A-Za-z0-9_-]+\b/)?.[0];
   if (embeddedId) return embeddedId;
   if (/^\d+$/.test(trimmed)) return fromPosition(Number(trimmed));
 
@@ -220,7 +223,7 @@ export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult
       const dateLine = item.publishedAtIso ? `published=${item.publishedAtIso.slice(0, 10)}` : null;
       return [
         `${index + 1}. id=${item.id}`,
-        `kind=${item.kind ?? "article"}`,
+        `coverage=${item.coverage ?? 0}`,
         `source=${item.sourceName?.trim() || "unknown"}`,
         `title=${item.title}`,
         `author=${item.author ?? "unknown"}`,
@@ -267,11 +270,11 @@ ${profileNotes}
 Interest guidance:
 ${interestGuidance}
 
-Newsletters vs articles:
-kind=newsletter items are paid or hand-picked subscriptions she chose to receive; rank a strong newsletter issue above an average article. kind=article items are from RSS feeds she follows. Both compete in the same single feed, so judge each on what it offers.
+Big news:
+coverage=N means N of her other sources are running the same story today. A high count marks the day's major news (a market sell-off, a war or alliance development, a major policy move). The most widely covered stories belong near the top even when their headlines look routine. Pick only the single best version of each story; never pick two items about the same event.
 
 Diversity guidance:
-Favor a varied set of publishers. Do not choose more than 1 article from the same source unless that source has a clearly stronger candidate than all others. Avoid selecting 3 or more items from the same publisher, and avoid publisher-heavy blocks such as multiple New Yorker stories in a row.
+Favor a varied set of publishers. Avoid selecting 3 or more items from the same publisher, and avoid publisher-heavy blocks such as multiple New Yorker stories in a row. Importance beats variety: a major story is never dropped just to add another publisher.
 
 Source coverage:
 Aim for at least ${targetUniqueSources} distinct sources when possible, while still prioritizing overall relevance.

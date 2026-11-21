@@ -14,7 +14,6 @@ const { computeDailyRankedSelection } = await import("./rss-ranking");
 function item(id: string, sourceName: string): RankingItem {
   return {
     id,
-    kind: "article",
     title: id,
     snippet: "",
     author: null,

@@ -15,7 +15,6 @@ const { diversityTrim, computeDailyRankedSelection } = await import("./rss-ranki
 function item(id: string, sourceName: string): RankingItem {
   return {
     id,
-    kind: "article",
     title: id,
     snippet: "",
     author: null,

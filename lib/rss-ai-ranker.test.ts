@@ -81,7 +81,7 @@ describe("rankItemsForDailyCap", () => {
     vi.unstubAllEnvs();
   });
 
-  it("ranks newsletters and articles together in one list", async () => {
+  it("tells the model how widely each story is covered and to lead with big news", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-key");
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -89,39 +89,26 @@ describe("rankItemsForDailyCap", () => {
         choices: [
           {
             finish_reason: "stop",
-            message: {
-              content:
-                '{"picks":[{"id":"1a1e92cca1f6903a","reason":"Stratechery on chip export rules"},{"id":"rss:story","reason":"good reporting"}]}',
-            },
+            message: { content: '{"picks":[{"id":"rss:big","reason":"markets sell-off"}]}' },
           },
         ],
       }),
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await rankItemsForDailyCap({
-      dayKey: "2026-11-17-one-feed",
+    await rankItemsForDailyCap({
+      dayKey: "2026-11-21-coverage",
       cap: 5,
       items: [
-        { id: "rss:story", kind: "article", title: "Story", publishedAtIso: "2026-11-17T00:00:00.000Z" },
-        {
-          id: "1a1e92cca1f6903a",
-          kind: "newsletter",
-          title: "Stratechery",
-          publishedAtIso: "2026-11-17T00:00:00.000Z",
-        },
+        { id: "rss:big", title: "Stocks tumble", coverage: 4, publishedAtIso: "2026-11-21T00:00:00.000Z" },
+        { id: "rss:odd", title: "Birdwatching", coverage: 0, publishedAtIso: "2026-11-21T00:00:00.000Z" },
       ],
     });
 
     const prompt = JSON.parse(fetchMock.mock.calls[0][1].body).messages[1].content as string;
-    expect(prompt).toContain("kind=newsletter");
-    expect(result?.ids).toEqual(["1a1e92cca1f6903a", "rss:story"]);
-  });
-
-  it("recovers bare newsletter ids from truncated output", () => {
-    expect(parsePicks('{"picks":[{"id":"1a1e92cca1f6903a","reason":"deep dive"},{"id":"rss:x","rea')).toEqual([
-      { rawId: "1a1e92cca1f6903a", reason: "deep dive" },
-    ]);
+    expect(prompt).toContain("id=rss:big\ncoverage=4");
+    expect(prompt).toContain("Big news:");
+    expect(prompt).toContain("Lead with the day's most important news");
   });
 
   it("still calls the AI (and gets reasons) when candidates already fit within the cap", async () => {
