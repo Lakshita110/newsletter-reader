@@ -6,9 +6,10 @@ type Sender = { id: string; email: string; name: string | null };
 type Suggestion = { email: string; name: string; count: number; lastSubject: string };
 
 /**
- * Senders read from every connected mailbox. Newsletter platforms (Substack
- * etc.) are always pulled; listed senders are pulled from all of each
- * mailbox too, archived and labeled mail included.
+ * The newsletters she subscribes to. Only these senders and newsletter
+ * platforms (Substack etc.) are pulled from her mailboxes; nothing else in
+ * her mail is guessed at. "Find my newsletters" offers likely senders to
+ * approve with one tap.
  */
 export default function NewsletterSendersSection() {
   const [senders, setSenders] = useState<Sender[]>([]);
@@ -79,10 +80,11 @@ export default function NewsletterSendersSection() {
   };
 
   return (
-    <div>
+    <section className="settings-card">
+      <h2 className="settings-card-title">Newsletters</h2>
       <p className="settings-note">
-        Substack, beehiiv and other newsletter platforms are pulled automatically. Add any other sender here so its
-        issues are pulled too, even if archived or labeled.
+        Substack, beehiiv and other newsletter platforms come in automatically. Anything else shows up only once you add
+        its sender here, so random mail stays out.
       </p>
 
       <form
@@ -104,9 +106,41 @@ export default function NewsletterSendersSection() {
           {busy === "add" ? "Adding…" : busy === "sync" ? "Syncing…" : "Add"}
         </button>
       </form>
-      <button type="button" onClick={suggest} disabled={busy !== null} className="settings-link-btn">
-        {busy === "suggest" ? "Scanning mail…" : "Find newsletters in my mail"}
-      </button>
+      <div style={{ marginBottom: 12 }}>
+        <button type="button" onClick={suggest} disabled={busy !== null} className="filter-action-btn">
+          {busy === "suggest" ? "Looking…" : "Find my newsletters"}
+        </button>
+      </div>
+
+      {suggestions && (
+        <div style={{ marginBottom: 12 }}>
+          {suggestions.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--muted)" }}>
+              Nothing new found. Every newsletter in your mail is already added.
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
+                Tap the ones you actually read:
+              </div>
+              <div className="settings-chips">
+                {suggestions.map((s) => (
+                  <button
+                    key={s.email}
+                    type="button"
+                    className="settings-chip"
+                    disabled={busy !== null}
+                    onClick={() => add([s.email], s.name)}
+                    title={s.lastSubject ? `${s.email} · last: ${s.lastSubject}` : s.email}
+                  >
+                    + {s.name || s.email} <span style={{ opacity: 0.6 }}>({s.count})</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {senders.length > 0 && (
         <ul className="settings-list">
@@ -130,37 +164,7 @@ export default function NewsletterSendersSection() {
         </ul>
       )}
 
-      {suggestions && (
-        <div style={{ marginTop: 12 }}>
-          {suggestions.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--muted)" }}>
-              No new newsletter senders found in the last 30 days.
-            </div>
-          ) : (
-            <>
-              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
-                Seen in your mail recently (tap to add):
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {suggestions.map((s) => (
-                  <button
-                    key={s.email}
-                    type="button"
-                    className="filter-action-btn"
-                    disabled={busy !== null}
-                    onClick={() => add([s.email], s.name)}
-                    title={`${s.email} · last: ${s.lastSubject}`}
-                  >
-                    + {s.name} <span style={{ opacity: 0.6 }}>({s.count})</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
       {notice && <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 13 }}>{notice}</div>}
-    </div>
+    </section>
   );
 }

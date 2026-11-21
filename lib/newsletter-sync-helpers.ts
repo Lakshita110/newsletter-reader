@@ -61,15 +61,6 @@ export function buildSenderQuery(senderEmails: string[], after: Date): string {
 }
 
 /**
- * Fallback for users with no sender list: newsletter platforms anywhere in
- * the mailbox, plus the inbox (where the classifier decides what counts).
- */
-export function buildInboxQuery(after: Date): string {
-  const afterEpoch = Math.floor(after.getTime() / 1000);
-  return `{in:inbox ${platformFroms().join(" ")}} after:${afterEpoch} ${EXCLUDED}`;
-}
-
-/**
  * When the search query got wider (platform senders anywhere, 2026-11-17).
  * A mailbox last synced before this gets one full first-sync lookback, so
  * issues the old query missed in the past month are picked up too.
@@ -128,4 +119,17 @@ function stripTracking(href: string): string {
   } catch {
     return href;
   }
+}
+
+/** Decode the few HTML entities Gmail puts in message snippets. */
+export function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code: string) => String.fromCodePoint(Number.parseInt(code, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&");
 }

@@ -336,6 +336,11 @@ export default function TodayPage() {
               />
             )}
             {rows}
+            {section === "newsletters" && tab === "today" && (
+              <p className="today-section-note">
+                Missing one? <Link href="/settings">Add its sender in Settings</Link>.
+              </p>
+            )}
           </section>
         );
       })}
