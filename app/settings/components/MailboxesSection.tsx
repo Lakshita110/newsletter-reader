@@ -43,40 +43,33 @@ export default function MailboxesSection() {
   };
 
   return (
-    <section style={{ marginBottom: 18, borderBottom: "1px solid var(--faint)", paddingBottom: 16 }}>
-      <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>Mailboxes</div>
-      {notice && <p style={{ fontSize: 13, margin: "0 0 8px" }}>{notice}</p>}
-      <ul style={{ listStyle: "none", margin: "0 0 10px", padding: 0, display: "grid", gap: 8 }}>
+    <section className="settings-card">
+      <h2 className="settings-card-title">Mailboxes</h2>
+      {notice && <p className="settings-note">{notice}</p>}
+      <ul className="settings-list">
         {accounts?.length === 0 && (
-          <li style={{ fontSize: 13 }}>No mailbox connected, so new newsletters aren&apos;t coming in.</li>
+          <li className="settings-note">No mailbox connected, so new newsletters aren&apos;t coming in.</li>
         )}
         {accounts?.map((account) => (
-          <li
-            key={account.id}
-            style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 14 }}
-          >
-            <span style={{ overflowWrap: "anywhere", flex: 1, minWidth: 180 }}>
+          <li key={account.id}>
+            <span className="settings-list-name">
               {account.email ?? "Gmail (address appears after the next sync)"}
-              {!account.connected && (
-                <span style={{ color: "var(--danger-text, #c0392b)", marginLeft: 8, fontSize: 13 }}>
-                  access expired
-                </span>
-              )}
+              {!account.connected && <span className="settings-warn">access expired</span>}
             </span>
             {!account.connected && (
               // Plain links: these leave the app for Google's account picker and come back here.
-              <a href="/api/gmail/connect" className="btn-pill-sm btn-neutral" style={{ textDecoration: "none" }}>
+              <a href="/api/gmail/connect" className="settings-link-btn">
                 Reconnect
               </a>
             )}
-            <button type="button" className="btn-pill-sm btn-danger" onClick={() => remove(account)}>
+            <button type="button" className="settings-link-btn" onClick={() => remove(account)}>
               Remove
             </button>
           </li>
         ))}
       </ul>
-      <a href="/api/gmail/connect" className="filter-action-btn" style={{ textDecoration: "none" }}>
-        Add a Gmail account
+      <a href="/api/gmail/connect" className="filter-action-btn settings-add-link">
+        + Add a Gmail account
       </a>
     </section>
   );

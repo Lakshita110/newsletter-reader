@@ -79,21 +79,14 @@ export default function NewsletterSendersSection() {
   };
 
   return (
-    <section style={{ marginBottom: 18, borderBottom: "1px solid var(--faint)", paddingBottom: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 13, color: "var(--muted)" }}>Newsletters you read</div>
-        <button type="button" onClick={suggest} disabled={busy !== null} className="filter-action-btn">
-          {busy === "suggest" ? "Scanning mail…" : "Find in my mail"}
-        </button>
-      </div>
-      <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 10px" }}>
-        {senders.length === 0
-          ? "Substack, Stratechery, beehiiv and other newsletter platforms are pulled automatically, even if archived or labeled. Other newsletters are guessed from your inbox; add their senders to pull them reliably."
-          : "These senders and all newsletter platforms (Substack, Stratechery, beehiiv…) are pulled from all of Gmail, and each issue is kept so it never disappears."}
+    <div>
+      <p className="settings-note">
+        Substack, beehiiv and other newsletter platforms are pulled automatically. Add any other sender here so its
+        issues are pulled too, even if archived or labeled.
       </p>
 
       <form
-        className="settings-grid settings-grid-2"
+        className="settings-inline-form"
         onSubmit={(e) => {
           e.preventDefault();
           if (input.trim()) add([input]);
@@ -111,12 +104,15 @@ export default function NewsletterSendersSection() {
           {busy === "add" ? "Adding…" : busy === "sync" ? "Syncing…" : "Add"}
         </button>
       </form>
+      <button type="button" onClick={suggest} disabled={busy !== null} className="settings-link-btn">
+        {busy === "suggest" ? "Scanning mail…" : "Find newsletters in my mail"}
+      </button>
 
       {senders.length > 0 && (
-        <ul style={{ listStyle: "none", padding: 0, margin: "10px 0 0", display: "grid", gap: 6 }}>
+        <ul className="settings-list">
           {senders.map((s) => (
-            <li key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-              <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
+            <li key={s.id}>
+              <span className="settings-list-name">
                 {s.name ? <strong style={{ marginRight: 6 }}>{s.name}</strong> : null}
                 <span style={{ color: "var(--muted)" }}>{s.email}</span>
               </span>
@@ -124,7 +120,7 @@ export default function NewsletterSendersSection() {
                 type="button"
                 onClick={() => remove(s.email)}
                 disabled={busy === s.email}
-                className="filter-action-btn"
+                className="settings-link-btn"
                 aria-label={`Stop pulling ${s.email}`}
               >
                 Remove
@@ -165,6 +161,6 @@ export default function NewsletterSendersSection() {
       )}
 
       {notice && <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 13 }}>{notice}</div>}
-    </section>
+    </div>
   );
 }

@@ -48,15 +48,17 @@ export default function RankingSection() {
   const dirty = prompt !== settings.recommendationPrompt || cap !== settings.recommendationCap;
 
   return (
-    <section style={{ marginBottom: 18, borderBottom: "1px solid var(--faint)", paddingBottom: 16 }}>
-      <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>What to pick for you</div>
+    <section className="settings-card">
+      <h2 className="settings-card-title">What to pick for you</h2>
+      <p className="settings-note">
+        Newsletters always come first. This steers which news stories are picked after them.
+      </p>
       <textarea
         value={prompt}
         onChange={(e) => setPrompt(e.target.value.slice(0, settings.limits.maxPromptChars))}
         placeholder="e.g. Favor AI, startups and engineering deep dives. Skip sports and celebrity news."
-        className="settings-input"
+        className="settings-input settings-textarea"
         rows={4}
-        style={{ width: "100%", height: "auto", padding: 10, resize: "vertical", lineHeight: 1.5 }}
       />
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
         <label style={{ fontSize: 13, color: "var(--muted)" }}>

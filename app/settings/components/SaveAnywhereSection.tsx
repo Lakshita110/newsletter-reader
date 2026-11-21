@@ -64,8 +64,7 @@ export default function SaveAnywhereSection() {
   };
 
   return (
-    <section style={{ marginBottom: 18, borderBottom: "1px solid var(--faint)", paddingBottom: 16 }}>
-      <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>Save from anywhere</div>
+    <div>
       <p style={{ ...step, color: "var(--muted)" }}>
         Links you save land in <Link href="/today?tab=saved">Saved</Link>, cleaned up for reading. For paywalled sites,
         save from a browser where you&rsquo;re logged in: the page you can see is what gets saved.
@@ -134,6 +133,6 @@ export default function SaveAnywhereSection() {
         </button>
         .
       </p>
-    </section>
+    </div>
   );
 }

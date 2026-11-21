@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 type Theme = "light" | "dark";
 
@@ -13,6 +13,24 @@ function resolveInitialTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+// The theme lives in localStorage / the OS setting, which the server can't
+// see. Reading it through useSyncExternalStore lets the server render "light"
+// and the client switch after hydration; reading it in a useState initializer
+// made the server and client HTML disagree in dark mode, so React threw the
+// whole page away and re-rendered it on every load.
+const listeners = new Set<() => void>();
+function subscribe(onChange: () => void) {
+  listeners.add(onChange);
+  const media = window.matchMedia("(prefers-color-scheme: dark)");
+  media.addEventListener("change", onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    listeners.delete(onChange);
+    media.removeEventListener("change", onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
 export function ThemeInitializer() {
   useEffect(() => {
     document.documentElement.dataset.theme = resolveInitialTheme();
@@ -22,7 +40,7 @@ export function ThemeInitializer() {
 }
 
 export function ThemeToggle({ className = "header-icon-btn" }: { className?: string }) {
-  const [theme, setTheme] = useState<Theme>(() => resolveInitialTheme());
+  const theme = useSyncExternalStore<Theme>(subscribe, resolveInitialTheme, () => "light");
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -30,8 +48,8 @@ export function ThemeToggle({ className = "header-icon-btn" }: { className?: str
 
   const toggleTheme = () => {
     const nextTheme: Theme = theme === "dark" ? "light" : "dark";
-    setTheme(nextTheme);
     window.localStorage.setItem(STORAGE_KEY, nextTheme);
+    listeners.forEach((notify) => notify());
   };
 
   return (

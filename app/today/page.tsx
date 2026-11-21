@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { SwipeRow } from "./components/SwipeRow";
+import { AppNav } from "@/app/components/AppNav";
 import { GmailBanner } from "./components/GmailBanner";
 import { faviconDomain } from "@/lib/lead-image";
 import { buildTodayQueue, flattenQueue, type QueueSection } from "./lib/queue";
@@ -297,6 +298,15 @@ export default function TodayPage() {
                     </Link>
                   )}
                 </SwipeRow>
+                {/* Mouse users get buttons instead of a swipe; CSS only shows them on hover-capable pointers. */}
+                <div className="today-row-actions">
+                  <button type="button" onClick={() => toggleSave(item)}>
+                    {savedById[item.id] ? "Unsave" : "Save"}
+                  </button>
+                  <button type="button" onClick={() => markDone(item)}>
+                    Done
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -313,7 +323,7 @@ export default function TodayPage() {
           );
         }
         return (
-          <section key={section} className="today-section">
+          <section key={section} className={`today-section today-section-${section}`}>
             <h2 className="today-section-title">
               {SECTION_LABELS[section]} <span>{list.length}</span>
             </h2>
@@ -332,9 +342,7 @@ export default function TodayPage() {
 
       {!isLoading && ordered.length === 0 && (
         <div className="today-empty">
-          {tab === "saved"
-            ? "Swipe right on anything to keep it here."
-            : "Nothing left for today."}
+          {tab === "saved" ? "Swipe right on anything to keep it here." : "Nothing left for today."}
         </div>
       )}
 
@@ -349,16 +357,7 @@ export default function TodayPage() {
         </div>
       )}
 
-      <nav className="today-tabbar" aria-label="Sections">
-        <button type="button" className={tab === "today" ? "active" : ""} onClick={() => setTab("today")}>
-          Today
-        </button>
-        <button type="button" className={tab === "saved" ? "active" : ""} onClick={() => setTab("saved")}>
-          Saved
-        </button>
-        <Link href="/highlights">Highlights</Link>
-        <Link href="/settings">Settings</Link>
-      </nav>
+      <AppNav active={tab} onTab={setTab} />
     </main>
   );
 }
