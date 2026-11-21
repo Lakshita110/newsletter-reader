@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ReaderContent } from "./components/ReaderContent";
+import { AppNav } from "@/app/components/AppNav";
 import { ReaderHeader } from "./components/ReaderHeader";
 import { ReaderNav } from "./components/ReaderNav";
 import { useReadAloud } from "./lib/useReadAloud";
@@ -377,29 +378,14 @@ export default function ReadPage() {
   }
 
   return (
-    <main
-      className="reader-main"
-      style={{
-        maxWidth: 680,
-        margin: "56px auto",
-        padding: "0 20px",
-        lineHeight: 1.7,
-        fontSize: 17,
-        ["--reader-font-size" as string]: `${fontSize}px`,
-      }}
-    >
+    <main className="reader-main" style={{ ["--reader-font-size" as string]: `${fontSize}px` }}>
       <div className="reader-progress" style={{ width: `${progress.pct}%` }} aria-hidden />
       <ReaderHeader
         message={msg}
         readingMinutes={readingMinutes}
         view={activeView}
         onViewChange={setView}
-        onToggleRead={toggleRead}
-        onToggleSaved={toggleSaved}
-        isMarkedRead={isMarkedRead}
-        isSaved={isSaved}
         showViewControls={showViewControls}
-        externalUrl={msg.externalUrl}
         backHref={backHref}
       />
 
@@ -432,6 +418,7 @@ export default function ReadPage() {
         onCycleFont={cycleFontSize}
         listen={listen}
       />
+      <AppNav active={backHref.startsWith("/today?tab=saved") ? "saved" : "today"} desktopOnly />
     </main>
   );
 }
