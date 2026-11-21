@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ReaderContent } from "./components/ReaderContent";
 import { ReaderHeader } from "./components/ReaderHeader";
 import { ReaderNav } from "./components/ReaderNav";
+import { useReadAloud } from "./lib/useReadAloud";
 import { ReaderToolbar, useReaderFontSize } from "./components/ReaderToolbar";
 import { useReadingProgress } from "./lib/useReadingProgress";
 import { useHighlights } from "./lib/useHighlights";
@@ -283,6 +284,7 @@ export default function ReadPage() {
   const backHref = storedBackHref ?? (msg?.sourceKind === "web" ? "/today?tab=saved" : "/today");
   const progress = useReadingProgress(id, Boolean(msg));
   const articleRef = useRef<HTMLElement>(null);
+  const listen = useReadAloud(articleRef, id ?? "");
   const highlightMeta = useMemo(
     () =>
       msg && id
@@ -428,6 +430,7 @@ export default function ReadPage() {
         doneLabel={nav?.next ? "Done → Next" : "Done"}
         externalUrl={msg.externalUrl}
         onCycleFont={cycleFontSize}
+        listen={listen}
       />
     </main>
   );

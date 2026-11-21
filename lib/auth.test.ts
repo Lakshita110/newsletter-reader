@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const upsert = vi.fn().mockResolvedValue({ id: "u1" });
-vi.mock("@/lib/prisma", () => ({ prisma: { user: { upsert } } }));
+const findUnique = vi.fn();
+const findFirst = vi.fn();
+vi.mock("@/lib/prisma", () => ({ prisma: { user: { upsert, findUnique, findFirst } } }));
 const saveGmailRefreshToken = vi.fn().mockResolvedValue("u1");
 const primeGmailAccessToken = vi.fn();
 vi.mock("@/lib/gmail-token", () => ({ saveGmailRefreshToken, primeGmailAccessToken }));
 
-const { authOptions } = await import("./auth");
+const { authOptions, isAllowedToSignIn } = await import("./auth");
 type JwtArgs = Parameters<NonNullable<NonNullable<typeof authOptions.callbacks>["jwt"]>>[0];
 const jwt = (args: Partial<JwtArgs>) => authOptions.callbacks!.jwt!(args as JwtArgs);
 
@@ -63,5 +65,25 @@ describe("jwt callback", () => {
     const token = await jwt({ token: { email: "a@b.c", sub: "g1" } });
     expect(token).toEqual({ email: "a@b.c", sub: "g1" });
     expect(saveGmailRefreshToken).not.toHaveBeenCalled();
+  });
+});
+
+describe("single-user sign-in", () => {
+  it("lets the owner back in", async () => {
+    findUnique.mockResolvedValue({ id: "u1" });
+    expect(await isAllowedToSignIn("owner@example.com")).toBe(true);
+  });
+
+  it("lets the very first account claim the app", async () => {
+    findUnique.mockResolvedValue(null);
+    findFirst.mockResolvedValue(null);
+    expect(await isAllowedToSignIn("first@example.com")).toBe(true);
+  });
+
+  it("blocks any new account once someone owns it", async () => {
+    findUnique.mockResolvedValue(null);
+    findFirst.mockResolvedValue({ id: "u1" });
+    expect(await isAllowedToSignIn("stranger@example.com")).toBe(false);
+    expect(await isAllowedToSignIn(null)).toBe(false);
   });
 });

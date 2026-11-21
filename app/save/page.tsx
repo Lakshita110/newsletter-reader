@@ -80,7 +80,7 @@ function SaveInner() {
       {state.kind === "error" && (
         <p style={{ marginTop: 16, color: "var(--danger-text)" }}>
           {state.message}. If it&rsquo;s a paywalled page, save it with the Shortcut or bookmarklet from a browser where
-          you&rsquo;re logged in (see Sources).
+          you&rsquo;re logged in (see Settings).
         </p>
       )}
       {status === "unauthenticated" && (

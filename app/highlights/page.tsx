@@ -121,7 +121,7 @@ export default function HighlightsPage() {
         <Link href="/highlights" className="active">
           Highlights
         </Link>
-        <Link href="/rss/settings">Sources</Link>
+        <Link href="/settings">Settings</Link>
       </nav>
     </main>
   );

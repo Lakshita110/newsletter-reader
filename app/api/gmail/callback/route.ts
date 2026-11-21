@@ -15,7 +15,7 @@ type TokenResponse = { access_token?: string; refresh_token?: string; expires_in
 export async function GET(req: Request) {
   const base = appBaseUrl(req.url);
   const done = (result: string) => {
-    const res = NextResponse.redirect(`${base}/rss/settings?gmail=${result}`);
+    const res = NextResponse.redirect(`${base}/settings?gmail=${result}`);
     res.cookies.delete({ name: STATE_COOKIE, path: "/api/gmail" });
     return res;
   };
