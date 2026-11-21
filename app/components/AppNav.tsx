@@ -13,7 +13,16 @@ type Section = "today" | "saved" | "highlights" | "settings";
  * Today and Saved are two views of the Today page; when that page passes
  * `onTab`, switching between them is instant instead of a navigation.
  */
-export function AppNav({ active, onTab }: { active: Section; onTab?: (tab: "today" | "saved") => void }) {
+export function AppNav({
+  active,
+  onTab,
+  desktopOnly = false,
+}: {
+  active: Section;
+  onTab?: (tab: "today" | "saved") => void;
+  /** The reader has its own phone toolbar, so it only wants the desktop sidebar. */
+  desktopOnly?: boolean;
+}) {
   const tabLink = (tab: "today" | "saved", label: string) =>
     onTab ? (
       <button type="button" className={active === tab ? "active" : ""} onClick={() => onTab(tab)}>
@@ -26,7 +35,7 @@ export function AppNav({ active, onTab }: { active: Section; onTab?: (tab: "toda
     );
 
   return (
-    <nav className="app-nav" aria-label="Sections">
+    <nav className={desktopOnly ? "app-nav app-nav-desktop-only" : "app-nav"} aria-label="Sections">
       <span className="app-nav-brand">Cluck&#39;s Feed</span>
       {tabLink("today", "Today")}
       {tabLink("saved", "Saved")}
