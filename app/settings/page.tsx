@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { getRssCategoryLabel, RSS_CATEGORY_OPTIONS } from "@/lib/rss-categories";
+import RankingSection from "./components/RankingSection";
 import NewsletterSendersSection from "./components/NewsletterSendersSection";
 import SaveAnywhereSection from "./components/SaveAnywhereSection";
 
@@ -273,14 +274,16 @@ export default function RssSettingsPage() {
           }}
         >
           <div>
-            <h1 className="app-page-title settings-title">Sources</h1>
-            <p className="app-page-subtitle settings-subtitle">Newsletters and RSS feeds that land in your reader.</p>
+            <h1 className="app-page-title settings-title">Settings</h1>
+            <p className="app-page-subtitle settings-subtitle">What gets picked, and where it comes from.</p>
           </div>
           <Link href="/today" className="back-link-muted">
             Back to Today
           </Link>
         </div>
       </header>
+
+      <RankingSection />
 
       <NewsletterSendersSection />
 

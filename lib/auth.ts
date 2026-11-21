@@ -21,6 +21,25 @@ const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
 
 export const GMAIL_SCOPE = "openid email profile https://www.googleapis.com/auth/gmail.readonly";
 
+/**
+ * Cluck's Feed is a one-person app. The first Google account to sign in owns
+ * it; after that, only accounts that already have a User row can sign in, so
+ * a stranger who finds the URL can't create an account and spend her
+ * OpenRouter credits. Her separate newsletter mailbox doesn't go through here
+ * (see lib/gmail-connect.ts), so it doesn't need a row.
+ */
+export async function isAllowedToSignIn(email: string | null | undefined): Promise<boolean> {
+  if (!email) return false;
+  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  if (existing) return true;
+  const anyUser = await prisma.user.findFirst({ select: { id: true } });
+  if (anyUser) {
+    console.warn("[auth] blocked sign-in from an account that isn't the owner");
+    return false;
+  }
+  return true;
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
@@ -35,7 +54,11 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   session: { strategy: "jwt", maxAge: ONE_YEAR_SECONDS },
+  pages: { signIn: "/sign-in", error: "/sign-in" },
   callbacks: {
+    async signIn({ user }) {
+      return isAllowedToSignIn(user.email);
+    },
     async jwt({ token, account }) {
       const email = token.email;
       if (account && email) {

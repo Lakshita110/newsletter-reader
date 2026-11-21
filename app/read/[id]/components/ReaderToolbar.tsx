@@ -31,6 +31,7 @@ export function ReaderToolbar({
   doneLabel,
   externalUrl,
   onCycleFont,
+  listen,
 }: {
   backHref: string;
   isSaved: boolean;
@@ -39,6 +40,7 @@ export function ReaderToolbar({
   doneLabel: string;
   externalUrl?: string | null;
   onCycleFont: () => void;
+  listen?: { supported: boolean; speaking: boolean; toggle: () => void };
 }) {
   const [hidden, setHidden] = useState(false);
   const lastY = useRef(0);
@@ -64,6 +66,16 @@ export function ReaderToolbar({
       <button type="button" onClick={onCycleFont} aria-label="Change text size">
         Aa
       </button>
+      {listen?.supported && (
+        <button
+          type="button"
+          onClick={listen.toggle}
+          className={listen.speaking ? "on" : ""}
+          aria-pressed={listen.speaking}
+        >
+          {listen.speaking ? "Pause" : "Listen"}
+        </button>
+      )}
       <button type="button" onClick={onToggleSaved} className={isSaved ? "on" : ""} aria-pressed={isSaved}>
         {isSaved ? "Saved" : "Save"}
       </button>

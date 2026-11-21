@@ -356,7 +356,7 @@ export default function TodayPage() {
           Saved
         </button>
         <Link href="/highlights">Highlights</Link>
-        <Link href="/rss/settings">Sources</Link>
+        <Link href="/settings">Settings</Link>
       </nav>
     </main>
   );
