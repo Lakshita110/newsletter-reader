@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock both edges (Prisma and the Gmail client) so this exercises the real
-// sync decisions: throttle, sender-list vs classifier mode, dedupe, and
+// sync decisions: throttle, approved senders + platforms only, dedupe, and
 // resume-after-time-budget.
 const db = {
   gmailAccount: { findMany: vi.fn(), update: vi.fn() },
@@ -24,7 +24,7 @@ vi.mock("googleapis", () => ({
   },
 }));
 
-const { syncNewsletters, syncAllMailboxes } = await import("./newsletter-sync");
+const { getStoredNewsletterFeed, syncNewsletters, syncAllMailboxes } = await import("./newsletter-sync");
 
 const mailbox = (overrides: Partial<{ id: string; email: string | null; syncedAt: Date | null }> = {}) => ({
   id: "g1",
@@ -104,29 +104,17 @@ describe("syncNewsletters", () => {
     expect(db.gmailAccount.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "g1" } }));
   });
 
-  it("without a sender list: inbox plus platforms, and drops what the classifier rejects", async () => {
-    gmail.users.messages.list.mockResolvedValue({ data: { messages: [{ id: "news" }, { id: "friend" }] } });
-    gmail.users.messages.get.mockImplementation(async ({ id }) =>
-      id === "news"
-        ? message(id, "Daily <hello@news.com>")
-        : message(id, "Friend <friend@gmail.com>", { listHeader: false })
-    );
-    const result = await syncNewsletters("u1", mailbox(), "tok");
-    expect(gmail.users.messages.list.mock.calls[0][0].q).toContain("in:inbox");
-    expect(
-      db.newsletterIssue.createMany.mock.calls[0][0].data.map((r: { gmailMessageId: string }) => r.gmailMessageId)
-    ).toEqual(["news"]);
-    expect(result.added).toBe(1);
-  });
-
-  it("without a sender list: keeps platform issues (archived or labeled) even when the classifier wouldn't", async () => {
+  it("without a sender list: only searches newsletter platforms, never guesses from the inbox", async () => {
     gmail.users.messages.list.mockResolvedValue({ data: { messages: [{ id: "derek" }] } });
-    // No List-Unsubscribe header: on its own the classifier would drop this.
     gmail.users.messages.get.mockImplementation(async ({ id }) =>
       message(id, "Derek Thompson <derekthompson@substack.com>", { listHeader: false })
     );
     const result = await syncNewsletters("u1", mailbox(), "tok");
-    expect(gmail.users.messages.list.mock.calls[0][0].q).toContain("from:substack.com");
+    const q = gmail.users.messages.list.mock.calls[0][0].q as string;
+    expect(q).toContain("from:substack.com");
+    // Account notices and promos sit in the inbox with List-Unsubscribe
+    // headers; searching the inbox is what let them in.
+    expect(q).not.toContain("in:inbox");
     expect(result.added).toBe(1);
   });
 
@@ -167,5 +155,32 @@ describe("syncAllMailboxes", () => {
       ["b", "no-token"],
       ["c", "synced"],
     ]);
+  });
+});
+
+describe("getStoredNewsletterFeed", () => {
+  it("only shows approved senders and newsletter platforms, with decoded snippets and no lead photo", async () => {
+    db.newsletterSender.findMany.mockResolvedValue([{ email: "today@economist.com" }]);
+    db.newsletterIssue.findMany.mockResolvedValue([
+      {
+        gmailMessageId: "e1",
+        fromEmail: "today@economist.com",
+        fromName: "The Economist Today",
+        publicationKey: "economist",
+        subject: "The words to watch",
+        snippet: "Trump&#39;s love of conquest",
+        receivedAt: new Date("2026-11-20T08:00:00Z"),
+        webUrl: null,
+      },
+    ]);
+
+    const feed = await getStoredNewsletterFeed("u1");
+
+    const where = db.newsletterIssue.findMany.mock.calls[0][0].where;
+    expect(where.OR).toContainEqual({ fromEmail: { in: ["today@economist.com"] } });
+    expect(where.OR).toContainEqual({ fromEmail: { endsWith: "@substack.com" } });
+    expect(where.OR).toContainEqual({ fromEmail: { endsWith: ".substack.com" } });
+    expect(feed[0].snippet).toBe("Trump's love of conquest");
+    expect(feed[0].imageUrl).toBeUndefined();
   });
 });

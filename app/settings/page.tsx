@@ -11,10 +11,9 @@ import NewsletterSendersSection from "./components/NewsletterSendersSection";
 import SaveAnywhereSection from "./components/SaveAnywhereSection";
 
 /**
- * One page, three things she actually changes: what gets picked, which
- * mailboxes newsletters come from, and which feeds stories come from.
- * Rarely-touched setup (extra newsletter senders, the save-from-anywhere
- * shortcut) is folded away so it doesn't crowd the everyday controls.
+ * One page, four things she actually changes: what gets picked, which
+ * mailboxes and which newsletters are read, and which feeds stories come
+ * from. The rarely-touched save-from-anywhere setup is folded away.
  */
 export default function SettingsPage() {
   const { data: session, status } = useSession();
@@ -37,12 +36,8 @@ export default function SettingsPage() {
         <div className="settings-stack">
           <RankingSection />
           <MailboxesSection />
+          <NewsletterSendersSection />
           <FeedsSection />
-
-          <details className="settings-card settings-more">
-            <summary className="settings-card-title">More newsletter senders</summary>
-            <NewsletterSendersSection />
-          </details>
 
           <details className="settings-card settings-more">
             <summary className="settings-card-title">Save from anywhere</summary>

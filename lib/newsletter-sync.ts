@@ -4,13 +4,13 @@ import { classifyNewsletter, getHeader } from "@/lib/newsletter-classifier";
 import { parseFrom, normalizePublicationKey } from "@/lib/from-header";
 import { extractBodies } from "@/lib/gmail-body";
 import type { FeedItem } from "@/lib/rss-candidates";
-import { pickLeadImage } from "@/lib/lead-image";
 import { getGmailAccessToken } from "@/lib/gmail-token";
 import {
-  buildInboxQuery,
   buildSenderQuery,
+  decodeHtmlEntities,
   extractWebUrl,
   isPlatformSender,
+  NEWSLETTER_PLATFORM_DOMAINS,
   syncWindowStart,
 } from "@/lib/newsletter-sync-helpers";
 
@@ -112,18 +112,13 @@ export async function syncNewsletters(
     return { status: "skipped-recent", added: 0 };
   }
 
-  const senders = await prisma.newsletterSender.findMany({
-    where: { userId, isActive: true },
-    select: { email: true },
-  });
-  const useSenderList = senders.length > 0;
-  const windowStart = syncWindowStart(account.syncedAt);
-  const q = useSenderList
-    ? buildSenderQuery(
-        senders.map((s) => s.email),
-        windowStart
-      )
-    : buildInboxQuery(windowStart);
+  // Only newsletters she subscribed to: her approved senders plus newsletter
+  // platforms (Substack etc., which only send what you signed up for). There
+  // is deliberately no "guess from the inbox" mode any more: a heuristic on
+  // List-Unsubscribe / no-reply headers also matched account notices and
+  // promos, which buried the real newsletters.
+  const senders = await approvedSenderEmails(userId);
+  const q = buildSenderQuery(senders, syncWindowStart(account.syncedAt));
 
   const gmail = gmailClient(accessToken);
   let ids: string[];
@@ -164,7 +159,7 @@ export async function syncNewsletters(
       break;
     }
     const batch = pending.slice(i, i + FETCH_CONCURRENCY);
-    const rows = await Promise.all(batch.map((id) => fetchIssue(gmail, id, useSenderList)));
+    const rows = await Promise.all(batch.map((id) => fetchIssue(gmail, id)));
     const toStore = rows.filter((row): row is NonNullable<typeof row> => row !== null);
     if (toStore.length > 0) {
       const res = await prisma.newsletterIssue.createMany({
@@ -183,25 +178,19 @@ export async function syncNewsletters(
     where: { id: account.id },
     data: { syncedAt: new Date(startedAt) },
   });
-  await backfillLeadImages(userId);
   return { status: "synced", added };
 }
 
-async function fetchIssue(gmail: gmail_v1.Gmail, id: string, trustSenderList: boolean) {
+async function fetchIssue(gmail: gmail_v1.Gmail, id: string) {
   const msg = await gmail.users.messages.get({ userId: "me", id, format: "full" });
   const headers = msg.data.payload?.headers;
   const subject = getHeader(headers, "Subject");
   const from = getHeader(headers, "From");
   const snippet = msg.data.snippet ?? "";
 
+  // The search query only matches approved senders and platforms, so
+  // everything it returns is a newsletter she subscribed to.
   const parsed = parseFrom(from);
-  // Senders she listed, and newsletter platforms, are reads by definition;
-  // the classifier only guards plain inbox mail in the no-sender-list mode.
-  const trusted = trustSenderList || isPlatformSender(parsed.email || from);
-  if (!trusted && !classifyNewsletter(headers, subject, from, snippet).isNewsletter) {
-    return null;
-  }
-
   const fromEmail = (parsed.email || from).toLowerCase();
   const { html, text } = extractBodies(msg.data.payload);
   const receivedAt = msg.data.internalDate
@@ -222,15 +211,17 @@ async function fetchIssue(gmail: gmail_v1.Gmail, id: string, trustSenderList: bo
     // text is extracted from the HTML (with Readability) on first open.
     text: html ? null : (text ?? null),
     webUrl: extractWebUrl(html),
-    imageUrl: pickLeadImage(html) ?? "",
   };
 }
 
 /** Stored newsletter issues in the FeedItem shape the inbox renders. */
 export async function getStoredNewsletterFeed(userId: string): Promise<FeedItem[]> {
   const since = new Date(Date.now() - INBOX_ISSUE_DAYS * 24 * 60 * 60 * 1000);
+  const senders = await approvedSenderEmails(userId);
   const rows = await prisma.newsletterIssue.findMany({
-    where: { userId, receivedAt: { gte: since } },
+    // Issues stored back when the inbox was guessed at stay in the database,
+    // but only approved senders and platforms are shown.
+    where: { userId, receivedAt: { gte: since }, OR: subscribedSenderFilter(senders) },
     orderBy: { receivedAt: "desc" },
     take: INBOX_ISSUE_LIMIT,
     select: {
@@ -242,7 +233,6 @@ export async function getStoredNewsletterFeed(userId: string): Promise<FeedItem[
       snippet: true,
       receivedAt: true,
       webUrl: true,
-      imageUrl: true,
     },
   });
   return rows.map((row) => ({
@@ -252,12 +242,51 @@ export async function getStoredNewsletterFeed(userId: string): Promise<FeedItem[
     subject: row.subject,
     from: `${row.fromName} <${row.fromEmail}>`,
     date: row.receivedAt.toISOString(),
-    snippet: row.snippet ?? "",
+    // Gmail returns snippets HTML-escaped ("it&#39;s").
+    snippet: decodeHtmlEntities(row.snippet ?? ""),
     publicationName: row.fromName,
     publicationKey: row.publicationKey,
+    // No lead photo for newsletters: the first big image in an email is as
+    // often a sponsor banner or masthead as a real photo, and it looked bad.
     externalUrl: row.webUrl ?? undefined,
-    imageUrl: row.imageUrl || undefined,
   }));
+}
+
+async function approvedSenderEmails(userId: string): Promise<string[]> {
+  const rows = await prisma.newsletterSender.findMany({
+    where: { userId, isActive: true },
+    select: { email: true },
+  });
+  return rows.map((row) => row.email);
+}
+
+/** Prisma filter matching issues from an approved sender or a newsletter platform domain. */
+function subscribedSenderFilter(senders: string[]) {
+  return [
+    { fromEmail: { in: senders } },
+    ...NEWSLETTER_PLATFORM_DOMAINS.flatMap((domain) => [
+      { fromEmail: { endsWith: `@${domain}` } },
+      { fromEmail: { endsWith: `.${domain}` } },
+    ]),
+  ];
+}
+
+/**
+ * Senders of issues already stored from the days when the inbox was guessed
+ * at (The Economist, The New Yorker…). They're hidden now unless approved, so
+ * offer them first: one tap brings a real subscription back.
+ */
+export async function storedSenderSuggestions(userId: string) {
+  const approved = new Set(await approvedSenderEmails(userId));
+  const groups = await prisma.newsletterIssue.groupBy({
+    by: ["fromEmail", "fromName"],
+    where: { userId },
+    _count: { _all: true },
+  });
+  return groups
+    .filter((g) => !approved.has(g.fromEmail) && !isPlatformSender(g.fromEmail))
+    .map((g) => ({ email: g.fromEmail, name: g.fromName, count: g._count._all, lastSubject: "" }))
+    .sort((a, b) => b.count - a.count);
 }
 
 /**
@@ -306,25 +335,5 @@ async function countNewsletterSenders(
       prev.count += 1;
       counts.set(email, prev);
     }
-  }
-}
-
-/**
- * Issues stored before lead images existed have imageUrl = null. Fill a
- * batch per sync from the HTML we already have (no Gmail calls), so photos
- * appear on older issues without a separate migration job.
- */
-async function backfillLeadImages(userId: string, batch = 40) {
-  const rows = await prisma.newsletterIssue.findMany({
-    where: { userId, imageUrl: null },
-    orderBy: { receivedAt: "desc" },
-    take: batch,
-    select: { id: true, html: true },
-  });
-  for (const row of rows) {
-    await prisma.newsletterIssue.update({
-      where: { id: row.id },
-      data: { imageUrl: pickLeadImage(row.html) ?? "" },
-    });
   }
 }

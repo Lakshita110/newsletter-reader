@@ -1087,41 +1087,6 @@ body:has(.reader-toolbar) .global-theme-toggle {
   .today-row-title {
     font-size: 18px;
   }
-  /* Newsletters are what she reads most closely, so they get cards with
-     the issue's lead image on top rather than a row in a list. */
-  .today-section-newsletters .today-list {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-  }
-  .today-section-newsletters .today-list > li {
-    border: 1px solid var(--faint);
-    border-radius: 14px;
-    overflow: hidden;
-  }
-  .today-section-newsletters .today-row {
-    padding: 14px 16px 18px;
-    height: 100%;
-  }
-  .today-section-newsletters .swipe-row,
-  .today-section-newsletters .swipe-fg {
-    height: 100%;
-  }
-  .today-section-newsletters .today-row-thumb {
-    float: none;
-    display: block;
-    width: calc(100% + 32px);
-    height: 168px;
-    margin: -14px -16px 12px;
-    border-radius: 0;
-  }
-  .today-section-newsletters .today-row-snippet {
-    -webkit-line-clamp: 3;
-  }
-  .today-section-newsletters .today-row-actions {
-    top: 10px;
-    bottom: auto;
-  }
 }
 @media (min-width: 960px) {
   .today-shell {
@@ -1148,4 +1113,13 @@ body:has(.reader-toolbar) .global-theme-toggle {
   body:has(.app-nav) .global-theme-toggle {
     bottom: 16px;
   }
+}
+.today-section-note {
+  margin: 8px 2px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.today-section-note a {
+  color: inherit;
+  text-decoration: underline;
 }

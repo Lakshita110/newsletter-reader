@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildInboxQuery,
   buildSenderQuery,
   extractWebUrl,
   FIRST_SYNC_LOOKBACK_DAYS,
   INCREMENTAL_OVERLAP_MS,
   normalizeSenderEmail,
   syncWindowStart,
+  decodeHtmlEntities,
   isPlatformSender,
   QUERY_WIDENED_AT,
 } from "./newsletter-sync-helpers";
@@ -32,14 +32,6 @@ describe("buildSenderQuery", () => {
     expect(q.startsWith("{from:a@x.com from:b@y.com from:substack.com ")).toBe(true);
     expect(q).toContain(`after:${after.getTime() / 1000} -in:chats -in:spam -in:trash -in:sent`);
     expect(q).not.toMatch(/in:inbox/);
-  });
-});
-
-describe("buildInboxQuery", () => {
-  it("searches the inbox plus newsletter platforms wherever they were filed", () => {
-    const q = buildInboxQuery(new Date(0));
-    expect(q).toMatch(/^\{in:inbox from:substack\.com from:stratechery\.com /);
-    expect(q).toContain("} after:0 -in:chats -in:spam -in:trash -in:sent");
   });
 });
 
@@ -88,5 +80,13 @@ describe("extractWebUrl", () => {
   it("returns null for empty input", () => {
     expect(extractWebUrl(undefined)).toBeNull();
     expect(extractWebUrl("")).toBeNull();
+  });
+});
+
+describe("decodeHtmlEntities", () => {
+  it("decodes the entities Gmail leaves in snippets", () => {
+    expect(decodeHtmlEntities("Trump&#39;s &quot;conquest&quot; &amp; more &#x2014; x")).toBe(
+      'Trump\'s "conquest" & more \u2014 x'
+    );
   });
 });
