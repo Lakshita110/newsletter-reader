@@ -56,12 +56,22 @@ export async function connectGmailAccount(
   accessToken: string,
   expiresInMs: number
 ): Promise<void> {
-  const account = await prisma.gmailAccount.upsert({
+  const data = { email, refreshTokenEnc: encryptSecret(refreshToken), tokenError: null, syncedAt: null };
+  const existing = await prisma.gmailAccount.findUnique({
     where: { userId_email: { userId, email } },
-    update: { refreshTokenEnc: encryptSecret(refreshToken), tokenError: null, syncedAt: null },
-    create: { userId, email, refreshTokenEnc: encryptSecret(refreshToken) },
     select: { id: true },
   });
+  // The mailbox carried over from the single-mailbox days may have no address
+  // recorded (it's filled in on the first successful sync). If its access
+  // died before that, reconnecting must claim that row: creating a second
+  // one left the old row stuck as an unnamed, expired mailbox forever.
+  const unnamed = existing
+    ? null
+    : await prisma.gmailAccount.findFirst({ where: { userId, email: null }, select: { id: true } });
+  const target = existing ?? unnamed;
+  const account = target
+    ? await prisma.gmailAccount.update({ where: { id: target.id }, data, select: { id: true } })
+    : await prisma.gmailAccount.create({ data: { userId, ...data }, select: { id: true } });
   accessTokenCache.set(account.id, { accessToken, expiresAt: Date.now() + expiresInMs });
 }
 

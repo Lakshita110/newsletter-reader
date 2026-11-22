@@ -4,6 +4,8 @@ const user = { upsert: vi.fn() };
 const gmailAccount = {
   findUnique: vi.fn(),
   findMany: vi.fn(),
+  findFirst: vi.fn(),
+  create: vi.fn(),
   update: vi.fn(),
   upsert: vi.fn(),
   deleteMany: vi.fn(),
@@ -99,14 +101,35 @@ describe("saveLoginGmailToken", () => {
 });
 
 describe("connectGmailAccount", () => {
-  it("adds the mailbox, rewinds its sync, and primes the token cache", async () => {
-    gmailAccount.upsert.mockResolvedValue({ id: "g2" });
+  it("adds a new mailbox and primes the token cache", async () => {
+    gmailAccount.findUnique.mockResolvedValue(null);
+    gmailAccount.findFirst.mockResolvedValue(null);
+    gmailAccount.create.mockResolvedValue({ id: "g2" });
     vi.stubGlobal("fetch", vi.fn());
     await connectGmailAccount("u1", "news@b.c", "rt2", "at2", 3_600_000);
-    const arg = gmailAccount.upsert.mock.calls[0][0];
-    expect(arg.where).toEqual({ userId_email: { userId: "u1", email: "news@b.c" } });
-    expect(arg.update).toMatchObject({ syncedAt: null, tokenError: null });
+    expect(gmailAccount.create.mock.calls[0][0].data).toMatchObject({ userId: "u1", email: "news@b.c" });
     expect(await getGmailAccessToken("g2")).toBe("at2");
+  });
+
+  it("reconnecting a known mailbox updates it and rewinds its sync", async () => {
+    gmailAccount.findUnique.mockResolvedValue({ id: "g1" });
+    gmailAccount.update.mockResolvedValue({ id: "g1" });
+    await connectGmailAccount("u1", "news@b.c", "rt2", "at2", 3_600_000);
+    expect(gmailAccount.update.mock.calls[0][0]).toMatchObject({
+      where: { id: "g1" },
+      data: { email: "news@b.c", tokenError: null, syncedAt: null },
+    });
+    expect(gmailAccount.create).not.toHaveBeenCalled();
+  });
+
+  it("claims the carried-over mailbox with no recorded address instead of adding a duplicate", async () => {
+    gmailAccount.findUnique.mockResolvedValue(null);
+    gmailAccount.findFirst.mockResolvedValue({ id: "old" });
+    gmailAccount.update.mockResolvedValue({ id: "old" });
+    await connectGmailAccount("u1", "news@b.c", "rt2", "at2", 3_600_000);
+    expect(gmailAccount.findFirst).toHaveBeenCalledWith({ where: { userId: "u1", email: null }, select: { id: true } });
+    expect(gmailAccount.update.mock.calls[0][0].where).toEqual({ id: "old" });
+    expect(gmailAccount.create).not.toHaveBeenCalled();
   });
 });
 

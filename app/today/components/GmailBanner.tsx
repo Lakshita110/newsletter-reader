@@ -34,7 +34,7 @@ export function GmailBanner({ enabled }: { enabled: boolean }) {
       <span>
         {accounts.length === 0
           ? "Connect Gmail to pull in your newsletters."
-          : `Access to ${expired.map((a) => a.email ?? "a mailbox").join(", ")} expired, so its new newsletters aren't coming in.`}
+          : `Access to ${expired.map((a) => a.email ?? "your newsletter Gmail").join(", ")} expired, so its new newsletters aren't coming in.`}
       </span>
       <a href="/api/gmail/connect">{accounts.length === 0 ? "Connect" : "Reconnect"}</a>
     </div>
