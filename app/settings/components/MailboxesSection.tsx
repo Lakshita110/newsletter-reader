@@ -53,7 +53,8 @@ export default function MailboxesSection() {
         {accounts?.map((account) => (
           <li key={account.id}>
             <span className="settings-list-name">
-              {account.email ?? "Gmail (address appears after the next sync)"}
+              {account.email ??
+                (account.connected ? "Gmail (address appears after the next sync)" : "Your newsletter Gmail")}
               {!account.connected && <span className="settings-warn">access expired</span>}
             </span>
             {!account.connected && (
