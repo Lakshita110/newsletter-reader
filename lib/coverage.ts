@@ -43,12 +43,20 @@ function containsWord(haystack: string, word: string): boolean {
   return new RegExp(`(^|[^A-Za-z0-9])${escaped}('s)?([^A-Za-z0-9]|$)`).test(haystack);
 }
 
+/**
+ * How much of a newsletter counts as "what it's about". Matching names
+ * anywhere in a long issue folded nearly every news story: a daily digest
+ * mentions Trump, China and Nvidia somewhere every day. The subject and
+ * opening are where a newsletter's actual topic is.
+ */
+export const COVERAGE_LEDE_CHARS = 1500;
+
 export function findCoverage(storyTitle: string, sources: CoverageSource[]): Coverage | null {
   const entities = extractEntities(storyTitle);
   if (entities.length < 2) return null;
   let best: Coverage | null = null;
   for (const source of sources) {
-    const hay = `${source.subject}\n${source.text}`;
+    const hay = `${source.subject}\n${source.text.slice(0, COVERAGE_LEDE_CHARS)}`;
     const matched = entities.filter((e) => containsWord(hay, e));
     if (matched.length >= 2 && matched.length / entities.length >= 0.6) {
       if (!best || matched.length > best.matched.length) {

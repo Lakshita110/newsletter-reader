@@ -252,7 +252,7 @@ export async function getStoredNewsletterFeed(userId: string): Promise<FeedItem[
   }));
 }
 
-async function approvedSenderEmails(userId: string): Promise<string[]> {
+export async function approvedSenderEmails(userId: string): Promise<string[]> {
   const rows = await prisma.newsletterSender.findMany({
     where: { userId, isActive: true },
     select: { email: true },
@@ -261,7 +261,7 @@ async function approvedSenderEmails(userId: string): Promise<string[]> {
 }
 
 /** Prisma filter matching issues from an approved sender or a newsletter platform domain. */
-function subscribedSenderFilter(senders: string[]) {
+export function subscribedSenderFilter(senders: string[]) {
   return [
     { fromEmail: { in: senders } },
     ...NEWSLETTER_PLATFORM_DOMAINS.flatMap((domain) => [

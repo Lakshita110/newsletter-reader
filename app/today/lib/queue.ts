@@ -31,7 +31,7 @@ export const MAX_UNPICKED_STORIES = 12;
  * unpicked stories, newest first.
  *
  * - "In progress" sits above everything so a half-read piece is never buried.
- * - Stories a newsletter already covered are folded, not dropped.
+ * - Unpicked stories a newsletter already covered are folded, not dropped.
  * - Saved is its own tab and never auto-expires.
  */
 export function buildTodayQueue({
@@ -70,7 +70,10 @@ export function buildTodayQueue({
   }
 
   picked.sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
-  for (const item of [...picked, ...unpicked.slice(0, MAX_UNPICKED_STORIES)]) {
+  // The ranker's picks are the day's top stories: always show them, even if
+  // a newsletter touched on the same news. Only unpicked extras get folded.
+  queue.stories.push(...picked);
+  for (const item of unpicked.slice(0, MAX_UNPICKED_STORIES)) {
     (item.coveredBy ? queue.covered : queue.stories).push(item);
   }
   return queue;

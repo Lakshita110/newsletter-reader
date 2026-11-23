@@ -85,4 +85,17 @@ describe("buildTodayQueue", () => {
     expect(q.covered.map((i) => i.id)).toEqual(["r-a"]);
     expect(flattenQueue(q).map((i) => i.id)).toEqual(["r-b"]);
   });
+
+  it("never folds a story the ranker picked, even if a newsletter mentioned it", () => {
+    const q = build(
+      [
+        item("r-big", "rss", daysAgo(0), {
+          coveredBy: { byId: "g1", publicationName: "The Economist Today", subject: "x", matched: ["NATO", "Ukraine"] },
+        }),
+      ],
+      { recommendedIds: ["r-big"] }
+    );
+    expect(q.stories.map((i) => i.id)).toEqual(["r-big"]);
+    expect(q.covered).toEqual([]);
+  });
 });
