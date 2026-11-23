@@ -80,10 +80,18 @@ export function buildTodayQueue({
   const extras = unpicked.slice(0, MAX_UNPICKED_STORIES);
   // The ranker's picks are the day's top stories: always show them, even if
   // a newsletter touched on the same news. Only unpicked extras get folded.
-  // Before the day's first ranking there are no picks, so the newest
-  // unfolded stories stand in at the top.
-  const lead = picked.length > 0 ? picked : extras.filter((item) => !item.coveredBy);
-  const top = lead.slice(0, TOP_STORIES_FIRST);
+  //
+  // Top is ordered by how many of her sources run the story, ranker order
+  // breaking ties. The ranking runs a few times a day, so news that breaks
+  // after it isn't among the picks; counting coverage at load time still
+  // puts the story everyone is running first (and fixes the rare ranker
+  // misorder) without paying for another ranking call.
+  const lead = [...picked, ...extras.filter((item) => !item.coveredBy)];
+  const top = lead
+    .map((item, order) => ({ item, order }))
+    .sort((a, b) => (b.item.coverage ?? 0) - (a.item.coverage ?? 0) || a.order - b.order)
+    .slice(0, TOP_STORIES_FIRST)
+    .map(({ item }) => item);
   const topIds = new Set(top.map((item) => item.id));
   queue.top.push(...top);
   queue.stories.push(...picked.filter((item) => !topIds.has(item.id)));

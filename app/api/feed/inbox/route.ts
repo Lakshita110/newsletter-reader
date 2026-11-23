@@ -13,8 +13,11 @@ import type { FeedItem } from "@/lib/rss-candidates";
 import { getSessionUser } from "@/lib/session-user";
 import { getLatestRankedIds, selectRankedIds } from "@/lib/rank-snapshot";
 import { modelLabel } from "@/lib/openrouter";
+import { syncRssSource } from "@/lib/rss";
 
 export const dynamic = "force-dynamic";
+// Gmail sync and the stale-feed refresh each have their own budget under this.
+export const maxDuration = 30;
 
 async function getUser() {
   const sessionUser = await getSessionUser();
@@ -81,6 +84,37 @@ async function getNewsletterItems(userId: string) {
   return getStoredNewsletterFeed(userId);
 }
 
+/** Feeds older than this are re-fetched when Today opens. */
+const RSS_STALE_MS = 30 * 60 * 1000;
+/** Today never waits longer than this on slow feeds; they finish in the background of the next open. */
+const RSS_REFRESH_BUDGET_MS = 6000;
+
+/**
+ * The cron only fetches feeds a few times a day, so news that broke since
+ * then wasn't in Today at all. Re-fetch her stale feeds on open, bounded by
+ * a time budget. A failing feed is recorded by syncRssSource (and shown as
+ * "not updating" in Settings), so it's logged here and skipped.
+ */
+async function refreshStaleFeeds(userId: string) {
+  const stale = await prisma.userRssSubscription.findMany({
+    where: {
+      userId,
+      isActive: true,
+      source: {
+        isActive: true,
+        OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: new Date(Date.now() - RSS_STALE_MS) } }],
+      },
+    },
+    select: { rssSourceId: true },
+  });
+  if (stale.length === 0) return;
+  const syncs = Promise.allSettled(stale.map((row) => syncRssSource(row.rssSourceId))).then((results) => {
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed > 0) console.warn(`[feed] ${failed}/${results.length} stale feeds failed to refresh`);
+  });
+  await Promise.race([syncs, new Promise((resolve) => setTimeout(resolve, RSS_REFRESH_BUDGET_MS))]);
+}
+
 const COVERAGE_WINDOW_DAYS = 4;
 
 /**
@@ -125,7 +159,7 @@ export async function GET() {
 
   const [gmailItems, ranked, webItems] = await Promise.all([
     getNewsletterItems(auth.userId),
-    getRankedFeed(auth.userId, auth.recommendationCap),
+    refreshStaleFeeds(auth.userId).then(() => getRankedFeed(auth.userId, auth.recommendationCap)),
     getSavedArticleFeed(auth.userId),
   ]);
 

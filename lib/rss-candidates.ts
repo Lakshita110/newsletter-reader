@@ -27,6 +27,8 @@ export type FeedItem = {
   isOverflow?: boolean;
   externalUrl?: string;
   imageUrl?: string;
+  /** How many of her other sources run the same story (RSS only, lib/story-buzz.ts). */
+  coverage?: number;
   /** Set when a recent newsletter already covered this story (see lib/coverage.ts). */
   coveredBy?: { byId: string; publicationName: string; subject: string; matched: string[] };
 };
@@ -201,6 +203,9 @@ export async function buildRankingCandidates(params: {
       snippet: c.item.snippet,
     }))
   );
+  for (const candidate of sortedFallback) {
+    candidate.feedItem.coverage = coverage.get(candidate.feedItem.id) ?? 0;
+  }
   const aiItems: AiRankItem[] = sortedFallback.map((candidate) => ({
     id: candidate.feedItem.id,
     title: candidate.item.title,
