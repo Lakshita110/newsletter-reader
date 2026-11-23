@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractEntities, findCoverage, htmlToPlainText } from "./coverage";
+import { COVERAGE_LEDE_CHARS, extractEntities, findCoverage, htmlToPlainText } from "./coverage";
 
 describe("extractEntities", () => {
   it("pulls proper nouns and acronyms, dropping stopwords and possessives", () => {
@@ -37,5 +37,16 @@ describe("findCoverage", () => {
 describe("htmlToPlainText", () => {
   it("strips tags, scripts, and entities", () => {
     expect(htmlToPlainText("<style>x{}</style><p>Apple&nbsp;&amp; <b>Google</b></p>").trim()).toBe("Apple & Google");
+  });
+
+  it("ignores names that only appear deep in a long issue, so a daily digest doesn't fold every story", () => {
+    const digest = {
+      id: "e1",
+      publicationName: "The Economist Today",
+      subject: "The words to watch in 2027",
+      text: `${"Lexicon and language notes. ".repeat(80)} Elsewhere: NATO offers Ukraine a membership path.`,
+    };
+    expect(digest.text.indexOf("NATO")).toBeGreaterThan(COVERAGE_LEDE_CHARS);
+    expect(findCoverage("NATO offers Ukraine a path to membership", [digest])).toBeNull();
   });
 });

@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildRankingCandidates } from "@/lib/rss-candidates";
-import { getStoredNewsletterFeed, syncAllMailboxes } from "@/lib/newsletter-sync";
+import {
+  approvedSenderEmails,
+  getStoredNewsletterFeed,
+  subscribedSenderFilter,
+  syncAllMailboxes,
+} from "@/lib/newsletter-sync";
 import { getSavedArticleFeed } from "@/lib/saved-articles";
 import { findCoverage, htmlToPlainText, type CoverageSource } from "@/lib/coverage";
 import type { FeedItem } from "@/lib/rss-candidates";
@@ -86,8 +91,15 @@ async function markCoveredStories(userId: string, items: FeedItem[]) {
   const stories = items.filter((it) => it.sourceKind === "rss");
   if (stories.length === 0) return;
   try {
+    const senders = await approvedSenderEmails(userId);
     const issues = await prisma.newsletterIssue.findMany({
-      where: { userId, receivedAt: { gte: new Date(Date.now() - COVERAGE_WINDOW_DAYS * 86_400_000) } },
+      // Only newsletters she subscribes to (the ones Today shows) can fold a
+      // story; hidden mail must not make news disappear.
+      where: {
+        userId,
+        receivedAt: { gte: new Date(Date.now() - COVERAGE_WINDOW_DAYS * 86_400_000) },
+        OR: subscribedSenderFilter(senders),
+      },
       select: { gmailMessageId: true, fromName: true, subject: true, html: true, text: true },
       orderBy: { receivedAt: "desc" },
       take: 40,
