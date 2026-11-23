@@ -104,4 +104,16 @@ describe("buildTodayQueue", () => {
     expect(q.top.map((i) => i.id)).toEqual(["r-big"]);
     expect(q.covered).toEqual([]);
   });
+
+  it("leads with the most widely covered story, even one that broke after the ranking", () => {
+    const q = build(
+      [
+        item("pick-a", "rss", hoursAgo(5), { coverage: 1 }),
+        item("pick-b", "rss", hoursAgo(6), { coverage: 0 }),
+        item("breaking", "rss", hoursAgo(1), { coverage: 4 }),
+      ],
+      { recommendedIds: ["pick-a", "pick-b"] }
+    );
+    expect(q.top.map((i) => i.id)).toEqual(["breaking", "pick-a", "pick-b"]);
+  });
 });
