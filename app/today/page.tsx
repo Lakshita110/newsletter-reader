@@ -19,8 +19,9 @@ type Undo = { item: InboxItem; kind: "done" | "save"; prevStatus?: FeedReadStatu
 
 const SECTION_LABELS: Record<QueueSection, string> = {
   continue: "Continue reading",
+  top: "Top stories",
   newsletters: "Newsletters",
-  stories: "Top stories",
+  stories: "More stories",
   covered: "Already in your newsletters",
   saved: "Saved for later",
 };
@@ -116,7 +117,8 @@ export default function TodayPage() {
     [items, statusById, savedById, recommendedIds]
   );
   const ordered = useMemo(() => (tab === "saved" ? queue.saved : flattenQueue(queue)), [queue, tab]);
-  const sections: QueueSection[] = tab === "saved" ? ["saved"] : ["continue", "newsletters", "stories", "covered"];
+  const sections: QueueSection[] =
+    tab === "saved" ? ["saved"] : ["continue", "top", "newsletters", "stories", "covered"];
 
   // Make the top of the queue readable offline.
   const orderedIds = ordered.map((i) => i.id).join(",");
@@ -226,7 +228,7 @@ export default function TodayPage() {
       });
   };
 
-  const totalToday = queue.continue.length + queue.newsletters.length + queue.stories.length;
+  const totalToday = queue.continue.length + queue.top.length + queue.newsletters.length + queue.stories.length;
 
   return (
     <main className="today-shell">
@@ -327,7 +329,7 @@ export default function TodayPage() {
             <h2 className="today-section-title">
               {SECTION_LABELS[section]} <span>{list.length}</span>
             </h2>
-            {section === "stories" && (
+            {section === "top" && (
               <RankStatusLine
                 meta={rankMeta}
                 hasPicks={recommendedIds.length > 0}

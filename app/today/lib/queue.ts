@@ -1,6 +1,6 @@
 import type { FeedReadStatus, InboxItem } from "@/app/lib/feed-types";
 
-export type QueueSection = "continue" | "newsletters" | "stories" | "covered" | "saved";
+export type QueueSection = "continue" | "top" | "newsletters" | "stories" | "covered" | "saved";
 
 export type QueueInput = {
   items: InboxItem[];
@@ -17,18 +17,25 @@ export type TodayQueue = Record<QueueSection, InboxItem[]>;
 export const NEWSLETTER_WINDOW_DAYS = 7;
 /** RSS stories the ranker didn't pick are capped, so the list stays finishable. */
 export const MAX_UNPICKED_STORIES = 12;
+/**
+ * How many of the ranker's picks go above the newsletters. With a dozen or
+ * more newsletters a day, stories placed after all of them were effectively
+ * invisible; the day's biggest few news items belong at the very top.
+ */
+export const TOP_STORIES_FIRST = 5;
 
 /**
- * Build Today: one scroll, newsletters first, then the day's top stories.
+ * Build Today: one scroll. The day's top few stories, then newsletters, then
+ * the rest of the stories.
  *
- * Why newsletters lead (and aren't ranked): they're the writers she chose to
- * hear from, Pragmatic Engineer, Stratechery and her Substacks, and each
- * issue is worth opening. Mixing them into the story ranking let a so-so
- * news item push an issue down the list. So they sit on top, newest first.
+ * The ranker leads with the day's most widely covered news (lib/story-buzz.ts),
+ * so its first few picks open the page: the big headlines take seconds to
+ * scan and shouldn't sit under a long list of newsletters.
  *
- * Stories follow in the ranker's order (which leads with the day's most
- * widely covered news, see lib/story-buzz.ts), then a capped number of
- * unpicked stories, newest first.
+ * Newsletters come next, unranked and newest first: they're the writers she
+ * chose to hear from, and mixing them into the story ranking let a so-so news
+ * item push an issue down. The rest of the picks follow, then a capped
+ * number of unpicked stories, newest first.
  *
  * - "In progress" sits above everything so a half-read piece is never buried.
  * - Unpicked stories a newsletter already covered are folded, not dropped.
@@ -45,7 +52,7 @@ export function buildTodayQueue({
   const time = (item: InboxItem) => new Date(item.date).getTime() || 0;
   const rank = new Map(recommendedIds.map((id, i) => [id, i]));
 
-  const queue: TodayQueue = { continue: [], newsletters: [], stories: [], covered: [], saved: [] };
+  const queue: TodayQueue = { continue: [], top: [], newsletters: [], stories: [], covered: [], saved: [] };
   const picked: InboxItem[] = [];
   const unpicked: InboxItem[] = [];
   const seen = new Set<string>();
@@ -70,10 +77,18 @@ export function buildTodayQueue({
   }
 
   picked.sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+  const extras = unpicked.slice(0, MAX_UNPICKED_STORIES);
   // The ranker's picks are the day's top stories: always show them, even if
   // a newsletter touched on the same news. Only unpicked extras get folded.
-  queue.stories.push(...picked);
-  for (const item of unpicked.slice(0, MAX_UNPICKED_STORIES)) {
+  // Before the day's first ranking there are no picks, so the newest
+  // unfolded stories stand in at the top.
+  const lead = picked.length > 0 ? picked : extras.filter((item) => !item.coveredBy);
+  const top = lead.slice(0, TOP_STORIES_FIRST);
+  const topIds = new Set(top.map((item) => item.id));
+  queue.top.push(...top);
+  queue.stories.push(...picked.filter((item) => !topIds.has(item.id)));
+  for (const item of extras) {
+    if (topIds.has(item.id)) continue;
     (item.coveredBy ? queue.covered : queue.stories).push(item);
   }
   return queue;
@@ -81,5 +96,11 @@ export function buildTodayQueue({
 
 /** Reading order used for "Done → next" inside the reader. */
 export function flattenQueue(queue: TodayQueue, includeSaved = false): InboxItem[] {
-  return [...queue.continue, ...queue.newsletters, ...queue.stories, ...(includeSaved ? queue.saved : [])];
+  return [
+    ...queue.continue,
+    ...queue.top,
+    ...queue.newsletters,
+    ...queue.stories,
+    ...(includeSaved ? queue.saved : []),
+  ];
 }
