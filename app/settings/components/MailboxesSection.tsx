@@ -4,13 +4,31 @@ import { useEffect, useState } from "react";
 
 type Account = { id: string; email: string | null; connected: boolean; error: string | null };
 
+/**
+ * What went wrong, in words she can act on. Keys are the `reason` values the
+ * callback route sends; anything unknown still shows the raw reason so a
+ * failure is never silent.
+ */
+const CONNECT_ERRORS: Record<string, string> = {
+  state:
+    "The sign-in came back somewhere the app didn't expect (this happens when the phone app opens Google in a separate browser). Try again from the browser, not the home-screen app.",
+  "no-refresh-token":
+    "Google didn't hand over offline access. Remove Cluck's Feed at myaccount.google.com/permissions for that account, then try again.",
+  token: "Google rejected the sign-in code. Try again.",
+  profile: "Connected, but couldn't read that mailbox's address. Try again.",
+};
+
 /** Read once from ?gmail=… after coming back from Google's account picker. */
-function readConnectResult(): string | null {
-  if (typeof window === "undefined") return null;
-  const result = new URLSearchParams(window.location.search).get("gmail");
+export function readConnectResult(search: string): string | null {
+  const params = new URLSearchParams(search);
+  const result = params.get("gmail");
+  const reason = params.get("reason");
   if (result === "connected") return "Mailbox connected. Its newsletters from the last 30 days will show up shortly.";
   if (result === "cancelled") return "Nothing was changed.";
-  if (result === "error") return "Couldn't connect that account. Please try again.";
+  if (result === "error") {
+    const why = reason ? (CONNECT_ERRORS[reason] ?? `Google said: ${reason}.`) : "Please try again.";
+    return `Couldn't connect that account. ${why}`;
+  }
   return null;
 }
 
@@ -21,7 +39,9 @@ function readConnectResult(): string | null {
  */
 export default function MailboxesSection() {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
-  const [notice, setNotice] = useState<string | null>(readConnectResult);
+  const [notice, setNotice] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : readConnectResult(window.location.search)
+  );
 
   const load = () =>
     fetch("/api/gmail/status", { cache: "no-store" })
