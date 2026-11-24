@@ -15,6 +15,8 @@ export type InboxItem = {
   /** How many of her other sources run the same story (RSS only). */
   coverage?: number;
   coveredBy?: { byId: string; publicationName: string; subject: string; matched: string[] };
+  /** Estimated minutes to read (newsletters only, lib/read-time.ts). */
+  readMinutes?: number;
 };
 
 export type FeedReadStatus = "unread" | "in-progress" | "read";

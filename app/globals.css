@@ -319,6 +319,61 @@ button.filter-select {
   color: var(--muted);
   font-size: 14px;
 }
+.recap-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+.recap-stats div {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+.recap-stats strong {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 28px;
+  line-height: 1.1;
+}
+.recap-stats span,
+.recap-note {
+  color: var(--muted);
+  font-size: 13px;
+}
+.recap-note {
+  margin: 0 0 8px;
+}
+.recap-hl {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.recap-footer {
+  margin: 24px 0 0;
+  text-align: center;
+  font-size: 13px;
+}
+.recap-footer a {
+  color: var(--muted);
+}
+.recap-more {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.today-text-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
 .today-icon-btn {
   width: 40px;
   height: 40px;

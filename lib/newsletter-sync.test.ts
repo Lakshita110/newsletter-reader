@@ -12,6 +12,12 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 const getGmailAccessToken = vi.fn();
 vi.mock("@/lib/gmail-token", () => ({ getGmailAccessToken: (id: string) => getGmailAccessToken(id) }));
 
+const newsletterWordCounts = vi.fn();
+vi.mock("@/lib/read-time", async (importActual) => ({
+  ...(await importActual<typeof import("./read-time")>()),
+  newsletterWordCounts: (userId: string, ids: string[]) => newsletterWordCounts(userId, ids),
+}));
+
 const gmail = { users: { getProfile: vi.fn(), messages: { list: vi.fn(), get: vi.fn() } } };
 vi.mock("googleapis", () => ({
   google: {
@@ -169,10 +175,21 @@ describe("getStoredNewsletterFeed", () => {
         publicationKey: "economist",
         subject: "The words to watch",
         snippet: "Trump&#39;s love of conquest",
-        receivedAt: new Date("2026-11-20T08:00:00Z"),
+        receivedAt: new Date(Date.now() - 2 * 24 * 3600e3),
+        webUrl: null,
+      },
+      {
+        gmailMessageId: "old",
+        fromEmail: "today@economist.com",
+        fromName: "The Economist Today",
+        publicationKey: "economist",
+        subject: "Two months ago",
+        snippet: "",
+        receivedAt: new Date(Date.now() - 60 * 24 * 3600e3),
         webUrl: null,
       },
     ]);
+    newsletterWordCounts.mockResolvedValue(new Map([["e1", 2300]]));
 
     const feed = await getStoredNewsletterFeed("u1");
 
@@ -182,5 +199,9 @@ describe("getStoredNewsletterFeed", () => {
     expect(where.OR).toContainEqual({ fromEmail: { endsWith: ".substack.com" } });
     expect(feed[0].snippet).toBe("Trump's love of conquest");
     expect(feed[0].imageUrl).toBeUndefined();
+    // Read time only for issues new enough to show (30 days); 2300 words ≈ 10 min.
+    expect(newsletterWordCounts).toHaveBeenCalledWith("u1", ["e1"]);
+    expect(feed[0].readMinutes).toBe(10);
+    expect(feed[1].readMinutes).toBeUndefined();
   });
 });

@@ -67,6 +67,8 @@ export default function HighlightsPage() {
             {rows === null
               ? "Loading…"
               : `${rows.length} from ${groups.length} article${groups.length === 1 ? "" : "s"}`}
+            {" · "}
+            <Link href="/recap">Your week →</Link>
           </p>
         </div>
       </header>

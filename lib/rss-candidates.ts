@@ -31,6 +31,8 @@ export type FeedItem = {
   coverage?: number;
   /** Set when a recent newsletter already covered this story (see lib/coverage.ts). */
   coveredBy?: { byId: string; publicationName: string; subject: string; matched: string[] };
+  /** Estimated minutes to read (newsletters only, lib/read-time.ts). */
+  readMinutes?: number;
 };
 
 type RssItemRow = {
