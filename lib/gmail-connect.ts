@@ -13,7 +13,12 @@ export const GMAIL_CONNECT_SCOPE = "openid email https://www.googleapis.com/auth
 export const STATE_COOKIE = "gmail_connect_state";
 
 export function appBaseUrl(requestUrl: string): string {
-  // NEXTAUTH_URL is the canonical public URL; the request origin is the fallback (previews, local dev).
+  // On Vercel, use the host the request actually came in on, exactly like
+  // NextAuth does there (it ignores NEXTAUTH_URL when VERCEL is set). Prod's
+  // NEXTAUTH_URL was left as http://localhost:3000, which sign-in never
+  // noticed but which sent this flow to localhost.
+  if (process.env.VERCEL) return new URL(requestUrl).origin;
+  // Elsewhere (local dev) NEXTAUTH_URL is the canonical URL, else the request origin.
   return (process.env.NEXTAUTH_URL || new URL(requestUrl).origin).replace(/\/+$/, "");
 }
 

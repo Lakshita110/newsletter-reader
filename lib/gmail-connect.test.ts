@@ -20,6 +20,14 @@ describe("gmail-connect", () => {
     expect(redirectUri("http://localhost:3000/api/gmail/connect")).toBe("http://localhost:3000/api/gmail/callback");
   });
 
+  it("uses the real request host on Vercel even if NEXTAUTH_URL says localhost", () => {
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("NEXTAUTH_URL", "http://localhost:3000");
+    expect(redirectUri("https://newsletter-reader-two.vercel.app/api/gmail/connect")).toBe(
+      "https://newsletter-reader-two.vercel.app/api/gmail/callback"
+    );
+  });
+
   it("only accepts the exact state it issued", () => {
     expect(statesMatch("abc", "abc")).toBe(true);
     expect(statesMatch("abc", "abd")).toBe(false);
