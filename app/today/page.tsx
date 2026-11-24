@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { SwipeRow } from "./components/SwipeRow";
+import { SwipeHint, SwipeRow } from "./components/SwipeRow";
 import { AppNav } from "@/app/components/AppNav";
 import { GmailBanner } from "./components/GmailBanner";
 import { faviconDomain } from "@/lib/lead-image";
@@ -265,6 +265,7 @@ export default function TodayPage() {
 
       {error && <div className="today-banner">{error}</div>}
       <GmailBanner enabled={Boolean(session?.user?.email)} />
+      {ordered.length > 0 && <SwipeHint />}
 
       {sections.map((section) => {
         const list = queue[section];

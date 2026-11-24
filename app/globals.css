@@ -388,6 +388,19 @@ button.filter-select {
   touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
+  /* iOS long-press link preview would otherwise fight a slow swipe. */
+  -webkit-touch-callout: none;
+}
+.swipe-hint {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+@media (hover: hover) and (pointer: fine) {
+  /* Mouse users get hover buttons, not swipes. */
+  .swipe-hint {
+    display: none;
+  }
 }
 .today-row {
   display: block;

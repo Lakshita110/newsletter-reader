@@ -1,8 +1,11 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 const TRIGGER_PX = 88;
+/** How long the row takes to slide off screen before it's removed from the list. */
+const FLY_MS = 180;
+const HINT_KEY = "nr_swipe_hint_seen";
 /** Horizontal movement needed before we treat a touch as a swipe, not a scroll. */
 const LOCK_PX = 10;
 
@@ -13,6 +16,41 @@ const LOCK_PX = 10;
  * drag, and `touch-action: pan-y` so vertical scrolling stays native — we
  * only take over once the gesture is clearly horizontal.
  */
+/** A completed swipe: buzz (Android only; iOS has no vibrate API) and retire the hint. */
+function swiped() {
+  navigator.vibrate?.(10);
+  try {
+    window.localStorage.setItem(HINT_KEY, "1");
+  } catch (error) {
+    console.warn("[swipe] could not remember the hint was seen", error);
+  }
+  window.dispatchEvent(new Event(HINT_KEY));
+}
+
+function hintSeen(): boolean {
+  try {
+    return window.localStorage.getItem(HINT_KEY) === "1";
+  } catch {
+    return true; // storage blocked: don't nag every visit
+  }
+}
+
+function subscribeHint(onChange: () => void) {
+  window.addEventListener(HINT_KEY, onChange);
+  return () => window.removeEventListener(HINT_KEY, onChange);
+}
+
+/**
+ * One-line "how to swipe" note for touch screens, gone after the first swipe.
+ * useSyncExternalStore with a server snapshot of "seen" keeps SSR and the
+ * first client render identical (no hydration mismatch), then reads storage.
+ */
+export function SwipeHint() {
+  const seen = useSyncExternalStore(subscribeHint, hintSeen, () => true);
+  if (seen) return null;
+  return <p className="swipe-hint">Swipe left to dismiss, right to save.</p>;
+}
+
 export function SwipeRow({
   children,
   onDone,
@@ -25,6 +63,9 @@ export function SwipeRow({
   saveLabel?: string;
 }) {
   const [dx, setDx] = useState(0);
+  // Set while a dismissed row slides off. Removing it from the list right away
+  // made it snap back and then vanish, which read as "the swipe didn't work".
+  const [flying, setFlying] = useState(false);
   const [dragging, setDragging] = useState(false);
   const start = useRef<{ x: number; y: number } | null>(null);
   const locked = useRef<"x" | "y" | null>(null);
@@ -46,8 +87,8 @@ export function SwipeRow({
       <div
         className="swipe-fg"
         style={{
-          transform: `translateX(${dx}px)`,
-          transition: dragging ? "none" : "transform 180ms ease",
+          transform: flying ? "translateX(-110%)" : `translateX(${dx}px)`,
+          transition: dragging ? "none" : `transform ${FLY_MS}ms ease`,
         }}
         onPointerDown={(e) => {
           if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -74,8 +115,22 @@ export function SwipeRow({
           }
         }}
         onPointerUp={() => {
-          if (dx <= -TRIGGER_PX) onDone();
-          else if (dx >= TRIGGER_PX) onSave();
+          if (dx <= -TRIGGER_PX) {
+            swiped();
+            setDragging(false);
+            setFlying(true);
+            window.setTimeout(() => {
+              onDone();
+              // If the row stays (e.g. the parent keeps it), bring it back.
+              setFlying(false);
+              reset();
+            }, FLY_MS);
+            return;
+          }
+          if (dx >= TRIGGER_PX) {
+            swiped();
+            onSave();
+          }
           reset();
         }}
         onPointerCancel={reset}
