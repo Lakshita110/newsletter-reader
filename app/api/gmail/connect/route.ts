@@ -6,16 +6,8 @@ export const dynamic = "force-dynamic";
 
 /** Start "Use a different Gmail": send her to Google's account picker. */
 export async function GET(req: Request) {
-  // Google always sends her back to the canonical host (NEXTAUTH_URL). The
-  // state cookie is host-scoped, so if she started on another host (an alias
-  // or a preview URL) the callback would never see it and fail as a "state
-  // mismatch". Bounce to the canonical host first so both ends share cookies.
-  const base = appBaseUrl(req.url);
-  if (new URL(req.url).origin !== new URL(base).origin) {
-    return NextResponse.redirect(`${base}/api/gmail/connect`);
-  }
   const userId = await getSessionUserId();
-  if (!userId) return NextResponse.redirect(`${base}/sign-in`);
+  if (!userId) return NextResponse.redirect(`${appBaseUrl(req.url)}/sign-in`);
   const state = newState();
   const res = NextResponse.redirect(googleAuthUrl(req.url, state));
   res.cookies.set(STATE_COOKIE, state, {
