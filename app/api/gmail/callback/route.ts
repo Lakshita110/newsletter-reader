@@ -16,8 +16,12 @@ type TokenResponse = { access_token?: string; refresh_token?: string; expires_in
  */
 export async function GET(req: Request) {
   const base = appBaseUrl(req.url);
-  const done = (result: string) => {
-    const res = NextResponse.redirect(`${base}/settings?gmail=${result}`);
+  // `reason` goes into the URL so Settings can say *why* it failed instead of
+  // a generic "try again": she can't see Vercel logs, and neither can we.
+  const done = (result: string, reason?: string) => {
+    const query = new URLSearchParams({ gmail: result });
+    if (reason) query.set("reason", reason);
+    const res = NextResponse.redirect(`${base}/settings?${query}`);
     res.cookies.delete({ name: STATE_COOKIE, path: "/api/gmail" });
     return res;
   };
@@ -29,10 +33,14 @@ export async function GET(req: Request) {
   const expected = (await cookies()).get(STATE_COOKIE)?.value;
   if (!statesMatch(expected, params.get("state"))) {
     console.warn("[gmail-connect] state mismatch; ignoring callback");
-    return done("error");
+    return done("error", "state");
   }
   const code = params.get("code");
-  if (!code) return done(params.get("error") === "access_denied" ? "cancelled" : "error");
+  if (!code) {
+    const googleError = params.get("error");
+    console.warn(`[gmail-connect] Google returned no code: error=${googleError}`);
+    return done(googleError === "access_denied" ? "cancelled" : "error", googleError ?? "no-code");
+  }
 
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -50,7 +58,7 @@ export async function GET(req: Request) {
     console.error(
       `[gmail-connect] token exchange failed: status=${tokenRes.status} error=${data.error ?? "no refresh token"}`
     );
-    return done("error");
+    return done("error", data.error ? "token" : "no-refresh-token");
   }
 
   const auth = new google.auth.OAuth2();
@@ -63,7 +71,7 @@ export async function GET(req: Request) {
       return null;
     });
   const email = profile?.data.emailAddress?.toLowerCase();
-  if (!email) return done("error");
+  if (!email) return done("error", "profile");
 
   await connectGmailAccount(userId, email, data.refresh_token, data.access_token, (data.expires_in ?? 3600) * 1000);
   return done("connected");
