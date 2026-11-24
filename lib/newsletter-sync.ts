@@ -5,6 +5,7 @@ import { parseFrom, normalizePublicationKey } from "@/lib/from-header";
 import { extractBodies } from "@/lib/gmail-body";
 import type { FeedItem } from "@/lib/rss-candidates";
 import { getGmailAccessToken } from "@/lib/gmail-token";
+import { newsletterWordCounts, readMinutes } from "@/lib/read-time";
 import {
   buildSenderQuery,
   decodeHtmlEntities,
@@ -22,6 +23,7 @@ const FETCH_CONCURRENCY = 8;
 /** How many stored issues the inbox shows. */
 const INBOX_ISSUE_LIMIT = 200;
 const INBOX_ISSUE_DAYS = 90;
+const READ_TIME_DAYS = 30;
 
 export type NewsletterSyncResult = {
   status: "synced" | "partial" | "skipped-recent" | "auth-error";
@@ -235,6 +237,13 @@ export async function getStoredNewsletterFeed(userId: string): Promise<FeedItem[
       webUrl: true,
     },
   });
+  // Only issues recent enough to show anywhere (the Newsletters tab goes back
+  // 30 days) get a read time; older ones would just cost tag-stripping time.
+  const readTimeSince = Date.now() - READ_TIME_DAYS * 24 * 60 * 60 * 1000;
+  const wordCounts = await newsletterWordCounts(
+    userId,
+    rows.filter((row) => row.receivedAt.getTime() >= readTimeSince).map((row) => row.gmailMessageId)
+  );
   return rows.map((row) => ({
     // Keep the bare Gmail id so existing read/save state keeps matching.
     id: row.gmailMessageId,
@@ -249,6 +258,7 @@ export async function getStoredNewsletterFeed(userId: string): Promise<FeedItem[
     // No lead photo for newsletters: the first big image in an email is as
     // often a sponsor banner or masthead as a real photo, and it looked bad.
     externalUrl: row.webUrl ?? undefined,
+    readMinutes: wordCounts.has(row.gmailMessageId) ? readMinutes(wordCounts.get(row.gmailMessageId)!) : undefined,
   }));
 }
 

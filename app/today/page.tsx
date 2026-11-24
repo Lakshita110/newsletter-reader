@@ -23,7 +23,10 @@ function tabFromUrl(): Tab {
   const tab = new URLSearchParams(window.location.search).get("tab");
   return tab === "saved" || tab === "newsletters" ? tab : "today";
 }
-type Undo = { item: InboxItem; kind: "done" | "save"; prevStatus?: FeedReadStatus; prevSaved?: boolean };
+type Undo =
+  | { item: InboxItem; kind: "done" | "save"; prevStatus?: FeedReadStatus; prevSaved?: boolean }
+  // "Mark all as read": remembers each item's earlier status so Undo restores exactly that.
+  | { kind: "bulk"; items: InboxItem[]; prevStatuses: Record<string, FeedReadStatus | undefined> };
 
 const SECTION_LABELS: Record<QueueSection, string> = {
   continue: "Continue reading",
@@ -134,7 +137,8 @@ export default function TodayPage() {
   const showUndo = (next: Undo) => {
     if (undoTimer.current) clearTimeout(undoTimer.current);
     setUndo(next);
-    undoTimer.current = setTimeout(() => setUndo(null), 4000);
+    // Undoing a whole list deserves longer to notice than one row.
+    undoTimer.current = setTimeout(() => setUndo(null), next.kind === "bulk" ? 8000 : 4000);
   };
 
   const context = (item: InboxItem) => ({
@@ -184,8 +188,49 @@ export default function TodayPage() {
     showUndo({ item, kind: "save", prevSaved });
   };
 
+  const markAllDone = (items: InboxItem[]) => {
+    if (items.length === 0) return;
+    const prevStatuses = Object.fromEntries(items.map((item) => [item.id, statusById[item.id]]));
+    setStatusById((prev) => {
+      const next = { ...prev };
+      for (const item of items) next[item.id] = "read";
+      saveMapToStorage("nr_read_status_map", next);
+      return next;
+    });
+    // One request for the whole list: the API takes messageIds + per-item context.
+    postReadState({
+      messageIds: items.map((item) => item.id),
+      state: "read",
+      contextById: Object.fromEntries(items.map((item) => [item.id, context(item)])),
+    }).catch((e) => console.error("[today] mark all read failed", e));
+    showUndo({ kind: "bulk", items, prevStatuses });
+  };
+
   const undoLast = () => {
     if (!undo) return;
+    if (undo.kind === "bulk") {
+      const back = (status: FeedReadStatus | undefined) => undo.items.filter((i) => undo.prevStatuses[i.id] === status);
+      setStatusById((prev) => {
+        const next = { ...prev };
+        for (const item of undo.items) {
+          const status = undo.prevStatuses[item.id];
+          if (status) next[item.id] = status;
+          else delete next[item.id];
+        }
+        saveMapToStorage("nr_read_status_map", next);
+        return next;
+      });
+      for (const [status, state] of [
+        [undefined, "unread"],
+        ["in-progress", "in_progress"],
+      ] as const) {
+        const ids = back(status).map((i) => i.id);
+        if (ids.length > 0)
+          postReadState({ messageIds: ids, state }).catch((e) => console.error("[today] undo mark all failed", e));
+      }
+      setUndo(null);
+      return;
+    }
     const { item } = undo;
     if (undo.kind === "done") {
       setStatus(item.id, undo.prevStatus);
@@ -246,6 +291,14 @@ export default function TodayPage() {
                   : tab === "newsletters"
                     ? `${ordered.length} unread`
                     : `${ordered.length} to read`}
+            {!isLoading && tab !== "saved" && ordered.length > 1 && (
+              <>
+                {" · "}
+                <button type="button" className="today-text-btn" onClick={() => markAllDone(ordered)}>
+                  Mark all read
+                </button>
+              </>
+            )}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -364,11 +417,23 @@ export default function TodayPage() {
         </div>
       )}
 
-      <p className="today-hint">Swipe left when you&rsquo;re done · swipe right to save</p>
+      {!isLoading && tab !== "saved" && (
+        <p className="recap-footer">
+          <Link href="/recap">Your week in reading →</Link>
+        </p>
+      )}
 
       {undo && (
         <div className="today-toast" role="status">
-          <span>{undo.kind === "done" ? "Marked done" : savedById[undo.item.id] ? "Saved" : "Removed from saved"}</span>
+          <span>
+            {undo.kind === "bulk"
+              ? `Marked ${undo.items.length} as read`
+              : undo.kind === "done"
+                ? "Marked done"
+                : savedById[undo.item.id]
+                  ? "Saved"
+                  : "Removed from saved"}
+          </span>
           <button type="button" onClick={undoLast}>
             Undo
           </button>
@@ -483,6 +548,7 @@ function RowBody({ item, inProgress }: { item: InboxItem; inProgress: boolean })
         <SourceIcon item={item} />
         <span className="today-row-pub">{item.publicationName}</span>
         <span>{relativeTime(item.date)}</span>
+        {item.readMinutes && <span>{item.readMinutes} min</span>}
         {inProgress && <span className="today-dot" aria-label="In progress" />}
       </div>
       <div className="today-row-title">{item.subject || "(No subject)"}</div>
