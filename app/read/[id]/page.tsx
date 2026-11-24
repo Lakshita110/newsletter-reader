@@ -418,7 +418,14 @@ export default function ReadPage() {
         onCycleFont={cycleFontSize}
         listen={listen}
       />
-      <AppNav active={backHref.startsWith("/today?tab=saved") ? "saved" : "today"} desktopOnly />
+      <AppNav active={tabOfBackHref(backHref)} desktopOnly />
     </main>
   );
+}
+
+/** Which Today tab the reader was opened from, for the sidebar highlight. */
+function tabOfBackHref(backHref: string): "today" | "newsletters" | "saved" {
+  if (backHref.includes("tab=saved")) return "saved";
+  if (backHref.includes("tab=newsletters")) return "newsletters";
+  return "today";
 }
