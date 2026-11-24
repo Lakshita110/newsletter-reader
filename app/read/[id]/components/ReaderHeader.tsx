@@ -32,7 +32,7 @@ export function ReaderHeader({
     <header className="reader-header">
       {/* Phones have Back in the bottom toolbar; this link is for wide screens. */}
       <Link href={backHref} className="reader-back">
-        ← {backHref.startsWith("/today?tab=saved") ? "Saved" : "Today"}
+        ← {backHref.includes("tab=saved") ? "Saved" : backHref.includes("tab=newsletters") ? "Newsletters" : "Today"}
       </Link>
       <div className="reader-meta">
         {domain && (

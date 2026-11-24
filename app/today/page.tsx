@@ -8,21 +8,28 @@ import { SwipeRow } from "./components/SwipeRow";
 import { AppNav } from "@/app/components/AppNav";
 import { GmailBanner } from "./components/GmailBanner";
 import { faviconDomain } from "@/lib/lead-image";
-import { buildTodayQueue, flattenQueue, type QueueSection } from "./lib/queue";
+import { buildTodayQueue, readingOrder, type QueueSection } from "./lib/queue";
 import { prefetchForOffline } from "./lib/offline";
 import { readMapFromStorage, saveMapToStorage, toReadStatusMap, toSavedMap } from "@/app/lib/client-utils";
 import { postReadState } from "@/app/lib/read-state";
 import type { FeedReadStatus, InboxItem } from "@/app/lib/feed-types";
 
-type Tab = "today" | "saved";
+type Tab = "today" | "newsletters" | "saved";
+
+const TAB_TITLES: Record<Tab, string> = { today: "Today", newsletters: "Newsletters", saved: "Saved" };
+
+function tabFromUrl(): Tab {
+  if (typeof window === "undefined") return "today";
+  const tab = new URLSearchParams(window.location.search).get("tab");
+  return tab === "saved" || tab === "newsletters" ? tab : "today";
+}
 type Undo = { item: InboxItem; kind: "done" | "save"; prevStatus?: FeedReadStatus; prevSaved?: boolean };
 
 const SECTION_LABELS: Record<QueueSection, string> = {
   continue: "Continue reading",
-  top: "Top stories",
-  newsletters: "Newsletters",
-  stories: "More stories",
+  feed: "For today",
   covered: "Already in your newsletters",
+  newsletters: "Newsletters",
   saved: "Saved for later",
 };
 
@@ -44,11 +51,7 @@ function relativeTime(iso: string): string {
 export default function TodayPage() {
   const { data: session, status: sessionStatus } = useSession();
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>(() =>
-    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "saved"
-      ? "saved"
-      : "today"
-  );
+  const [tab, setTab] = useState<Tab>(tabFromUrl);
   // Paint instantly (and offline) from what was last loaded, then refresh.
   const [cached] = useState(() => {
     const raw = readMapFromStorage<unknown>("nr_today_cache");
@@ -116,9 +119,9 @@ export default function TodayPage() {
     () => buildTodayQueue({ items, statusById, savedById, recommendedIds }),
     [items, statusById, savedById, recommendedIds]
   );
-  const ordered = useMemo(() => (tab === "saved" ? queue.saved : flattenQueue(queue)), [queue, tab]);
+  const ordered = useMemo(() => readingOrder(queue, tab), [queue, tab]);
   const sections: QueueSection[] =
-    tab === "saved" ? ["saved"] : ["continue", "top", "newsletters", "stories", "covered"];
+    tab === "saved" ? ["saved"] : tab === "newsletters" ? ["newsletters"] : ["continue", "feed", "covered"];
 
   // Make the top of the queue readable offline.
   const orderedIds = ordered.map((i) => i.id).join(",");
@@ -208,7 +211,7 @@ export default function TodayPage() {
       "nr_ordered_items",
       JSON.stringify(ordered.map((i) => ({ id: i.id, subject: i.subject })))
     );
-    window.localStorage.setItem("nr_reader_back", tab === "saved" ? "/today?tab=saved" : "/today");
+    window.localStorage.setItem("nr_reader_back", tab === "today" ? "/today" : `/today?tab=${tab}`);
   };
 
   const runRankNow = () => {
@@ -228,21 +231,21 @@ export default function TodayPage() {
       });
   };
 
-  const totalToday = queue.continue.length + queue.top.length + queue.newsletters.length + queue.stories.length;
-
   return (
     <main className="today-shell">
       <header className="today-header">
         <div>
-          <h1 className="today-title">{tab === "saved" ? "Saved" : "Today"}</h1>
+          <h1 className="today-title">{TAB_TITLES[tab]}</h1>
           <p className="today-subtitle">
             {isLoading
               ? "Loading…"
               : tab === "saved"
                 ? `${queue.saved.length} kept for later`
-                : totalToday === 0
+                : ordered.length === 0
                   ? "All caught up."
-                  : `${totalToday} to read`}
+                  : tab === "newsletters"
+                    ? `${ordered.length} unread`
+                    : `${ordered.length} to read`}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -326,10 +329,13 @@ export default function TodayPage() {
         }
         return (
           <section key={section} className={`today-section today-section-${section}`}>
-            <h2 className="today-section-title">
-              {SECTION_LABELS[section]} <span>{list.length}</span>
-            </h2>
-            {section === "top" && (
+            {/* A single-list tab needs no heading; Today labels its feed only under "Continue reading". */}
+            {(section === "continue" || (section === "feed" && queue.continue.length > 0)) && (
+              <h2 className="today-section-title">
+                {SECTION_LABELS[section]} <span>{list.length}</span>
+              </h2>
+            )}
+            {section === "feed" && (
               <RankStatusLine
                 meta={rankMeta}
                 hasPicks={recommendedIds.length > 0}
@@ -338,7 +344,7 @@ export default function TodayPage() {
               />
             )}
             {rows}
-            {section === "newsletters" && tab === "today" && (
+            {section === "newsletters" && (
               <p className="today-section-note">
                 Missing one? <Link href="/settings">Add its sender in Settings</Link>.
               </p>
@@ -349,7 +355,11 @@ export default function TodayPage() {
 
       {!isLoading && ordered.length === 0 && (
         <div className="today-empty">
-          {tab === "saved" ? "Swipe right on anything to keep it here." : "Nothing left for today."}
+          {tab === "saved"
+            ? "Swipe right on anything to keep it here."
+            : tab === "newsletters"
+              ? "No unread newsletters."
+              : "Nothing left for today."}
         </div>
       )}
 

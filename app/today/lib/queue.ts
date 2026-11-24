@@ -1,6 +1,6 @@
 import type { FeedReadStatus, InboxItem } from "@/app/lib/feed-types";
 
-export type QueueSection = "continue" | "top" | "newsletters" | "stories" | "covered" | "saved";
+export type QueueSection = "continue" | "feed" | "covered" | "newsletters" | "saved";
 
 export type QueueInput = {
   items: InboxItem[];
@@ -13,31 +13,29 @@ export type QueueInput = {
 
 export type TodayQueue = Record<QueueSection, InboxItem[]>;
 
-/** Unread newsletters older than this drop out of Today (still in Saved if saved). */
-export const NEWSLETTER_WINDOW_DAYS = 7;
+/** Newsletters this recent are mixed into Today's feed. */
+export const FEED_NEWSLETTER_HOURS = 48;
+/** The Newsletters tab keeps unread issues this long, for sit-down reading. */
+export const NEWSLETTER_WINDOW_DAYS = 30;
 /** RSS stories the ranker didn't pick are capped, so the list stays finishable. */
 export const MAX_UNPICKED_STORIES = 12;
-/**
- * How many of the ranker's picks go above the newsletters. With a dozen or
- * more newsletters a day, stories placed after all of them were effectively
- * invisible; the day's biggest few news items belong at the very top.
- */
+/** How many stories are ordered by coverage (how many sources run them) before ranker order takes over. */
 export const TOP_STORIES_FIRST = 5;
 
 /**
- * Build Today: one scroll. The day's top few stories, then newsletters, then
- * the rest of the stories.
+ * Build the two reading views from one pass over her items.
  *
- * The ranker leads with the day's most widely covered news (lib/story-buzz.ts),
- * so its first few picks open the page: the big headlines take seconds to
- * scan and shouldn't sit under a long list of newsletters.
+ * Today ("feed") is one list to glance at: the day's stories and the last two
+ * days of newsletters woven together, a story first, so the biggest news
+ * leads and newsletters are never buried under thirty headlines (or the
+ * reverse). Stories are ordered with the most widely covered first (counted
+ * at load time, so news that broke after the last ranking still leads), then
+ * the ranker's order, then a capped number of unpicked stories.
  *
- * Newsletters come next, unranked and newest first: they're the writers she
- * chose to hear from, and mixing them into the story ranking let a so-so news
- * item push an issue down. The rest of the picks follow, then a capped
- * number of unpicked stories, newest first.
+ * Newsletters is the long-form view: every unread issue from the last month,
+ * newest first, for when she has time to sit down and read.
  *
- * - "In progress" sits above everything so a half-read piece is never buried.
+ * - "In progress" sits above the feed so a half-read piece is never buried.
  * - Unpicked stories a newsletter already covered are folded, not dropped.
  * - Saved is its own tab and never auto-expires.
  */
@@ -48,11 +46,12 @@ export function buildTodayQueue({
   recommendedIds,
   now = new Date(),
 }: QueueInput): TodayQueue {
-  const cutoff = now.getTime() - NEWSLETTER_WINDOW_DAYS * 86_400_000;
+  const newsletterCutoff = now.getTime() - NEWSLETTER_WINDOW_DAYS * 86_400_000;
+  const feedCutoff = now.getTime() - FEED_NEWSLETTER_HOURS * 3_600_000;
   const time = (item: InboxItem) => new Date(item.date).getTime() || 0;
   const rank = new Map(recommendedIds.map((id, i) => [id, i]));
 
-  const queue: TodayQueue = { continue: [], top: [], newsletters: [], stories: [], covered: [], saved: [] };
+  const queue: TodayQueue = { continue: [], feed: [], covered: [], newsletters: [], saved: [] };
   const picked: InboxItem[] = [];
   const unpicked: InboxItem[] = [];
   const seen = new Set<string>();
@@ -71,21 +70,15 @@ export function buildTodayQueue({
       continue;
     }
     if (item.sourceKind === "gmail") {
-      if (time(item) >= cutoff) queue.newsletters.push(item);
+      if (time(item) >= newsletterCutoff) queue.newsletters.push(item);
     } else if (rank.has(item.id)) picked.push(item);
     else if (item.sourceKind === "rss" && !item.isOverflow) unpicked.push(item);
   }
 
   picked.sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
   const extras = unpicked.slice(0, MAX_UNPICKED_STORIES);
-  // The ranker's picks are the day's top stories: always show them, even if
-  // a newsletter touched on the same news. Only unpicked extras get folded.
-  //
-  // Top is ordered by how many of her sources run the story, ranker order
-  // breaking ties. The ranking runs a few times a day, so news that breaks
-  // after it isn't among the picks; counting coverage at load time still
-  // puts the story everyone is running first (and fixes the rare ranker
-  // misorder) without paying for another ranking call.
+  // The ranker's picks are always shown, even if a newsletter touched on the
+  // same news. Only unpicked extras get folded.
   const lead = [...picked, ...extras.filter((item) => !item.coveredBy)];
   const top = lead
     .map((item, order) => ({ item, order }))
@@ -93,22 +86,31 @@ export function buildTodayQueue({
     .slice(0, TOP_STORIES_FIRST)
     .map(({ item }) => item);
   const topIds = new Set(top.map((item) => item.id));
-  queue.top.push(...top);
-  queue.stories.push(...picked.filter((item) => !topIds.has(item.id)));
+  const stories = [...top, ...picked.filter((item) => !topIds.has(item.id))];
   for (const item of extras) {
     if (topIds.has(item.id)) continue;
-    (item.coveredBy ? queue.covered : queue.stories).push(item);
+    if (item.coveredBy) queue.covered.push(item);
+    else stories.push(item);
   }
+
+  const recentNewsletters = queue.newsletters.filter((item) => time(item) >= feedCutoff);
+  queue.feed = interleave(stories, recentNewsletters);
   return queue;
 }
 
-/** Reading order used for "Done → next" inside the reader. */
-export function flattenQueue(queue: TodayQueue, includeSaved = false): InboxItem[] {
-  return [
-    ...queue.continue,
-    ...queue.top,
-    ...queue.newsletters,
-    ...queue.stories,
-    ...(includeSaved ? queue.saved : []),
-  ];
+/** a1, b1, a2, b2, …, then whatever is left of the longer list. */
+export function interleave<T>(a: T[], b: T[]): T[] {
+  const out: T[] = [];
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if (i < a.length) out.push(a[i]);
+    if (i < b.length) out.push(b[i]);
+  }
+  return out;
+}
+
+/** Reading order used for "Done → next" inside the reader, per tab. */
+export function readingOrder(queue: TodayQueue, tab: "today" | "newsletters" | "saved"): InboxItem[] {
+  if (tab === "saved") return queue.saved;
+  if (tab === "newsletters") return queue.newsletters;
+  return [...queue.continue, ...queue.feed];
 }
