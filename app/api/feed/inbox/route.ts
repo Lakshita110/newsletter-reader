@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { buildRankingCandidates } from "@/lib/rss-candidates";
+import { buildRankingCandidates, getLongformRssFeed } from "@/lib/rss-candidates";
 import {
   approvedSenderEmails,
   getStoredNewsletterFeed,
@@ -122,7 +122,7 @@ const COVERAGE_WINDOW_DAYS = 4;
  * fold them. Failure here only loses the folding, so it logs and moves on.
  */
 async function markCoveredStories(userId: string, items: FeedItem[]) {
-  const stories = items.filter((it) => it.sourceKind === "rss");
+  const stories = items.filter((it) => it.sourceKind === "rss" && !it.longform);
   if (stories.length === 0) return;
   try {
     const senders = await approvedSenderEmails(userId);
@@ -157,16 +157,19 @@ export async function GET() {
   const auth = await getUser();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [gmailItems, ranked, webItems] = await Promise.all([
+  // Long-form feeds are read after the stale-feed refresh so a new post shows up on this load.
+  const refreshed = refreshStaleFeeds(auth.userId);
+  const [gmailItems, ranked, webItems, longformItems] = await Promise.all([
     getNewsletterItems(auth.userId),
-    refreshStaleFeeds(auth.userId).then(() => getRankedFeed(auth.userId, auth.recommendationCap)),
+    refreshed.then(() => getRankedFeed(auth.userId, auth.recommendationCap)),
     getSavedArticleFeed(auth.userId),
+    refreshed.then(() => getLongformRssFeed(auth.userId)),
   ]);
 
   // Recent newsletters arrive twice (the stored-issue list and the ranking
   // pool); keep the first copy of each id.
   const seen = new Set<string>();
-  const items = [...gmailItems, ...ranked.visible, ...webItems]
+  const items = [...gmailItems, ...longformItems, ...ranked.visible, ...webItems]
     .filter((item) => {
       if (seen.has(item.id)) return false;
       seen.add(item.id);

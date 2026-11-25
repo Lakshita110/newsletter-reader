@@ -34,8 +34,9 @@ export async function POST(req: Request) {
     });
     await prisma.userRssSubscription.upsert({
       where: { userId_rssSourceId: { userId, rssSourceId: source.id } },
-      update: { isActive: true },
-      create: { userId, rssSourceId: source.id, category: "other" },
+      // A category in the file wins (e.g. "newsletter" keeps a feed out of the news ranking).
+      update: { isActive: true, ...(feed.category ? { category: feed.category } : {}) },
+      create: { userId, rssSourceId: source.id, category: feed.category ?? "other" },
     });
     sourceIds.push(source.id);
   }

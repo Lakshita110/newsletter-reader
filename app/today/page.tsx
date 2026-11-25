@@ -31,6 +31,7 @@ type Undo =
 const SECTION_LABELS: Record<QueueSection, string> = {
   continue: "Continue reading",
   feed: "For today",
+  more: "More stories",
   covered: "Already in your newsletters",
   newsletters: "Newsletters",
   saved: "Saved for later",
@@ -124,7 +125,7 @@ export default function TodayPage() {
   );
   const ordered = useMemo(() => readingOrder(queue, tab), [queue, tab]);
   const sections: QueueSection[] =
-    tab === "saved" ? ["saved"] : tab === "newsletters" ? ["newsletters"] : ["continue", "feed", "covered"];
+    tab === "saved" ? ["saved"] : tab === "newsletters" ? ["newsletters"] : ["continue", "feed", "more", "covered"];
 
   // Make the top of the queue readable offline.
   const orderedIds = ordered.map((i) => i.id).join(",");
@@ -370,8 +371,8 @@ export default function TodayPage() {
             ))}
           </ul>
         );
-        if (section === "covered") {
-          // Folded by default: these overlap with something you're already reading.
+        if (section === "more" || section === "covered") {
+          // Folded by default: the stories past Today's cap, and ones a newsletter already covered.
           return (
             <details key={section} className="today-section today-fold">
               <summary className="today-section-title">
@@ -526,7 +527,8 @@ function SourceIcon({ item }: { item: InboxItem }) {
  * issue is stored. RSS stories open the original page instead.
  */
 function opensOriginal(item: InboxItem, tab: string): item is InboxItem & { externalUrl: string } {
-  return tab === "today" && item.sourceKind === "rss" && Boolean(item.externalUrl);
+  // Newsletter-style posts read better in the reader, like email newsletters.
+  return tab === "today" && item.sourceKind === "rss" && !item.longform && Boolean(item.externalUrl);
 }
 
 function RowBody({ item, inProgress }: { item: InboxItem; inProgress: boolean }) {

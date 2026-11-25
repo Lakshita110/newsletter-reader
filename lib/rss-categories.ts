@@ -7,6 +7,8 @@ export const RSS_CATEGORY_OPTIONS = [
   "science",
   "world",
   "culture",
+  // Long-form: never ranked as news, kept in the Newsletters tab (lib/longform.ts).
+  "newsletter",
   "other",
 ] as const;
 

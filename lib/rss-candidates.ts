@@ -1,3 +1,4 @@
+import { longformSourceIds } from "@/lib/longform";
 import { prisma } from "@/lib/prisma";
 import { normalizeRssCategory } from "@/lib/rss-categories";
 import { countSourceCoverage } from "@/lib/story-buzz";
@@ -33,6 +34,8 @@ export type FeedItem = {
   coveredBy?: { byId: string; publicationName: string; subject: string; matched: string[] };
   /** Estimated minutes to read (newsletters only, lib/read-time.ts). */
   readMinutes?: number;
+  /** An RSS post from a newsletter-style feed: shown with newsletters, never ranked (lib/longform.ts). */
+  longform?: boolean;
 };
 
 type RssItemRow = {
@@ -148,8 +151,13 @@ export async function buildRankingCandidates(params: {
     },
   });
 
+  // Newsletter-style feeds are not news: they're served by getLongformRssFeed
+  // and never enter the ranking pool (lib/longform.ts).
+  const longform = await longformSourceIds(subscriptions, now);
+
   const allCandidates: RankingCandidate[] = [];
   for (const sub of subscriptions) {
+    if (longform.has(sub.rssSourceId)) continue;
     for (const item of sub.source.items) {
       const feedItem = toFeedItem(item, sub.source, sub.category);
       allCandidates.push({
@@ -236,4 +244,42 @@ async function newsletterDedupKeys(userId: string, now: Date): Promise<Set<strin
     select: { webUrl: true },
   });
   return new Set(issues.map((issue) => buildRssArticleDedupKey({ externalUrl: issue.webUrl })));
+}
+
+/** Long-form RSS posts stay this long, like email newsletters in the Newsletters tab. */
+const LONGFORM_DAYS = 30;
+const LONGFORM_PER_SOURCE = 20;
+
+/**
+ * Posts from her newsletter-style RSS feeds (see lib/longform.ts), shaped like
+ * newsletters: flagged `longform`, never ranked, kept for 30 days. Already
+ * read ones are filtered by Today like any other item.
+ */
+export async function getLongformRssFeed(userId: string, now = new Date()): Promise<FeedItem[]> {
+  const subscriptions = await prisma.userRssSubscription.findMany({
+    where: { userId, isActive: true },
+    select: { rssSourceId: true, category: true, source: { select: { id: true, name: true, rssUrl: true } } },
+  });
+  const longform = await longformSourceIds(subscriptions, now);
+  if (longform.size === 0) return [];
+  const since = new Date(now.getTime() - LONGFORM_DAYS * 24 * 60 * 60 * 1000);
+  // While a newsletter still also arrives by email, keep the email copy (it has the full post).
+  const emailCopies = await newsletterDedupKeys(userId, now);
+  const items: FeedItem[] = [];
+  for (const sub of subscriptions.filter((s) => longform.has(s.rssSourceId))) {
+    const rows = await prisma.rssItem.findMany({
+      where: {
+        rssSourceId: sub.rssSourceId,
+        OR: [{ publishedAt: { gte: since } }, { AND: [{ publishedAt: null }, { createdAt: { gte: since } }] }],
+      },
+      orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+      take: LONGFORM_PER_SOURCE,
+    });
+    for (const row of rows) {
+      const key = buildRssArticleDedupKey({ externalUrl: row.link, title: row.title, snippet: row.snippet ?? "" });
+      if (emailCopies.has(key)) continue;
+      items.push({ ...toFeedItem(row, sub.source, sub.category), longform: true });
+    }
+  }
+  return items;
 }

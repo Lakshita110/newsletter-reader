@@ -1,6 +1,6 @@
 import type { FeedReadStatus, InboxItem } from "@/app/lib/feed-types";
 
-export type QueueSection = "continue" | "feed" | "covered" | "newsletters" | "saved";
+export type QueueSection = "continue" | "feed" | "more" | "covered" | "newsletters" | "saved";
 
 export type QueueInput = {
   items: InboxItem[];
@@ -21,6 +21,20 @@ export const NEWSLETTER_WINDOW_DAYS = 30;
 export const MAX_UNPICKED_STORIES = 12;
 /** How many stories are ordered by coverage (how many sources run them) before ranker order takes over. */
 export const TOP_STORIES_FIRST = 5;
+/**
+ * Today is meant to be glanced at and finished. Past this many stories the
+ * rest are folded under "More stories" (still one tap away, never dropped).
+ */
+export const TODAY_STORY_LIMIT = 12;
+/** No single outlet (a busy NYT or TechCrunch feed) takes more than this many of Today's stories. */
+export const MAX_STORIES_PER_SOURCE = 3;
+/** Newest newsletters woven into Today; the rest wait in the Newsletters tab. */
+export const TODAY_NEWSLETTER_LIMIT = 6;
+
+/** Email newsletters and posts from newsletter-style RSS feeds are read the same way. */
+export function isNewsletter(item: InboxItem): boolean {
+  return item.sourceKind === "gmail" || Boolean(item.longform);
+}
 
 /**
  * Build the two reading views from one pass over her items.
@@ -30,7 +44,10 @@ export const TOP_STORIES_FIRST = 5;
  * leads and newsletters are never buried under thirty headlines (or the
  * reverse). Stories are ordered with the most widely covered first (counted
  * at load time, so news that broke after the last ranking still leads), then
- * the ranker's order, then a capped number of unpicked stories.
+ * the ranker's order, then a capped number of unpicked stories. Only the
+ * best TODAY_STORY_LIMIT are shown (at most MAX_STORIES_PER_SOURCE from one
+ * outlet) and only the newest few newsletters; the rest of the stories fold
+ * under "More stories", and every newsletter stays in the Newsletters tab.
  *
  * Newsletters is the long-form view: every unread issue from the last month,
  * newest first, for when she has time to sit down and read.
@@ -51,7 +68,7 @@ export function buildTodayQueue({
   const time = (item: InboxItem) => new Date(item.date).getTime() || 0;
   const rank = new Map(recommendedIds.map((id, i) => [id, i]));
 
-  const queue: TodayQueue = { continue: [], feed: [], covered: [], newsletters: [], saved: [] };
+  const queue: TodayQueue = { continue: [], feed: [], more: [], covered: [], newsletters: [], saved: [] };
   const picked: InboxItem[] = [];
   const unpicked: InboxItem[] = [];
   const seen = new Set<string>();
@@ -69,7 +86,7 @@ export function buildTodayQueue({
       queue.continue.push(item);
       continue;
     }
-    if (item.sourceKind === "gmail") {
+    if (isNewsletter(item)) {
       if (time(item) >= newsletterCutoff) queue.newsletters.push(item);
     } else if (rank.has(item.id)) picked.push(item);
     else if (item.sourceKind === "rss" && !item.isOverflow) unpicked.push(item);
@@ -93,8 +110,23 @@ export function buildTodayQueue({
     else stories.push(item);
   }
 
-  const recentNewsletters = queue.newsletters.filter((item) => time(item) >= feedCutoff);
-  queue.feed = interleave(stories, recentNewsletters);
+  // Cap the visible list: best stories first, a few per outlet, the rest folded.
+  const shown: InboxItem[] = [];
+  const perSource = new Map<string, number>();
+  for (const item of stories) {
+    const used = perSource.get(item.publicationKey) ?? 0;
+    if (shown.length < TODAY_STORY_LIMIT && used < MAX_STORIES_PER_SOURCE) {
+      shown.push(item);
+      perSource.set(item.publicationKey, used + 1);
+    } else {
+      queue.more.push(item);
+    }
+  }
+
+  const recentNewsletters = queue.newsletters
+    .filter((item) => time(item) >= feedCutoff)
+    .slice(0, TODAY_NEWSLETTER_LIMIT);
+  queue.feed = interleave(shown, recentNewsletters);
   return queue;
 }
 
@@ -112,5 +144,6 @@ export function interleave<T>(a: T[], b: T[]): T[] {
 export function readingOrder(queue: TodayQueue, tab: "today" | "newsletters" | "saved"): InboxItem[] {
   if (tab === "saved") return queue.saved;
   if (tab === "newsletters") return queue.newsletters;
+  // Folded "More stories" are left out: they don't count toward "N to read" or Mark all read.
   return [...queue.continue, ...queue.feed];
 }

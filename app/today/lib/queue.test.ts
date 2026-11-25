@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { InboxItem } from "@/app/lib/feed-types";
-import { buildTodayQueue, interleave, MAX_UNPICKED_STORIES, readingOrder, TOP_STORIES_FIRST } from "./queue";
+import {
+  buildTodayQueue,
+  interleave,
+  MAX_STORIES_PER_SOURCE,
+  MAX_UNPICKED_STORIES,
+  readingOrder,
+  TODAY_NEWSLETTER_LIMIT,
+  TODAY_STORY_LIMIT,
+  TOP_STORIES_FIRST,
+} from "./queue";
 
 const now = new Date("2026-11-16T12:00:00Z");
 const hoursAgo = (n: number) => new Date(now.getTime() - n * 3_600_000).toISOString();
@@ -15,7 +24,8 @@ function item(id: string, kind: "gmail" | "rss", date: string, extra: Partial<In
     date,
     snippet: "",
     publicationName: "Pub",
-    publicationKey: "pub",
+    // One outlet per item unless a test says otherwise, so the per-source cap only bites where intended.
+    publicationKey: `pub-${id}`,
     ...extra,
   };
 }
@@ -121,5 +131,42 @@ describe("interleave", () => {
   it("alternates, then appends the rest of the longer list", () => {
     expect(interleave<number | string>([1, 2, 3], ["a"])).toEqual([1, "a", 2, 3]);
     expect(interleave([], ["a", "b"])).toEqual(["a", "b"]);
+  });
+});
+
+describe("keeping Today short", () => {
+  it("shows the best stories up to the limit and folds the rest, out of the reading count", () => {
+    const stories = Array.from({ length: TODAY_STORY_LIMIT + 4 }, (_, i) => item(`s${i}`, "rss", hoursAgo(1)));
+    const q = build(stories, { recommendedIds: stories.map((s) => s.id) });
+    expect(ids(q.feed)).toEqual(ids(stories.slice(0, TODAY_STORY_LIMIT)));
+    expect(ids(q.more)).toEqual(ids(stories.slice(TODAY_STORY_LIMIT)));
+    expect(readingOrder(q, "today")).toHaveLength(TODAY_STORY_LIMIT);
+  });
+
+  it("lets no single outlet take over the list", () => {
+    const nyt = Array.from({ length: 5 }, (_, i) =>
+      item(`nyt${i}`, "rss", hoursAgo(1), { publicationKey: "rss:nyt", coverage: 3 })
+    );
+    const other = item("ft", "rss", hoursAgo(2));
+    const q = build([...nyt, other], { recommendedIds: [...ids(nyt), "ft"] });
+    expect(ids(q.feed)).toEqual(["nyt0", "nyt1", "nyt2", "ft"].slice(0, MAX_STORIES_PER_SOURCE + 1));
+    expect(ids(q.more)).toEqual(["nyt3", "nyt4"]);
+  });
+
+  it("weaves only the newest few newsletters into Today; all stay in Newsletters", () => {
+    const letters = Array.from({ length: TODAY_NEWSLETTER_LIMIT + 2 }, (_, i) =>
+      item(`nl${i}`, "gmail", hoursAgo(i + 1))
+    );
+    const q = build(letters);
+    expect(ids(q.feed)).toEqual(ids(letters.slice(0, TODAY_NEWSLETTER_LIMIT)));
+    expect(q.newsletters).toHaveLength(letters.length);
+  });
+
+  it("treats posts from newsletter-style RSS feeds as newsletters, not ranked news", () => {
+    const essay = item("essay", "rss", daysAgo(5), { longform: true });
+    const q = build([essay, item("fresh-essay", "rss", hoursAgo(3), { longform: true })]);
+    expect(ids(q.newsletters)).toEqual(["fresh-essay", "essay"]);
+    expect(ids(q.feed)).toEqual(["fresh-essay"]);
+    expect(q.more).toEqual([]);
   });
 });
