@@ -17,6 +17,8 @@ export type InboxItem = {
   coveredBy?: { byId: string; publicationName: string; subject: string; matched: string[] };
   /** Estimated minutes to read (newsletters only, lib/read-time.ts). */
   readMinutes?: number;
+  /** An RSS post from a newsletter-style feed: shown with newsletters, never ranked (lib/longform.ts). */
+  longform?: boolean;
 };
 
 export type FeedReadStatus = "unread" | "in-progress" | "read";

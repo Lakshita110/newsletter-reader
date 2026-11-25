@@ -16,4 +16,13 @@ describe("parseOpml", () => {
       { title: "HN & more", xmlUrl: "https://hnrss.org/best?points=100&x=1" },
     ]);
   });
+
+  it("keeps a known category from the outline", () => {
+    const feeds = parseOpml(`<opml><body>
+      <outline text="Net Interest" xmlUrl="https://www.netinterest.co/feed" category="newsletter"/>
+      <outline text="Lenny" xmlUrl="https://www.lennysnewsletter.com/feed" category="/Reading,newsletter"/>
+      <outline text="NYT" xmlUrl="https://rss.nytimes.com/x.xml" category="Made Up"/>
+    </body></opml>`);
+    expect(feeds.map((f) => f.category)).toEqual(["newsletter", "newsletter", undefined]);
+  });
 });
