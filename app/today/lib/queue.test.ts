@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { InboxItem } from "@/app/lib/feed-types";
 import {
   buildTodayQueue,
-  interleave,
   MAX_STORIES_PER_SOURCE,
   MAX_UNPICKED_STORIES,
   readingOrder,
   TODAY_NEWSLETTER_LIMIT,
   TODAY_STORY_LIMIT,
-  TOP_STORIES_FIRST,
+  importanceBoostHours,
+  MAX_IMPORTANCE_BOOST_HOURS,
 } from "./queue";
 
 const now = new Date("2026-11-16T12:00:00Z");
@@ -36,17 +36,18 @@ const build = (items: InboxItem[], extra: Partial<Parameters<typeof buildTodayQu
 const ids = (list: InboxItem[]) => list.map((i) => i.id);
 
 describe("buildTodayQueue", () => {
-  it("weaves stories and recent newsletters into one feed, a story first", () => {
+  it("is mostly newest first, with stories and newsletters in one list", () => {
     const q = build(
       [
         item("story-new", "rss", hoursAgo(1)),
         item("nl-new", "gmail", hoursAgo(2)),
-        item("story-picked", "rss", hoursAgo(9)),
+        item("story-old", "rss", hoursAgo(9)),
         item("nl-yesterday", "gmail", hoursAgo(30)),
       ],
-      { recommendedIds: ["story-picked"] }
+      { recommendedIds: ["story-old"] }
     );
-    expect(ids(q.feed)).toEqual(["story-picked", "nl-new", "story-new", "nl-yesterday"]);
+    // story-old is a top pick (+2h): 7h "ago" still sorts after the newer items.
+    expect(ids(q.feed)).toEqual(["story-new", "nl-new", "story-old", "nl-yesterday"]);
   });
 
   it("keeps a week of unread newsletters in Today, and a month in the Newsletters view", () => {
@@ -73,13 +74,23 @@ describe("buildTodayQueue", () => {
     expect(ids(q.feed)).toEqual(["breaking", "pick-a", "pick-b"]);
   });
 
-  it("orders only the first few stories by coverage, then follows the ranker", () => {
-    const picks = Array.from({ length: TOP_STORIES_FIRST + 2 }, (_, i) =>
-      item(`p${i}`, "rss", hoursAgo(i + 1), { coverage: i === TOP_STORIES_FIRST + 1 ? 9 : 0 })
+  it("lets an important story rise a few hours, but no further", () => {
+    const q = build(
+      [
+        item("fresh-minor", "rss", hoursAgo(1)),
+        item("big-news", "rss", hoursAgo(6), { coverage: 3 }), // +6h coverage +2h top pick = 8h
+        item("old-big", "rss", hoursAgo(12), { coverage: 9 }), // capped at +8h: still behind
+      ],
+      { recommendedIds: ["big-news"] }
     );
-    const q = build(picks, { recommendedIds: ids(picks) });
-    expect(q.feed[0].id).toBe(`p${TOP_STORIES_FIRST + 1}`);
-    expect(ids(q.feed).slice(TOP_STORIES_FIRST)).toEqual([`p${TOP_STORIES_FIRST - 1}`, `p${TOP_STORIES_FIRST}`]);
+    expect(ids(q.feed)).toEqual(["big-news", "fresh-minor", "old-big"]);
+  });
+
+  it("caps the boost and never boosts newsletters", () => {
+    expect(importanceBoostHours(item("s", "rss", hoursAgo(1), { coverage: 9 }), 0)).toBe(MAX_IMPORTANCE_BOOST_HOURS);
+    expect(importanceBoostHours(item("s", "rss", hoursAgo(1)), 7)).toBe(1);
+    expect(importanceBoostHours(item("s", "rss", hoursAgo(1)), undefined)).toBe(0);
+    expect(importanceBoostHours(item("n", "gmail", hoursAgo(1), { coverage: 9 }), 0)).toBe(0);
   });
 
   it("keeps opened items in place, saved in its own list, and drops read and overflow items", () => {
@@ -139,13 +150,6 @@ describe("buildTodayQueue", () => {
   });
 });
 
-describe("interleave", () => {
-  it("alternates, then appends the rest of the longer list", () => {
-    expect(interleave<number | string>([1, 2, 3], ["a"])).toEqual([1, "a", 2, 3]);
-    expect(interleave([], ["a", "b"])).toEqual(["a", "b"]);
-  });
-});
-
 describe("keeping Today short", () => {
   it("shows the best stories up to the limit and folds the rest, out of the reading count", () => {
     const stories = Array.from({ length: TODAY_STORY_LIMIT + 4 }, (_, i) => item(`s${i}`, "rss", hoursAgo(1)));
@@ -180,5 +184,17 @@ describe("keeping Today short", () => {
     expect(ids(q.newsletters)).toEqual(["fresh-essay", "essay"]);
     expect(ids(q.feed)).toEqual(["fresh-essay"]);
     expect(q.more).toEqual([]);
+  });
+
+  it("treats an issue as read or saved if she finished or saved any copy of it", () => {
+    const q = build(
+      [
+        item("kept-1", "gmail", hoursAgo(1), { duplicateIds: ["hidden-1"] }),
+        item("kept-2", "gmail", hoursAgo(2), { duplicateIds: ["hidden-2"] }),
+      ],
+      { statusById: { "hidden-1": "read" }, savedById: { "hidden-2": true } }
+    );
+    expect(ids(q.feed)).toEqual([]);
+    expect(ids(q.saved)).toEqual(["kept-2"]);
   });
 });

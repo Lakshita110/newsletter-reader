@@ -36,6 +36,8 @@ export type FeedItem = {
   readMinutes?: number;
   /** An RSS post from a newsletter-style feed: shown with newsletters, never ranked (lib/longform.ts). */
   longform?: boolean;
+  /** Other copies of the same newsletter issue (another mailbox or sender address), hidden. */
+  duplicateIds?: string[];
 };
 
 type RssItemRow = {

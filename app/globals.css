@@ -364,6 +364,18 @@ button.filter-select {
   font-size: 14px;
   color: var(--muted);
 }
+.today-new-pill {
+  display: block;
+  margin: 0 auto 10px;
+  padding: 6px 14px;
+  border: 1px solid var(--faint);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
 .today-text-btn {
   padding: 0;
   border: 0;

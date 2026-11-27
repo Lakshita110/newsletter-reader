@@ -16,6 +16,15 @@ describe("isLongformSource", () => {
     ).toBe(false);
   });
 
+  it("respects a news category and doesn't mistake a quiet news site for a newsletter", () => {
+    expect(isLongformSource({ category: "news", rssUrl: "https://feeds.propublica.org/x", recentPosts: 3 })).toBe(
+      false
+    );
+    expect(isLongformSource({ category: "other", rssUrl: "https://feeds.propublica.org/x", recentPosts: 12 })).toBe(
+      false
+    );
+  });
+
   it("always counts Substack feeds and the explicit newsletter category", () => {
     expect(isLongformSource({ category: "other", rssUrl: "https://lenny.substack.com/feed", recentPosts: 90 })).toBe(
       true
