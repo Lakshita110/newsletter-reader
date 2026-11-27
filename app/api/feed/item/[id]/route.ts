@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { extractArticleContent, normalizeText } from "@/lib/article-extract";
 import { getSessionUser, getSessionUserId } from "@/lib/session-user";
 import { getSavedArticleItem, WEB_ID_PREFIX } from "@/lib/saved-articles";
+import { publicationNameFor } from "@/lib/newsletter-sync-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,7 @@ async function getStoredNewsletterItem(userId: string, id: string) {
     text: text ? normalizeText(text) : undefined,
     externalUrl: issue.webUrl,
     sourceKind: "gmail" as const,
-    publicationName: issue.fromName,
+    publicationName: publicationNameFor(issue.fromEmail, issue.fromName),
   };
 }
 

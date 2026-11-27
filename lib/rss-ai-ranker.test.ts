@@ -1,6 +1,6 @@
 import { SMART_MODEL_CHAIN } from "./openrouter";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parsePicks, rankItemsForDailyCap, withMaxTokens } from "./rss-ai-ranker";
+import { parsePicks, rankItemsForDailyCap, signalsSection, withMaxTokens } from "./rss-ai-ranker";
 
 // The ranker prompt asks the model to emit, per selected item, one
 // {"id":"rss:x","reason":"<=10 words"} object — an id (~10 tokens), a short
@@ -180,5 +180,24 @@ describe("rankItemsForDailyCap", () => {
 
     expect(result?.ids).toEqual(["rss:a"]);
     expect(result?.ids.every((id) => Boolean(result?.reasons[id]))).toBe(true);
+  });
+});
+
+describe("signalsSection", () => {
+  it("tells the ranker what she opened and what she swiped away", () => {
+    const text = signalsSection({
+      recentReads: ["FT | Chip exports"],
+      recentSkips: ["Daily Mail | Royal gossip"],
+      oftenSkippedSources: [{ name: "Daily Mail", skipped: 4, read: 0 }],
+    });
+    expect(text).toContain("Recently opened (more like these):\n- FT | Chip exports");
+    expect(text).toContain("dismissed without opening");
+    expect(text).toContain("- Daily Mail | Royal gossip");
+    expect(text).toContain("Daily Mail(4 skipped/0 opened)");
+  });
+
+  it("adds nothing when there's no history", () => {
+    expect(signalsSection(undefined)).toBe("");
+    expect(signalsSection({ recentReads: [], recentSkips: [], oftenSkippedSources: [] })).toBe("");
   });
 });

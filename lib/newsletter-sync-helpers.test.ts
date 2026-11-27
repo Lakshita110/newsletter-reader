@@ -9,6 +9,7 @@ import {
   decodeHtmlEntities,
   isPlatformSender,
   QUERY_WIDENED_AT,
+  publicationNameFor,
 } from "./newsletter-sync-helpers";
 
 describe("normalizeSenderEmail", () => {
@@ -87,6 +88,18 @@ describe("decodeHtmlEntities", () => {
   it("decodes the entities Gmail leaves in snippets", () => {
     expect(decodeHtmlEntities("Trump&#39;s &quot;conquest&quot; &amp; more &#x2014; x")).toBe(
       'Trump\'s "conquest" & more \u2014 x'
+    );
+  });
+});
+
+describe("publicationNameFor", () => {
+  it("names a publication that emails from its author", () => {
+    expect(publicationNameFor("email@stratechery.com", "Ben Thompson")).toBe("Stratechery");
+    expect(publicationNameFor("news@mail.stratechery.com", "Ben Thompson")).toBe("Stratechery");
+  });
+  it("keeps the From name for everyone else", () => {
+    expect(publicationNameFor("pragmaticengineer@substack.com", "The Pragmatic Engineer")).toBe(
+      "The Pragmatic Engineer"
     );
   });
 });

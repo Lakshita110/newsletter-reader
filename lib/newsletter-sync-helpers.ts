@@ -40,6 +40,26 @@ export const NEWSLETTER_PLATFORM_DOMAINS = [
   "lennysnewsletter.com",
 ] as const;
 
+/**
+ * Publications whose emails come from a person's name ("Ben Thompson"), so
+ * the list showed the author and she couldn't find "Stratechery". Keyed by
+ * sending domain; the From name is still used for everyone else.
+ */
+const PUBLICATION_NAME_BY_DOMAIN: Record<string, string> = {
+  "stratechery.com": "Stratechery",
+  "pragmaticengineer.com": "The Pragmatic Engineer",
+  "lennysnewsletter.com": "Lenny's Newsletter",
+};
+
+/** The name to show for an issue: the publication when we know it, else the From name. */
+export function publicationNameFor(fromEmail: string, fromName: string): string {
+  const domain = fromEmail.toLowerCase().split("@")[1] ?? "";
+  for (const [known, name] of Object.entries(PUBLICATION_NAME_BY_DOMAIN)) {
+    if (domain === known || domain.endsWith(`.${known}`)) return name;
+  }
+  return fromName;
+}
+
 /** True for a sender at a known platform domain or one of its subdomains (mail.beehiiv.com). */
 export function isPlatformSender(email: string): boolean {
   const domain = email.toLowerCase().split("@")[1] ?? "";

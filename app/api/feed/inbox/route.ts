@@ -8,6 +8,7 @@ import {
   syncAllMailboxes,
 } from "@/lib/newsletter-sync";
 import { getSavedArticleFeed } from "@/lib/saved-articles";
+import { publicationNameFor } from "@/lib/newsletter-sync-helpers";
 import { findCoverage, htmlToPlainText, type CoverageSource } from "@/lib/coverage";
 import type { FeedItem } from "@/lib/rss-candidates";
 import { getSessionUser } from "@/lib/session-user";
@@ -134,13 +135,13 @@ async function markCoveredStories(userId: string, items: FeedItem[]) {
         receivedAt: { gte: new Date(Date.now() - COVERAGE_WINDOW_DAYS * 86_400_000) },
         OR: subscribedSenderFilter(senders),
       },
-      select: { gmailMessageId: true, fromName: true, subject: true, html: true, text: true },
+      select: { gmailMessageId: true, fromName: true, fromEmail: true, subject: true, html: true, text: true },
       orderBy: { receivedAt: "desc" },
       take: 40,
     });
     const sources: CoverageSource[] = issues.map((issue) => ({
       id: issue.gmailMessageId,
-      publicationName: issue.fromName,
+      publicationName: publicationNameFor(issue.fromEmail, issue.fromName),
       subject: issue.subject,
       text: issue.text ?? htmlToPlainText(issue.html ?? ""),
     }));

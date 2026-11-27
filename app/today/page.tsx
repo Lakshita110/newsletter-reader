@@ -209,7 +209,7 @@ export default function TodayPage() {
     setStatus(item.id, "read");
     // Finishing a saved item also clears it from Saved.
     if (prevSaved) setSaved(item.id, false);
-    postReadState({ messageId: item.id, state: "read", metadata: context(item) }).catch((e) => {
+    postReadState({ messageId: item.id, state: "dismissed", metadata: context(item) }).catch((e) => {
       // Put it back and say so: a done that silently didn't save is the bug she hit.
       console.error("[today] mark read failed", e);
       setStatus(item.id, prevStatus);
@@ -252,7 +252,7 @@ export default function TodayPage() {
     // One request for the whole list: the API takes messageIds + per-item context.
     postReadState({
       messageIds: items.map((item) => item.id),
-      state: "read",
+      state: "dismissed",
       contextById: Object.fromEntries(items.map((item) => [item.id, context(item)])),
     }).catch((e) => {
       console.error("[today] mark all read failed", e);
