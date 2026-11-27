@@ -11,7 +11,7 @@ import { faviconDomain } from "@/lib/lead-image";
 import { buildTodayQueue, readingOrder, type QueueSection } from "./lib/queue";
 import { prefetchForOffline } from "./lib/offline";
 import { readMapFromStorage, saveMapToStorage, toReadStatusMap, toSavedMap } from "@/app/lib/client-utils";
-import { postReadState } from "@/app/lib/read-state";
+import { applyLocalEditsSince, postReadState, readStateClock } from "@/app/lib/read-state";
 import type { FeedReadStatus, InboxItem } from "@/app/lib/feed-types";
 
 type Tab = "today" | "newsletters" | "saved";
@@ -83,6 +83,7 @@ export default function TodayPage() {
   const load = useCallback(async () => {
     setError(null);
     try {
+      const since = readStateClock();
       const [feedRes, stateRes] = await Promise.all([fetch("/api/feed/inbox"), fetch("/api/read-state")]);
       if (feedRes.status === 401) {
         setError("Signed out. Sign in again to refresh.");
@@ -99,8 +100,13 @@ export default function TodayPage() {
       saveMapToStorage("nr_today_cache", { items: nextItems, recommendedIds: nextRecommended, rankMeta: nextRankMeta });
       if (stateRes.ok) {
         const state = await stateRes.json();
-        const nextStatus = toReadStatusMap(state);
-        const nextSaved = toSavedMap(state);
+        // The feed request can take seconds; a swipe made meanwhile must not be
+        // undone by this older snapshot (see app/lib/read-state.ts).
+        const { status: nextStatus, saved: nextSaved } = applyLocalEditsSince(
+          since,
+          toReadStatusMap(state),
+          toSavedMap(state)
+        );
         setStatusById(nextStatus);
         setSavedById(nextSaved);
         saveMapToStorage("nr_read_status_map", nextStatus);
@@ -173,18 +179,33 @@ export default function TodayPage() {
     setStatus(item.id, "read");
     // Finishing a saved item also clears it from Saved.
     if (prevSaved) setSaved(item.id, false);
-    postReadState({ messageId: item.id, state: "read", metadata: context(item) }).catch((e) =>
-      console.error("[today] mark read failed", e)
-    );
+    postReadState({ messageId: item.id, state: "read", metadata: context(item) }).catch((e) => {
+      // Put it back and say so: a done that silently didn't save is the bug she hit.
+      console.error("[today] mark read failed", e);
+      setStatus(item.id, prevStatus);
+      setError("Couldn't save that. It's back in your list; try again.");
+    });
     if (prevSaved) postReadState({ messageId: item.id, state: "unsaved" }).catch(() => null);
     showUndo({ item, kind: "done", prevStatus, prevSaved });
+  };
+
+  const markOpened = (item: InboxItem) => {
+    if (!statusById[item.id]) setStatus(item.id, "in-progress");
+    postReadState({ messageId: item.id, state: "opened", metadata: context(item) }).catch((e) =>
+      // Only the in-progress dot depends on this; the item itself is unaffected.
+      console.error("[today] could not record the open", e)
+    );
   };
 
   const toggleSave = (item: InboxItem) => {
     const prevSaved = Boolean(savedById[item.id]);
     setSaved(item.id, !prevSaved);
-    postReadState({ messageId: item.id, state: prevSaved ? "unsaved" : "saved", metadata: context(item) }).catch((e) =>
-      console.error("[today] save failed", e)
+    postReadState({ messageId: item.id, state: prevSaved ? "unsaved" : "saved", metadata: context(item) }).catch(
+      (e) => {
+        console.error("[today] save failed", e);
+        setSaved(item.id, prevSaved);
+        setError("Couldn't save that change. Try again.");
+      }
     );
     showUndo({ item, kind: "save", prevSaved });
   };
@@ -203,7 +224,20 @@ export default function TodayPage() {
       messageIds: items.map((item) => item.id),
       state: "read",
       contextById: Object.fromEntries(items.map((item) => [item.id, context(item)])),
-    }).catch((e) => console.error("[today] mark all read failed", e));
+    }).catch((e) => {
+      console.error("[today] mark all read failed", e);
+      setStatusById((prev) => {
+        const next = { ...prev };
+        for (const item of items) {
+          const status = prevStatuses[item.id];
+          if (status) next[item.id] = status;
+          else delete next[item.id];
+        }
+        saveMapToStorage("nr_read_status_map", next);
+        return next;
+      });
+      setError("Couldn't mark those as read. Try again.");
+    });
     showUndo({ kind: "bulk", items, prevStatuses });
   };
 
@@ -335,13 +369,14 @@ export default function TodayPage() {
                 >
                   {opensOriginal(item, tab) ? (
                     // RSS stories open on the publisher's site: their pages read better than
-                    // our extraction, and tapping one counts as reading it (Undo is offered).
+                    // our extraction. Opening one only marks it as started; it stays in the
+                    // list until she swipes it done or saves it.
                     <a
                       href={item.externalUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="today-row"
-                      onClick={() => markDone(item)}
+                      onClick={() => markOpened(item)}
                       draggable={false}
                     >
                       <RowBody item={item} inProgress={statusById[item.id] === "in-progress"} />

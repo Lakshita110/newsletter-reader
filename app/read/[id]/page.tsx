@@ -1,5 +1,6 @@
 "use client";
 
+import { applyLocalEditsSince, postReadState, readStateClock } from "@/app/lib/read-state";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ReaderContent } from "./components/ReaderContent";
@@ -107,22 +108,24 @@ export default function ReadPage() {
 
   useEffect(() => {
     if (!id) return;
-    fetch("/api/read-state", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messageId: id, state: "in_progress" }),
-    }).catch(() => null);
+    // "opened", not "in_progress": opening must never un-finish a done item.
+    postReadState({ messageId: id, state: "opened" }).catch((error) =>
+      console.error("[reader] could not record the visit", error)
+    );
   }, [id]);
 
   useEffect(() => {
     let isMounted = true;
     (async () => {
+      const since = readStateClock();
       const res = await fetch("/api/read-state");
       if (!res.ok) return;
       const payload = await res.json();
       if (!isMounted) return;
-      setStatusById(toReadStatusMap(payload));
-      setSavedById(toSavedMap(payload));
+      // A Done tapped while this was loading must survive the older snapshot.
+      const merged = applyLocalEditsSince(since, toReadStatusMap(payload), toSavedMap(payload));
+      setStatusById(merged.status);
+      setSavedById(merged.saved);
     })().catch(() => null);
     return () => {
       isMounted = false;
@@ -146,21 +149,18 @@ export default function ReadPage() {
       parsed[id] = "read";
       window.localStorage.setItem("nr_read_status_map", JSON.stringify(parsed));
     }
-    fetch("/api/read-state", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messageId: id,
-        state: "read",
-        metadata: msg
-          ? {
-              title: msg.subject || "(No subject)",
-              sourceKind: msg.sourceKind,
-              publicationName: msg.publicationName ?? msg.from,
-            }
-          : undefined,
-      }),
-    }).catch(() => {
+    postReadState({
+      messageId: id,
+      state: "read",
+      metadata: msg
+        ? {
+            title: msg.subject || "(No subject)",
+            sourceKind: msg.sourceKind,
+            publicationName: msg.publicationName ?? msg.from,
+          }
+        : undefined,
+    }).catch((error) => {
+      console.error("[reader] mark done failed", error);
       setStatusById((prev) => {
         const next = { ...prev };
         delete next[id];
@@ -187,11 +187,8 @@ export default function ReadPage() {
       delete parsed[id];
       window.localStorage.setItem("nr_read_status_map", JSON.stringify(parsed));
     }
-    fetch("/api/read-state", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messageId: id, state: "unread" }),
-    }).catch(() => {
+    postReadState({ messageId: id, state: "unread" }).catch((error) => {
+      console.error("[reader] mark unread failed", error);
       setStatusById((prev) => ({ ...prev, [id]: "read" }));
     });
   }, [id]);
@@ -212,21 +209,18 @@ export default function ReadPage() {
       else delete parsed[id];
       window.localStorage.setItem("nr_saved_items_map", JSON.stringify(parsed));
     }
-    fetch("/api/read-state", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messageId: id,
-        state: nextSaved ? "saved" : "unsaved",
-        metadata: msg
-          ? {
-              title: msg.subject || "(No subject)",
-              sourceKind: msg.sourceKind,
-              publicationName: msg.publicationName ?? msg.from,
-            }
-          : undefined,
-      }),
-    }).catch(() => {
+    postReadState({
+      messageId: id,
+      state: nextSaved ? "saved" : "unsaved",
+      metadata: msg
+        ? {
+            title: msg.subject || "(No subject)",
+            sourceKind: msg.sourceKind,
+            publicationName: msg.publicationName ?? msg.from,
+          }
+        : undefined,
+    }).catch((error) => {
+      console.error("[reader] save failed", error);
       setSavedById((prev) => ({ ...prev, [id]: isSaved }));
     });
   }, [id, isSaved, msg]);

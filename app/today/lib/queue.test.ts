@@ -49,15 +49,16 @@ describe("buildTodayQueue", () => {
     expect(ids(q.feed)).toEqual(["story-picked", "nl-new", "story-new", "nl-yesterday"]);
   });
 
-  it("keeps older newsletters out of the feed but in the Newsletters view for a month", () => {
+  it("keeps a week of unread newsletters in Today, and a month in the Newsletters view", () => {
     const q = build([
       item("nl-today", "gmail", hoursAgo(3)),
-      item("nl-last-week", "gmail", daysAgo(6)),
+      item("nl-thanksgiving", "gmail", daysAgo(3)),
+      item("nl-two-weeks", "gmail", daysAgo(14)),
       item("nl-old", "gmail", daysAgo(40)),
     ]);
-    expect(ids(q.feed)).toEqual(["nl-today"]);
-    expect(ids(q.newsletters)).toEqual(["nl-today", "nl-last-week"]);
-    expect(ids(readingOrder(q, "newsletters"))).toEqual(["nl-today", "nl-last-week"]);
+    expect(ids(q.feed)).toEqual(["nl-today", "nl-thanksgiving"]);
+    expect(ids(q.newsletters)).toEqual(["nl-today", "nl-thanksgiving", "nl-two-weeks"]);
+    expect(ids(readingOrder(q, "newsletters"))).toEqual(["nl-today", "nl-thanksgiving", "nl-two-weeks"]);
   });
 
   it("leads with the most widely covered story, even one that broke after the ranking", () => {
@@ -81,25 +82,36 @@ describe("buildTodayQueue", () => {
     expect(ids(q.feed).slice(TOP_STORIES_FIRST)).toEqual([`p${TOP_STORIES_FIRST - 1}`, `p${TOP_STORIES_FIRST}`]);
   });
 
-  it("keeps in-progress above the feed, saved in its own list, and drops read and overflow items", () => {
+  it("keeps opened items in place, saved in its own list, and drops read and overflow items", () => {
     const q = build(
       [
         item("n-new", "gmail", daysAgo(0)),
         item("n-read", "gmail", daysAgo(1)),
         item("n-progress", "gmail", daysAgo(3)),
+        item("r-opened", "rss", hoursAgo(2)),
+        item("n-progress-old", "gmail", daysAgo(10)),
         item("n-saved", "gmail", daysAgo(40)),
         item("r-1", "rss", daysAgo(0)),
         item("r-overflow", "rss", daysAgo(0), { isOverflow: true }),
       ],
       {
-        statusById: { "n-read": "read", "n-progress": "in-progress", "n-saved": "read" },
+        statusById: {
+          "n-read": "read",
+          "n-progress": "in-progress",
+          "r-opened": "in-progress",
+          "n-progress-old": "in-progress",
+          "n-saved": "read",
+        },
         savedById: { "n-saved": true },
       }
     );
-    expect(ids(q.continue)).toEqual(["n-progress"]);
-    expect(ids(q.feed)).toEqual(["r-1", "n-new"]);
+    // Opening doesn't move or remove anything; only a half-read issue that has
+    // aged out of the feed is kept visible under "Continue reading".
+    expect(ids(q.feed)).toEqual(["r-1", "n-new", "r-opened", "n-progress"]);
+    expect(ids(q.continue)).toEqual(["n-progress-old"]);
+    expect(ids(q.newsletters)).toEqual(["n-new", "n-progress", "n-progress-old"]);
     expect(ids(q.saved)).toEqual(["n-saved"]);
-    expect(ids(readingOrder(q, "today"))).toEqual(["n-progress", "r-1", "n-new"]);
+    expect(ids(readingOrder(q, "today"))).toEqual(["n-progress-old", "r-1", "n-new", "r-opened", "n-progress"]);
   });
 
   it("shows a ranked story even if it was marked overflow", () => {
@@ -163,7 +175,7 @@ describe("keeping Today short", () => {
   });
 
   it("treats posts from newsletter-style RSS feeds as newsletters, not ranked news", () => {
-    const essay = item("essay", "rss", daysAgo(5), { longform: true });
+    const essay = item("essay", "rss", daysAgo(9), { longform: true });
     const q = build([essay, item("fresh-essay", "rss", hoursAgo(3), { longform: true })]);
     expect(ids(q.newsletters)).toEqual(["fresh-essay", "essay"]);
     expect(ids(q.feed)).toEqual(["fresh-essay"]);
