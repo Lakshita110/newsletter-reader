@@ -1,6 +1,15 @@
 import { prisma } from "@/lib/prisma";
 import { SMART_MODEL_CHAIN, openRouterChatWithFallback } from "@/lib/openrouter";
 import { weekKeyUtc } from "@/lib/rss-helpers";
+import { classifyReadStat } from "@/lib/reading-signals";
+
+/** Score taken off a source for each story she swiped away without opening. */
+const SKIP_PENALTY = 0.5;
+/**
+ * Snapshots older than this were scored with swipes counted as reads; rebuild
+ * them once instead of waiting for next week's.
+ */
+const PROFILE_LOGIC_SINCE = new Date("2026-11-27T22:30:00Z");
 
 /**
  * Weekly reading profile fed to the AI ranker: top publications scored from
@@ -119,7 +128,7 @@ Rules:
 }
 
 async function computeUserRssReadProfile(userId: string): Promise<RssReadProfile> {
-  const rows = await prisma.messageReadStat.findMany({
+  const allRows = await prisma.messageReadStat.findMany({
     where: {
       userId,
       OR: [{ sourceKind: "rss" }, { messageExternalId: { startsWith: "rss:" } }],
@@ -130,10 +139,27 @@ async function computeUserRssReadProfile(userId: string): Promise<RssReadProfile
       completionPct: true,
       openCount: true,
       lastOpenedAt: true,
+      totalSecondsRead: true,
+      firstOpenedAt: true,
+      completedAt: true,
+      savedAt: true,
     },
-    orderBy: { lastOpenedAt: "desc" },
+    // Not lastOpenedAt: skipped rows have none, and Postgres sorts nulls first.
+    orderBy: { updatedAt: "desc" },
     take: 600,
   });
+
+  // Stories she swiped away unread used to count as full reads here (the
+  // swipe sent "read"); now they lower their source's score instead, and stay
+  // out of the completion average and the summary's read history.
+  const rows = allRows.filter((row) => classifyReadStat(row) !== "skipped");
+  const skipsBySource = new Map<string, number>();
+  for (const row of allRows) {
+    const publication = row.publicationName?.trim();
+    if (publication && classifyReadStat(row) === "skipped") {
+      skipsBySource.set(publication, (skipsBySource.get(publication) ?? 0) + 1);
+    }
+  }
 
   if (rows.length === 0) {
     return {
@@ -163,7 +189,12 @@ async function computeUserRssReadProfile(userId: string): Promise<RssReadProfile
     publicationScores.set(publication, (publicationScores.get(publication) ?? 0) + score);
   }
 
+  for (const [publication, skips] of skipsBySource) {
+    publicationScores.set(publication, (publicationScores.get(publication) ?? 0) - SKIP_PENALTY * skips);
+  }
+
   const topPublications = [...publicationScores.entries()]
+    .filter(([, score]) => score > 0)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
     .map(([name, score]) => ({ name, score }));
@@ -216,7 +247,12 @@ export async function getUserRssReadProfile(userId: string): Promise<RssReadProf
       updatedAt: true,
     },
   });
-  if (snapshot && snapshot.weekKey === currentWeekKey && now.getTime() - snapshot.updatedAt.getTime() < 7 * 86400000) {
+  if (
+    snapshot &&
+    snapshot.weekKey === currentWeekKey &&
+    now.getTime() - snapshot.updatedAt.getTime() < 7 * 86400000 &&
+    snapshot.updatedAt >= PROFILE_LOGIC_SINCE
+  ) {
     return parseSnapshotToProfile(snapshot);
   }
 

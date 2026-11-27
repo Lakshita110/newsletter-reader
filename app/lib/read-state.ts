@@ -36,6 +36,7 @@ export function clearLocalEditsForTests() {
 function editFor(state: string): Omit<LocalEdit, "id" | "at"> | null {
   switch (state) {
     case "read":
+    case "dismissed":
       return { status: "read" };
     case "unread":
       return { status: null };

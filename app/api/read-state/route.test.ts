@@ -40,6 +40,22 @@ describe("POST /api/read-state", () => {
     expect(messageReadStat.upsert.mock.calls[0][0].update.completedAt).toBeNull();
   });
 
+  it("finishes a dismissed item without recording it as a visit or a read", async () => {
+    getSessionUserId.mockResolvedValue("u1");
+    messageReadStat.findUnique.mockResolvedValue(null);
+
+    expect((await post({ messageIds: ["r1", "r2"], state: "dismissed" })).status).toBe(200);
+
+    expect(messageReadStat.upsert).toHaveBeenCalledTimes(2);
+    const { update, create } = messageReadStat.upsert.mock.calls[0][0];
+    expect(update.completedAt).toBeInstanceOf(Date);
+    for (const data of [update, create]) {
+      expect(data).not.toHaveProperty("openCount");
+      expect(data).not.toHaveProperty("completionPct");
+      expect(data).not.toHaveProperty("lastOpenedAt");
+    }
+  });
+
   it("rejects an unknown state instead of treating it as in progress", async () => {
     getSessionUserId.mockResolvedValue("u1");
     const res = await post({ messageId: "g1", state: "dne" });

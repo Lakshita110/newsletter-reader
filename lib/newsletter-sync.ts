@@ -12,6 +12,7 @@ import {
   extractWebUrl,
   isPlatformSender,
   NEWSLETTER_PLATFORM_DOMAINS,
+  publicationNameFor,
   syncWindowStart,
 } from "@/lib/newsletter-sync-helpers";
 
@@ -253,7 +254,7 @@ export async function getStoredNewsletterFeed(userId: string): Promise<FeedItem[
     date: row.receivedAt.toISOString(),
     // Gmail returns snippets HTML-escaped ("it&#39;s").
     snippet: decodeHtmlEntities(row.snippet ?? ""),
-    publicationName: row.fromName,
+    publicationName: publicationNameFor(row.fromEmail, row.fromName),
     publicationKey: row.publicationKey,
     // No lead photo for newsletters: the first big image in an email is as
     // often a sponsor banner or masthead as a real photo, and it looked bad.

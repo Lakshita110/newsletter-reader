@@ -1,4 +1,5 @@
 import { SMART_MODEL_CHAIN, openRouterChat } from "@/lib/openrouter";
+import type { ReadingSignals } from "@/lib/reading-signals";
 
 type RankItemInput = {
   id: string;
@@ -22,6 +23,8 @@ type RankRequest = {
     preferenceSummary: string[];
     customPrompt?: string | null;
   };
+  /** Her last two weeks of opens and unopened swipes (lib/reading-signals). */
+  signals?: ReadingSignals;
 };
 
 type RankResult = {
@@ -133,7 +136,9 @@ function getCacheKey(req: RankRequest, model: string): string {
       ?.slice(0, 5)
       .map((p) => p.name)
       .join(",") ?? "none";
-  return `${model}|${req.dayKey}|${req.cap}|${ids}|${profileHint}`;
+  // A new read or skip should get a fresh ranking, not a cached one.
+  const signalHint = req.signals ? `${req.signals.recentReads[0] ?? ""}|${req.signals.recentSkips[0] ?? ""}` : "";
+  return `${model}|${req.dayKey}|${req.cap}|${ids}|${profileHint}|${signalHint}`;
 }
 
 /** Read a millisecond env override, ignoring unset/unparseable/sub-second values. */
@@ -180,6 +185,31 @@ export function withMaxTokens(cap: number): number {
   // mean a cut tail just drops whole trailing items rather than splitting an
   // id from its reason.
   return Math.min(4096, Math.max(512, 256 + cap * 40));
+}
+
+/**
+ * What she did with recent picks, as prompt text. Opens are the strongest
+ * "more like this" we have; a swipe away without opening is a "not for me".
+ * Exported for tests.
+ */
+export function signalsSection(signals: ReadingSignals | undefined): string {
+  if (!signals) return "";
+  const lines: string[] = [];
+  if (signals.recentReads.length > 0) {
+    lines.push("Recently opened (more like these):", ...signals.recentReads.map((r) => `- ${r}`));
+  }
+  if (signals.recentSkips.length > 0) {
+    lines.push(
+      "Recently dismissed without opening (fewer like these; a major story still belongs in the feed):",
+      ...signals.recentSkips.map((r) => `- ${r}`)
+    );
+  }
+  if (signals.oftenSkippedSources.length > 0) {
+    const list = signals.oftenSkippedSources.map((s) => `${s.name}(${s.skipped} skipped/${s.read} opened)`).join(", ");
+    lines.push(`Sources she mostly skips: ${list}`);
+  }
+  if (lines.length === 0) return "";
+  return `What she did with recent items (last two weeks):\n${lines.join("\n")}\n`;
 }
 
 export async function rankItemsForDailyCap(req: RankRequest): Promise<RankResult | null> {
@@ -267,6 +297,7 @@ avg_completion_pct=${req.userProfile?.avgCompletionPct ?? 0}
 recent_reads_7d=${req.userProfile?.recentReadCount7d ?? 0}
 ${profileNotes}
 
+${signalsSection(req.signals)}
 Interest guidance:
 ${interestGuidance}
 

@@ -10,9 +10,22 @@ export const dynamic = "force-dynamic";
  * reset (Undo uses it) and does clear completedAt. Opening used to send
  * in_progress, so re-opening a done item, or a slow "opened" request landing
  * after a quick "done", silently put the item back in Today.
+ *
+ * "dismissed" is a swipe (or Done, or Mark all read) on Today: the item is
+ * finished, so it leaves the list, but it is not recorded as a read. Before,
+ * Today sent "read", which set a visit and 100% completion, so everything she
+ * swiped away unread taught the ranker she liked it. See lib/reading-signals.
  */
-type ReadStateUpdate = "in_progress" | "opened" | "read" | "unread" | "saved" | "unsaved";
-const READ_STATE_UPDATES = new Set<string>(["in_progress", "opened", "read", "unread", "saved", "unsaved"]);
+type ReadStateUpdate = "in_progress" | "opened" | "read" | "dismissed" | "unread" | "saved" | "unsaved";
+const READ_STATE_UPDATES = new Set<string>([
+  "in_progress",
+  "opened",
+  "read",
+  "dismissed",
+  "unread",
+  "saved",
+  "unsaved",
+]);
 type SourceKind = "gmail" | "rss" | "web";
 
 type ReadStateMetadata = {
@@ -163,6 +176,17 @@ export async function POST(req: Request) {
           completedAt: now,
           ...metadataFields,
         },
+      });
+      continue;
+    }
+
+    if (state === "dismissed") {
+      // Finish it without touching the visit or completion fields: those are
+      // what say whether she actually read it.
+      await prisma.messageReadStat.upsert({
+        where,
+        update: { completedAt: now, ...metadataFields },
+        create: { userId, messageExternalId: targetId, completedAt: now, ...metadataFields },
       });
       continue;
     }

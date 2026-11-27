@@ -3,12 +3,13 @@ import { SMART_MODEL_CHAIN } from "@/lib/openrouter";
 import { rankItemsForDailyCap } from "@/lib/rss-ai-ranker";
 import type { AiRankItem } from "@/lib/rss-candidates";
 import { type RssReadProfile, getUserRssReadProfile } from "@/lib/rss-read-profile";
+import { getRecentReadingSignals } from "@/lib/reading-signals";
 
 /** Same shape the candidate builder emits; aliased so the two can't drift. */
 export type RankingItem = AiRankItem;
 
 /** Bump when the ranking prompt or its inputs change meaningfully. */
-const RANKER_VERSION = "2026-11-21-big-news";
+const RANKER_VERSION = "2026-11-27-reads-and-skips";
 
 export function buildRankInputFingerprint(
   dayKey: string,
@@ -108,11 +109,19 @@ export async function computeDailyRankedSelection(params: {
   }
 
   const readProfile = params.readProfile ?? (await getUserRssReadProfile(params.userId));
+  // Fresh on every run (unlike the weekly profile), so what she opened or
+  // swiped away since the last ranking shapes this one. A failure here only
+  // costs the hint, so log it and rank without it.
+  const signals = await getRecentReadingSignals(params.userId).catch((error) => {
+    console.error("[rss-ranking] could not load reading signals", error);
+    return undefined;
+  });
   const rankCap = Math.min(params.rankedItems.length, params.cap + DIVERSITY_OVERFETCH);
   const rankResult = await rankItemsForDailyCap({
     dayKey: params.dayKey,
     cap: rankCap,
     userProfile: { ...readProfile, customPrompt: normalizedPrompt || null },
+    signals,
     items: params.rankedItems,
   }).catch(() => null);
 
