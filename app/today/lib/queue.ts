@@ -44,15 +44,13 @@ export function isNewsletter(item: InboxItem): boolean {
 /**
  * Build the two reading views from one pass over her items.
  *
- * Today ("feed") is one list to glance at: the day's stories and the last week's
- * unread newsletters woven together, a story first, so the biggest news
- * leads and newsletters are never buried under thirty headlines (or the
- * reverse). Stories are ordered with the most widely covered first (counted
- * at load time, so news that broke after the last ranking still leads), then
- * the ranker's order, then a capped number of unpicked stories. Only the
- * best TODAY_STORY_LIMIT are shown (at most MAX_STORIES_PER_SOURCE from one
- * outlet) and only the newest few newsletters; the rest of the stories fold
- * under "More stories", and every newsletter stays in the Newsletters tab.
+ * Today ("feed") is one list to glance at: the day's best stories and the
+ * last week's unread newsletters, newest first, with important stories
+ * allowed to rise a few hours (importanceBoostHours). Which stories make it
+ * in is decided by importance: the most widely covered and the ranker's
+ * picks, at most TODAY_STORY_LIMIT and MAX_STORIES_PER_SOURCE per outlet;
+ * the rest fold under "More stories". Only the newest few newsletters are
+ * shown; every newsletter stays in the Newsletters tab.
  *
  * Newsletters is the long-form view: every unfinished issue from the last month,
  * newest first, for when she has time to sit down and read.
@@ -83,8 +81,10 @@ export function buildTodayQueue({
   for (const item of [...items].sort((a, b) => time(b) - time(a))) {
     if (seen.has(item.id)) continue;
     seen.add(item.id);
-    const status = statusById[item.id] ?? "unread";
-    if (savedById[item.id]) {
+    // A hidden duplicate copy counts too: finishing either copy finishes the issue.
+    const copies = [item.id, ...(item.duplicateIds ?? [])];
+    const status = statusOf(copies, statusById);
+    if (copies.some((id) => savedById[id])) {
       queue.saved.push(item);
       continue;
     }
@@ -133,21 +133,51 @@ export function buildTodayQueue({
   const recentNewsletters = queue.newsletters
     .filter((item) => time(item) >= feedCutoff)
     .slice(0, TODAY_NEWSLETTER_LIMIT);
-  queue.feed = interleave(shown, recentNewsletters);
+  // Mostly chronological: newest first, with important stories allowed to
+  // rise a few hours ahead of their publish time (see importanceBoostHours).
+  const effective = (item: InboxItem) => time(item) + importanceBoostHours(item, rank.get(item.id)) * 3_600_000;
+  const byEffectiveTime = (a: InboxItem, b: InboxItem) => effective(b) - effective(a);
+  queue.feed = [...shown, ...recentNewsletters].sort(byEffectiveTime);
+  queue.more.sort(byEffectiveTime);
 
   const placed = new Set([...queue.feed, ...queue.more, ...queue.covered].map((item) => item.id));
   queue.continue = inProgress.filter((item) => !placed.has(item.id));
   return queue;
 }
 
-/** a1, b1, a2, b2, …, then whatever is left of the longer list. */
-export function interleave<T>(a: T[], b: T[]): T[] {
-  const out: T[] = [];
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    if (i < a.length) out.push(a[i]);
-    if (i < b.length) out.push(b[i]);
-  }
-  return out;
+/** Not finished and not saved (counting duplicate copies): still belongs in Today/Newsletters. */
+export function isOpenItem(
+  item: InboxItem,
+  statusById: Record<string, FeedReadStatus>,
+  savedById: Record<string, boolean>
+): boolean {
+  const copies = [item.id, ...(item.duplicateIds ?? [])];
+  return statusOf(copies, statusById) !== "read" && !copies.some((id) => savedById[id]);
+}
+
+/** The furthest-along status of any copy: read beats in progress beats unread. */
+function statusOf(ids: string[], statusById: Record<string, FeedReadStatus>): FeedReadStatus {
+  const statuses = ids.map((id) => statusById[id]);
+  if (statuses.includes("read")) return "read";
+  if (statuses.includes("in-progress")) return "in-progress";
+  return "unread";
+}
+
+/** Most hours an important story can be moved ahead of its publish time. */
+export const MAX_IMPORTANCE_BOOST_HOURS = 8;
+
+/**
+ * How many hours earlier than its real time a story is treated as, so Today
+ * reads newest-first but big news isn't buried under minor fresh items.
+ * Coverage (how many of her sources run it) counts most: +2h per extra
+ * source, up to 3. The ranker's top 5 picks get +2h, the rest of its top 12
+ * +1h. Newsletters are purely chronological.
+ */
+export function importanceBoostHours(item: InboxItem, rankIndex: number | undefined): number {
+  if (isNewsletter(item)) return 0;
+  const coverage = Math.min(item.coverage ?? 0, 3) * 2;
+  const ranked = rankIndex === undefined ? 0 : rankIndex < 5 ? 2 : rankIndex < 12 ? 1 : 0;
+  return Math.min(coverage + ranked, MAX_IMPORTANCE_BOOST_HOURS);
 }
 
 /** Reading order used for "Done → next" inside the reader, per tab. */

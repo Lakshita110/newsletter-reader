@@ -244,7 +244,7 @@ export async function getStoredNewsletterFeed(userId: string): Promise<FeedItem[
     userId,
     rows.filter((row) => row.receivedAt.getTime() >= readTimeSince).map((row) => row.gmailMessageId)
   );
-  return rows.map((row) => ({
+  const items = rows.map((row) => ({
     // Keep the bare Gmail id so existing read/save state keeps matching.
     id: row.gmailMessageId,
     sourceKind: "gmail" as const,
@@ -260,6 +260,34 @@ export async function getStoredNewsletterFeed(userId: string): Promise<FeedItem[
     externalUrl: row.webUrl ?? undefined,
     readMinutes: wordCounts.has(row.gmailMessageId) ? readMinutes(wordCounts.get(row.gmailMessageId)!) : undefined,
   }));
+  return dedupeNewsletterCopies(items);
+}
+
+/** Two issues this close together with the same sender name and subject are one issue. */
+const DUPLICATE_WINDOW_MS = 36 * 60 * 60 * 1000;
+
+/**
+ * The same issue can arrive more than once: to two of her mailboxes, or
+ * from two addresses of one publication (pragmaticengineer@ and
+ * pragmaticengineer+deepdives@substack.com). Keep the newest copy and list the
+ * others in `duplicateIds`, so Today counts the issue as read if she finished
+ * any copy. Expects `items` newest first.
+ */
+export function dedupeNewsletterCopies(items: FeedItem[]): FeedItem[] {
+  const kept: FeedItem[] = [];
+  const byKey = new Map<string, FeedItem>();
+  const normalize = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
+  for (const item of items) {
+    const key = `${normalize(item.publicationName)}|${normalize(item.subject)}`;
+    const original = byKey.get(key);
+    if (original && Math.abs(Date.parse(original.date) - Date.parse(item.date)) <= DUPLICATE_WINDOW_MS) {
+      original.duplicateIds = [...(original.duplicateIds ?? []), item.id];
+      continue;
+    }
+    byKey.set(key, item);
+    kept.push(item);
+  }
+  return kept;
 }
 
 export async function approvedSenderEmails(userId: string): Promise<string[]> {

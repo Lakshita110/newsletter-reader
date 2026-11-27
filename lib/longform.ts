@@ -15,11 +15,18 @@ import { prisma } from "@/lib/prisma";
  * "newsletter" category or a substack.com feed always counts.
  */
 export const LONGFORM_WINDOW_DAYS = 14;
-/** At most one post a day on average over the window. */
-export const LONGFORM_MAX_POSTS = LONGFORM_WINDOW_DAYS;
+/**
+ * At most ~3 posts a week. One a day let low-volume news sites (ProPublica)
+ * through as "newsletters"; the essay newsletters she reads post weekly or
+ * a couple of times a week.
+ */
+export const LONGFORM_MAX_POSTS = 7;
+/** Categories that say "this is news", which wins over the posting-rate guess. */
+const NEWS_CATEGORIES = new Set(["news", "politics", "world", "business", "finance", "science", "tech"]);
 
 export function isLongformSource(source: { category: string | null; rssUrl: string; recentPosts: number }): boolean {
   if (source.category === "newsletter") return true;
+  if (source.category && NEWS_CATEGORIES.has(source.category)) return false;
   if (hostOf(source.rssUrl).endsWith("substack.com")) return true;
   return source.recentPosts <= LONGFORM_MAX_POSTS;
 }

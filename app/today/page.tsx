@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { SwipeHint, SwipeRow } from "./components/SwipeRow";
+import { applyFrozenOrder, freezeOrder, readFrozenOrder, writeFrozenOrder, type FrozenOrder } from "./lib/stable-order";
 import { AppNav } from "@/app/components/AppNav";
 import { GmailBanner } from "./components/GmailBanner";
 import { faviconDomain } from "@/lib/lead-image";
-import { buildTodayQueue, readingOrder, type QueueSection } from "./lib/queue";
+import { buildTodayQueue, isOpenItem, readingOrder, type QueueSection } from "./lib/queue";
 import { prefetchForOffline } from "./lib/offline";
 import { readMapFromStorage, saveMapToStorage, toReadStatusMap, toSavedMap } from "@/app/lib/client-utils";
 import { applyLocalEditsSince, postReadState, readStateClock } from "@/app/lib/read-state";
@@ -77,6 +78,9 @@ export default function TodayPage() {
   );
   const [isLoading, setIsLoading] = useState(cached.items === null);
   const [error, setError] = useState<string | null>(null);
+  const [frozen, setFrozen] = useState<FrozenOrder | null>(() => readFrozenOrder());
+  const [touched, setTouched] = useState(false);
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [undo, setUndo] = useState<Undo | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -98,6 +102,7 @@ export default function TodayPage() {
       setRecommendedIds(nextRecommended);
       setRankMeta(nextRankMeta);
       saveMapToStorage("nr_today_cache", { items: nextItems, recommendedIds: nextRecommended, rankMeta: nextRankMeta });
+      setLoadedOnce(true);
       if (stateRes.ok) {
         const state = await stateRes.json();
         // The feed request can take seconds; a swipe made meanwhile must not be
@@ -125,10 +130,35 @@ export default function TodayPage() {
     if (session?.user?.email) load();
   }, [session?.user?.email, sessionStatus, load, router]);
 
-  const queue = useMemo(
+  const freshQueue = useMemo(
     () => buildTodayQueue({ items, statusById, savedById, recommendedIds }),
     [items, statusById, savedById, recommendedIds]
   );
+  // Freeze the order once fresh data has loaded or she starts touching the
+  // page, whichever comes first (app/today/lib/stable-order.ts). Setting state
+  // during render is React's documented way to derive from changing data.
+  const canFreeze = !isLoading && items.length > 0 && (loadedOnce || touched);
+  if (!frozen && canFreeze) {
+    const next = freezeOrder(freshQueue);
+    setFrozen(next);
+    writeFrozenOrder(next);
+  }
+  const queue = useMemo(() => {
+    const open = new Map(items.filter((i) => isOpenItem(i, statusById, savedById)).map((i) => [i.id, i]));
+    return applyFrozenOrder(freshQueue, frozen, open);
+  }, [freshQueue, frozen, items, statusById, savedById]);
+  /** Drop the frozen order so the next render shows (and re-freezes) the fresh one. */
+  const unfreeze = () => {
+    setFrozen(null);
+    writeFrozenOrder(null);
+  };
+  /** Explicit refresh: fetch, then show (and freeze) the fresh order. */
+  const refresh = () => {
+    unfreeze();
+    setIsLoading(true);
+    return load();
+  };
+  const pendingCount = tab === "newsletters" ? queue.pending.newsletters : tab === "today" ? queue.pending.feed : 0;
   const ordered = useMemo(() => readingOrder(queue, tab), [queue, tab]);
   const sections: QueueSection[] =
     tab === "saved" ? ["saved"] : tab === "newsletters" ? ["newsletters"] : ["continue", "feed", "more", "covered"];
@@ -303,7 +333,7 @@ export default function TodayPage() {
           throw new Error(typeof body?.error === "string" ? body.error : `Ranking failed (${res.status})`);
         }
         setRankNow({ busy: false, error: null });
-        return load();
+        refresh();
       })
       .catch((err: unknown) => {
         console.error("[today] rank now failed", err);
@@ -312,7 +342,13 @@ export default function TodayPage() {
   };
 
   return (
-    <main className="today-shell">
+    <main
+      className="today-shell"
+      // Touching the page freezes its order, even if fresh data is still loading.
+      onPointerDown={() => {
+        if (!touched) setTouched(true);
+      }}
+    >
       <header className="today-header">
         <div>
           <h1 className="today-title">{TAB_TITLES[tab]}</h1>
@@ -345,7 +381,7 @@ export default function TodayPage() {
           >
             +
           </Link>
-          <button type="button" className="today-icon-btn" onClick={() => load()} aria-label="Refresh">
+          <button type="button" className="today-icon-btn" onClick={refresh} aria-label="Refresh">
             ↻
           </button>
         </div>
@@ -353,6 +389,11 @@ export default function TodayPage() {
 
       {error && <div className="today-banner">{error}</div>}
       <GmailBanner enabled={Boolean(session?.user?.email)} />
+      {pendingCount > 0 && (
+        <button type="button" className="today-new-pill" onClick={unfreeze}>
+          {pendingCount} new · Show
+        </button>
+      )}
       {ordered.length > 0 && <SwipeHint />}
 
       {sections.map((section) => {

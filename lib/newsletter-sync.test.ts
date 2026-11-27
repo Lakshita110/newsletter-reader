@@ -30,7 +30,9 @@ vi.mock("googleapis", () => ({
   },
 }));
 
-const { getStoredNewsletterFeed, syncNewsletters, syncAllMailboxes } = await import("./newsletter-sync");
+const { dedupeNewsletterCopies, getStoredNewsletterFeed, syncNewsletters, syncAllMailboxes } = await import(
+  "./newsletter-sync"
+);
 
 const mailbox = (overrides: Partial<{ id: string; email: string | null; syncedAt: Date | null }> = {}) => ({
   id: "g1",
@@ -203,5 +205,39 @@ describe("getStoredNewsletterFeed", () => {
     expect(newsletterWordCounts).toHaveBeenCalledWith("u1", ["e1"]);
     expect(feed[0].readMinutes).toBe(10);
     expect(feed[1].readMinutes).toBeUndefined();
+  });
+});
+
+describe("dedupeNewsletterCopies", () => {
+  const issue = (id: string, subject: string, date: string, publicationName = "The Pragmatic Engineer") => ({
+    id,
+    sourceKind: "gmail" as const,
+    subject,
+    from: publicationName,
+    date,
+    snippet: "",
+    publicationName,
+    publicationKey: "pe",
+  });
+
+  it("keeps one copy of an issue that arrived twice, remembering the other", () => {
+    const kept = dedupeNewsletterCopies([
+      issue("copy-b", "How Anthropic builds software in 2026", "2026-11-25T17:44:00Z"),
+      issue("copy-a", "How  Anthropic builds software in 2026 ", "2026-11-25T17:43:00Z"),
+      issue("other", "The Pulse", "2026-11-25T10:00:00Z"),
+    ]);
+    expect(kept.map((i) => [i.id, i.duplicateIds])).toEqual([
+      ["copy-b", ["copy-a"]],
+      ["other", undefined],
+    ]);
+  });
+
+  it("doesn't merge a recurring subject from different weeks or different senders", () => {
+    const kept = dedupeNewsletterCopies([
+      issue("w2", "Weekly update", "2026-11-25T10:00:00Z"),
+      issue("w1", "Weekly update", "2026-11-18T10:00:00Z"),
+      issue("x", "Weekly update", "2026-11-25T09:00:00Z", "Stratechery"),
+    ]);
+    expect(kept.map((i) => i.id)).toEqual(["w2", "w1", "x"]);
   });
 });
