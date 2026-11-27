@@ -13,8 +13,13 @@ export type QueueInput = {
 
 export type TodayQueue = Record<QueueSection, InboxItem[]>;
 
-/** Newsletters this recent are mixed into Today's feed. */
-export const FEED_NEWSLETTER_HOURS = 48;
+/**
+ * Unread newsletters this recent are mixed into Today's feed (newest
+ * TODAY_NEWSLETTER_LIMIT of them). A week, not two days: Stratechery and The
+ * Pragmatic Engineer skip days (holidays especially), and a two-day window
+ * made her paid subscriptions vanish from Today while still unread.
+ */
+export const FEED_NEWSLETTER_HOURS = 7 * 24;
 /** The Newsletters tab keeps unread issues this long, for sit-down reading. */
 export const NEWSLETTER_WINDOW_DAYS = 30;
 /** RSS stories the ranker didn't pick are capped, so the list stays finishable. */
@@ -39,8 +44,8 @@ export function isNewsletter(item: InboxItem): boolean {
 /**
  * Build the two reading views from one pass over her items.
  *
- * Today ("feed") is one list to glance at: the day's stories and the last two
- * days of newsletters woven together, a story first, so the biggest news
+ * Today ("feed") is one list to glance at: the day's stories and the last week's
+ * unread newsletters woven together, a story first, so the biggest news
  * leads and newsletters are never buried under thirty headlines (or the
  * reverse). Stories are ordered with the most widely covered first (counted
  * at load time, so news that broke after the last ranking still leads), then
@@ -49,10 +54,11 @@ export function isNewsletter(item: InboxItem): boolean {
  * outlet) and only the newest few newsletters; the rest of the stories fold
  * under "More stories", and every newsletter stays in the Newsletters tab.
  *
- * Newsletters is the long-form view: every unread issue from the last month,
+ * Newsletters is the long-form view: every unfinished issue from the last month,
  * newest first, for when she has time to sit down and read.
  *
- * - "In progress" sits above the feed so a half-read piece is never buried.
+ * - Opened items stay in place until she marks them done or saves them. Only
+ *   a half-read piece that has aged out of the feed shows in "Continue reading".
  * - Unpicked stories a newsletter already covered are folded, not dropped.
  * - Saved is its own tab and never auto-expires.
  */
@@ -72,6 +78,7 @@ export function buildTodayQueue({
   const picked: InboxItem[] = [];
   const unpicked: InboxItem[] = [];
   const seen = new Set<string>();
+  const inProgress: InboxItem[] = [];
 
   for (const item of [...items].sort((a, b) => time(b) - time(a))) {
     if (seen.has(item.id)) continue;
@@ -82,10 +89,10 @@ export function buildTodayQueue({
       continue;
     }
     if (status === "read") continue;
-    if (status === "in-progress") {
-      queue.continue.push(item);
-      continue;
-    }
+    // Opening an item doesn't move it: it stays where it was (with an
+    // in-progress dot) until she marks it done or saves it. Only items that
+    // no longer have a place in Today land in "Continue reading" below.
+    if (status === "in-progress") inProgress.push(item);
     if (isNewsletter(item)) {
       if (time(item) >= newsletterCutoff) queue.newsletters.push(item);
     } else if (rank.has(item.id)) picked.push(item);
@@ -127,6 +134,9 @@ export function buildTodayQueue({
     .filter((item) => time(item) >= feedCutoff)
     .slice(0, TODAY_NEWSLETTER_LIMIT);
   queue.feed = interleave(shown, recentNewsletters);
+
+  const placed = new Set([...queue.feed, ...queue.more, ...queue.covered].map((item) => item.id));
+  queue.continue = inProgress.filter((item) => !placed.has(item.id));
   return queue;
 }
 

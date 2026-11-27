@@ -4,7 +4,15 @@ import { getSessionUserId } from "@/lib/session-user";
 
 export const dynamic = "force-dynamic";
 
-type ReadStateUpdate = "in_progress" | "read" | "unread" | "saved" | "unsaved";
+/**
+ * "opened" is what the reader sends when an item is opened: it records the
+ * visit but never un-finishes a finished item. "in_progress" is an explicit
+ * reset (Undo uses it) and does clear completedAt. Opening used to send
+ * in_progress, so re-opening a done item, or a slow "opened" request landing
+ * after a quick "done", silently put the item back in Today.
+ */
+type ReadStateUpdate = "in_progress" | "opened" | "read" | "unread" | "saved" | "unsaved";
+const READ_STATE_UPDATES = new Set<string>(["in_progress", "opened", "read", "unread", "saved", "unsaved"]);
 type SourceKind = "gmail" | "rss" | "web";
 
 type ReadStateMetadata = {
@@ -81,10 +89,11 @@ export async function POST(req: Request) {
   const messageIds = Array.isArray(body?.messageIds)
     ? body.messageIds.filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
     : [];
-  const state: ReadStateUpdate =
-    body?.state === "read" || body?.state === "unread" || body?.state === "saved" || body?.state === "unsaved"
-      ? body.state
-      : "in_progress";
+  // An unknown state is a client bug: reject it rather than guessing.
+  if (!READ_STATE_UPDATES.has(body?.state)) {
+    return NextResponse.json({ error: "Invalid state" }, { status: 400 });
+  }
+  const state = body.state as ReadStateUpdate;
   const singleMetadata =
     normalizeMetadata(body?.metadata) ??
     normalizeMetadata({
@@ -195,6 +204,23 @@ export async function POST(req: Request) {
           where,
         });
       }
+      continue;
+    }
+
+    if (state === "opened") {
+      await prisma.messageReadStat.upsert({
+        where,
+        update: { lastOpenedAt: now, openCount: { increment: 1 }, ...metadataFields },
+        create: {
+          userId,
+          messageExternalId: targetId,
+          firstOpenedAt: now,
+          lastOpenedAt: now,
+          openCount: 1,
+          completionPct: 50,
+          ...metadataFields,
+        },
+      });
       continue;
     }
 
